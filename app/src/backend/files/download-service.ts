@@ -39,6 +39,7 @@ export const prepareDownloadSchema = z
   .strict();
 interface RecordState {
   owner: string;
+  requestKey: string;
   key: string;
   connection: string;
   peer?: string;
@@ -171,6 +172,7 @@ export class DownloadService {
       guard();
       this.records.set(view.id, {
         owner: actor.userId,
+        requestKey: actor.userId + ":" + input.requestId,
         key: t.key,
         connection: t.connection,
         peer: t.acceptedHostKey,
@@ -301,6 +303,17 @@ export class DownloadService {
         release?.();
       }
     });
+  }
+  forget(actor: DownloadActor, id: string) {
+    const r = this.owned(actor, id);
+    if (r.busy) throw Error("DOWNLOAD_BUSY");
+    if (!["verified", "cancelled"].includes(r.view.state) || r.release)
+      throw Error("DOWNLOAD_NOT_READY");
+    r.cancelled = true;
+    this.records.delete(id);
+    // Explicitly clearing a preview revokes its request cache too; another download must prepare afresh.
+    this.requests.delete(r.requestKey);
+    return structuredClone(r.view);
   }
   async cancel(actor: DownloadActor, id: string) {
     const r = this.owned(actor, id);

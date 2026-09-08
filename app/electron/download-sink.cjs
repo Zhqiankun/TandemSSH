@@ -417,6 +417,18 @@ class DownloadSink {
       return this.view(r);
     });
   }
+  forget(owner, id) {
+    const r = this.owned(owner, id);
+    if (r.pending) throw Error("DOWNLOAD_BUSY");
+    if (
+      !["completed", "cancelled"].includes(r.view.state) ||
+      r.handle ||
+      r.view.temporaryPath
+    )
+      throw Error("DOWNLOAD_NOT_READY");
+    this.records.delete(id);
+    return this.view(r);
+  }
   async reset(owner) {
     const records = [...this.records.values()].filter((r) => r.owner === owner);
     for (const r of records) r.cancelled = true;

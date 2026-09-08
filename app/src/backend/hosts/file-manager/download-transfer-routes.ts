@@ -98,6 +98,10 @@ export function registerDownloadTransferRoutes(
     route((actor, req) => service.verify(actor, uuid.parse(req.params.id))),
   );
   app.post(
+    prefix + "/:id/forget",
+    route((actor, req) => service.forget(actor, uuid.parse(req.params.id))),
+  );
+  app.post(
     prefix + "/:id/cancel",
     route((actor, req) => service.cancel(actor, uuid.parse(req.params.id))),
   );

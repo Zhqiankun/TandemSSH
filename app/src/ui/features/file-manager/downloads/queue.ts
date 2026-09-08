@@ -52,6 +52,7 @@ export class DownloadQueue {
   private readonly listeners = new Set<() => void>();
   private snapshot: DownloadJobView[] = [];
   private active = 0;
+  private clearing = false;
   private limit = 2;
   private owner?: string;
   private reset: Promise<unknown> = Promise.resolve();
@@ -173,6 +174,14 @@ export class DownloadQueue {
       this.emit();
       return;
     }
+    try {
+      await this.forgetRecords(j);
+    } catch (error) {
+      if (this.jobs.get(id) === j) j.view.error = downloadErrorCode(error);
+      this.emit();
+      return;
+    }
+    if (this.jobs.get(id) !== j) return;
     j.source = undefined;
     j.view.local = undefined;
     j.view.writtenBytes = 0;
@@ -190,15 +199,44 @@ export class DownloadQueue {
     if (j.view.local)
       value(await this.native()!.action(j.view.local.id, "show"));
   }
-  clearFinished() {
-    for (const [id, j] of this.jobs)
-      if (
-        ["completed", "cancelled"].includes(j.view.state) &&
-        !j.stop &&
-        !j.view.local?.temporaryPath
-      )
-        this.jobs.delete(id);
-    this.emit();
+  async clearFinished() {
+    if (this.clearing) return;
+    this.clearing = true;
+    try {
+      for (const [id, j] of [...this.jobs]) {
+        if (
+          !["completed", "cancelled"].includes(j.view.state) ||
+          j.stop ||
+          j.view.local?.temporaryPath
+        )
+          continue;
+        try {
+          await this.forgetRecords(j);
+          if (this.jobs.get(id) === j) this.jobs.delete(id);
+        } catch (error) {
+          if (this.jobs.get(id) === j) j.view.error = downloadErrorCode(error);
+        }
+      }
+    } finally {
+      this.clearing = false;
+      this.emit();
+    }
+  }
+  private async forgetRecords(j: Job) {
+    if (this.jobs.get(j.view.id) !== j) return;
+    if (j.source) {
+      try {
+        await this.api.action(j.view.sessionId, j.source.id, "forget");
+      } catch (error) {
+        if (downloadErrorCode(error) !== "DOWNLOAD_NOT_FOUND") throw error;
+      }
+    }
+    if (this.jobs.get(j.view.id) !== j || !j.view.local) return;
+    const native = this.native();
+    if (!native) throw Error("DOWNLOAD_DESKTOP_REQUIRED");
+    const result = await native.action(j.view.local.id, "forget");
+    if (result.ok === false && result.error !== "DOWNLOAD_NOT_FOUND")
+      value(result);
   }
   private guard(j: Job) {
     if (j.cancel || this.jobs.get(j.view.id) !== j)

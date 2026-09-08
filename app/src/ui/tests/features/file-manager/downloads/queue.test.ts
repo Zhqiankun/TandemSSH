@@ -116,6 +116,110 @@ describe("desktop download queue", () => {
     expect(f.queue.getSnapshot()[0].local?.sha256).toBe(digest);
     f.queue.setOwner(null);
   });
+  it("clears native and server records only after their release is acknowledged", async () => {
+    const f = fixture();
+    await waitFor(() =>
+      expect(f.queue.getSnapshot()[0].state).toBe("awaiting-review"),
+    );
+    f.queue.start(f.id, false);
+    f.finish();
+    await waitFor(() =>
+      expect(f.queue.getSnapshot()[0].state).toBe("completed"),
+    );
+    let acknowledge!: () => void;
+    const released = new Promise<void>((resolve) => {
+      acknowledge = resolve;
+    });
+    const original = f.native.action;
+    f.native.action = vi.fn(async (id, action) => {
+      if (action === "forget") await released;
+      return original(id, action);
+    });
+    const pending = f.queue.clearFinished();
+    await waitFor(() =>
+      expect(f.native.action).toHaveBeenCalledWith("local", "forget"),
+    );
+    expect(f.queue.getSnapshot()).toHaveLength(1);
+    acknowledge();
+    await pending;
+    expect(f.api.action).toHaveBeenCalledWith("session", "source", "forget");
+    expect(f.queue.getSnapshot()).toEqual([]);
+    f.queue.setOwner(null);
+  });
+  it("keeps a visible completed record when native release fails so it can be retried", async () => {
+    const f = fixture();
+    await waitFor(() =>
+      expect(f.queue.getSnapshot()[0].state).toBe("awaiting-review"),
+    );
+    f.queue.start(f.id, false);
+    f.finish();
+    await waitFor(() =>
+      expect(f.queue.getSnapshot()[0].state).toBe("completed"),
+    );
+    const original = f.native.action;
+    f.native.action = vi.fn(async (id, action) =>
+      action === "forget"
+        ? { ok: false as const, error: "DOWNLOAD_BUSY" }
+        : original(id, action),
+    );
+    await f.queue.clearFinished();
+    expect(f.queue.getSnapshot()[0]).toMatchObject({
+      state: "completed",
+      error: "DOWNLOAD_BUSY",
+    });
+    f.native.action = original;
+    await f.queue.clearFinished();
+    expect(f.queue.getSnapshot()).toEqual([]);
+    f.queue.setOwner(null);
+  });
+
+  it("releases the old cancelled preview before retrying and asks for destination review again", async () => {
+    const f = fixture();
+    await waitFor(() =>
+      expect(f.queue.getSnapshot()[0].state).toBe("awaiting-review"),
+    );
+    vi.mocked(f.native.start).mockRejectedValueOnce(Error("DOWNLOAD_FAILED"));
+    f.queue.start(f.id, false);
+    await waitFor(() => expect(f.queue.getSnapshot()[0].state).toBe("failed"));
+    await f.queue.retry(f.id);
+    await waitFor(() =>
+      expect(f.queue.getSnapshot()[0].state).toBe("awaiting-review"),
+    );
+    expect(f.api.action).toHaveBeenCalledWith("session", "source", "forget");
+    expect(f.native.action).toHaveBeenCalledWith("local", "forget");
+    expect(f.native.choose).toHaveBeenCalledTimes(2);
+    expect(f.native.start).toHaveBeenCalledTimes(1);
+    f.queue.setOwner(null);
+  });
+  it("does not release a native capability in a new account lifetime after a delayed remote reply", async () => {
+    const f = fixture();
+    await waitFor(() =>
+      expect(f.queue.getSnapshot()[0].state).toBe("awaiting-review"),
+    );
+    f.queue.start(f.id, false);
+    f.finish();
+    await waitFor(() =>
+      expect(f.queue.getSnapshot()[0].state).toBe("completed"),
+    );
+    let reply!: () => void;
+    const response = new Promise<void>((resolve) => {
+      reply = resolve;
+    });
+    const original = f.api.action;
+    f.api.action = vi.fn(
+      async (...args: Parameters<DownloadApiPort["action"]>) => {
+        if (args[2] === "forget") await response;
+        return original(...args);
+      },
+    );
+    const clearing = f.queue.clearFinished();
+    f.queue.setOwner("next-owner");
+    reply();
+    await clearing;
+    expect(f.native.action).not.toHaveBeenCalledWith("local", "forget");
+    expect(f.queue.getSnapshot()).toEqual([]);
+    f.queue.setOwner(null);
+  });
   it("preserves an uncertain commit and does not re-run an overwrite", async () => {
     const f = fixture(true);
     await waitFor(() =>
@@ -127,6 +231,8 @@ describe("desktop download queue", () => {
     await f.queue.retry(f.id);
     f.queue.resume(f.id);
     await f.queue.cancel(f.id);
+    await f.queue.clearFinished();
+    expect(f.native.action).not.toHaveBeenCalledWith("local", "forget");
     expect(f.queue.getSnapshot()[0].state).toBe("unknown");
     expect(f.api.chunk).toHaveBeenCalledOnce();
     f.queue.setOwner(null);

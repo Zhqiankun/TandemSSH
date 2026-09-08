@@ -59,7 +59,7 @@ export interface DesktopDownloadApi {
   ): Promise<DownloadNativeResult<LocalDownloadView>>;
   action(
     id: string,
-    action: "pause" | "resume" | "finish" | "cancel" | "show",
+    action: "pause" | "resume" | "finish" | "cancel" | "show" | "forget",
   ): Promise<DownloadNativeResult<LocalDownloadView>>;
   reset(): Promise<DownloadNativeResult<null>>;
 }

@@ -84,7 +84,9 @@ function registerDownloadIpc({
           value = await sink.start(id, args[0], args[1]);
         else if (operation === "append")
           value = await sink.append(id, args[0], args[1], args[2]);
-        else if (["pause", "resume", "finish", "cancel"].includes(operation))
+        else if (
+          ["pause", "resume", "finish", "cancel", "forget"].includes(operation)
+        )
           value = await sink[operation](id, args[0]);
         else if (operation === "show") {
           const r = sink.owned(id, args[0]);

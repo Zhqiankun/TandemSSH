@@ -206,7 +206,7 @@ export function DownloadQueuePanel({
           <Button
             size="sm"
             variant="outline"
-            onClick={() => queue.clearFinished()}
+            onClick={() => void queue.clearFinished()}
           >
             {t("tandem.upload.clearFinished")}
           </Button>

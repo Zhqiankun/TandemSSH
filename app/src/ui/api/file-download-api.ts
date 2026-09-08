@@ -15,7 +15,7 @@ export interface DownloadApiPort {
   action(
     sessionId: string,
     id: string,
-    action: "pause" | "resume" | "verify" | "cancel",
+    action: "pause" | "resume" | "verify" | "cancel" | "forget",
     signal?: AbortSignal,
   ): Promise<DownloadSource>;
 }
@@ -42,7 +42,7 @@ export const downloadApi: DownloadApiPort = {
       await getFileManagerApiForSession(sessionId).post(
         prefix + encodeURIComponent(id) + "/" + action,
         action === "resume" ? { sessionId } : {},
-        { signal, timeout: 0 },
+        { signal, timeout: action === "forget" ? 15000 : 0 },
       )
     ).data;
   },

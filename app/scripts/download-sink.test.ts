@@ -51,6 +51,45 @@ describe("native download destination", () => {
     expect((await fs.readFile(f.target)).equals(f.bytes)).toBe(true);
     expect(result.temporaryPath).toBeUndefined();
   });
+  it("reclaims cancelled record capacity and leaves completed file bytes intact", async () => {
+    const f = await fixture();
+    for (let i = 0; i < 129; i++) {
+      const preview = await f.choose();
+      await f.sink.cancel(1, preview.id);
+      expect(f.sink.forget(1, preview.id).state).toBe("cancelled");
+      expect(() => f.sink.owned(1, preview.id)).toThrow("DOWNLOAD_NOT_FOUND");
+    }
+    const preview = await f.choose();
+    await f.sink.start(1, preview.id, false);
+    await f.sink.append(1, preview.id, 0, f.bytes);
+    await f.sink.finish(1, preview.id);
+    expect(() => f.sink.forget(2, preview.id)).toThrow("DOWNLOAD_NOT_FOUND");
+    f.sink.forget(1, preview.id);
+    expect((await fs.readFile(f.target)).equals(f.bytes)).toBe(true);
+  }, 15000);
+  it("cannot forget active or uncertain writes and retains their temporary file", async () => {
+    const f = await fixture();
+    const preview = await f.choose();
+    const started = await f.sink.start(1, preview.id, false);
+    expect(() => f.sink.forget(1, preview.id)).toThrow("DOWNLOAD_NOT_READY");
+    await f.sink.append(1, preview.id, 0, f.bytes);
+    const copy = vi
+      .spyOn(fs, "copyFile")
+      .mockRejectedValueOnce(
+        Object.assign(Error("I/O failure"), { code: "EIO" }),
+      );
+    try {
+      await expect(f.sink.finish(1, preview.id)).rejects.toThrow();
+    } finally {
+      copy.mockRestore();
+    }
+    expect(f.sink.owned(1, preview.id).view.state).toBe("unknown");
+    expect(() => f.sink.forget(1, preview.id)).toThrow("DOWNLOAD_NOT_READY");
+    expect((await fs.readFile(started.temporaryPath)).equals(f.bytes)).toBe(
+      true,
+    );
+  });
+
   it("does not overwrite an existing destination until explicitly authorized", async () => {
     const f = await fixture();
     await fs.writeFile(f.target, "old");

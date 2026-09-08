@@ -80,6 +80,49 @@ describe("bounded download sources over real SFTP", () => {
     expect((await f.service.verify(actor, source.id)).state).toBe("verified");
     expect(f.retained()).toBe(0);
   }, 15000);
+  it("revokes cleared previews and requires a fresh source inspection, preserving remote files", async () => {
+    const f = await fixture(),
+      actor = { userId: "owner" },
+      requestId = randomUUID();
+    await f.remote.write("/file.bin", "before");
+    const source = await f.prepare("/file.bin", requestId);
+    expect(() => f.service.forget(actor, source.id)).toThrow(
+      "DOWNLOAD_NOT_READY",
+    );
+    await f.service.verify(actor, source.id);
+    expect(() => f.service.forget({ userId: "other" }, source.id)).toThrow(
+      "DOWNLOAD_NOT_FOUND",
+    );
+    expect(f.service.forget(actor, source.id).state).toBe("verified");
+    expect(() => f.service.get(actor, source.id)).toThrow("DOWNLOAD_NOT_FOUND");
+    await f.remote.write("/file.bin", "after");
+    const fresh = await f.prepare("/file.bin", requestId);
+    expect(fresh.id).not.toBe(source.id);
+    expect((await f.service.chunk(actor, fresh.id, 0)).toString()).toBe(
+      "after",
+    );
+    await f.service.cancel(actor, fresh.id);
+    expect(f.service.forget(actor, fresh.id).state).toBe("cancelled");
+    expect(f.retained()).toBe(0);
+  });
+
+  it("continues beyond both record and request-cache limits when cancelled previews are explicitly cleared", async () => {
+    const f = await fixture(),
+      actor = { userId: "owner" };
+    await f.remote.write("/file.bin", "bounded");
+    for (let i = 0; i < 257; i++) {
+      const source = await f.prepare();
+      await f.service.cancel(actor, source.id);
+      f.service.forget(actor, source.id);
+    }
+    const final = await f.prepare();
+    expect((await f.service.chunk(actor, final.id, 0)).toString()).toBe(
+      "bounded",
+    );
+    await f.service.cancel(actor, final.id);
+    f.service.forget(actor, final.id);
+    expect(f.retained()).toBe(0);
+  }, 30000);
   it("detects same-size content changes and does not return substituted bytes", async () => {
     const f = await fixture();
     await f.remote.write("/file.bin", "original");
@@ -203,5 +246,34 @@ describe("bounded download sources over real SFTP", () => {
     expect(
       (await fetch(base + "/" + source.id + "/chunk?offset=1")).status,
     ).toBe(409);
+    expect(
+      (
+        await fetch(base + "/" + source.id + "/forget", {
+          method: "POST",
+          headers: { "x-key": "api" },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await fetch(base + "/" + source.id + "/forget", {
+          method: "POST",
+          headers: { "x-user": "other" },
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (await fetch(base + "/" + source.id + "/forget", { method: "POST" }))
+        .status,
+    ).toBe(409);
+    expect(
+      (await fetch(base + "/" + source.id + "/cancel", { method: "POST" }))
+        .status,
+    ).toBe(200);
+    expect(
+      (await fetch(base + "/" + source.id + "/forget", { method: "POST" }))
+        .status,
+    ).toBe(200);
+    expect((await fetch(base + "/" + source.id)).status).toBe(404);
   });
 });
