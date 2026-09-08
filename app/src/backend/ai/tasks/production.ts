@@ -1,4 +1,7 @@
-import { fileAutomation } from "../../collaboration/files/production.js";
+import {
+  fileAutomation,
+  transferAutomation,
+} from "../../collaboration/files/production.js";
 import { createCurrentAiRepository } from "../../database/repositories/factory.js";
 import {
   taskRuntime,
@@ -95,6 +98,7 @@ async function* stream(
 }
 export const aiTasks = new AiTaskCoordinator({
   files: fileAutomation,
+  transfers: transferAutomation,
   tasks: taskRuntime,
   workflows,
   validate,

@@ -1,3 +1,4 @@
+import type { HumanLocalFileGrant } from "@/types/local-file-grants";
 import { TaskLocalFiles } from "./TaskLocalFiles";
 import { FileTransferResult } from "./FileTransferResult";
 import { FileInspectionResult } from "./FileInspectionResult";
@@ -61,6 +62,10 @@ export function TaskPanel({
   const { t } = useTranslation();
   const work = useTaskWorkbench(sessionId);
   const [selected, setSelected] = useState<string>();
+  const [localGrants, setLocalGrants] = useState<{
+    taskId: string;
+    grants: HumanLocalFileGrant[];
+  }>();
   const [composing, setComposing] = useState(!focusTaskId);
   useEffect(() => {
     if (focusTaskId) {
@@ -340,6 +345,9 @@ export function TaskPanel({
             <TaskLocalFiles
               key={task.id}
               taskId={task.id}
+              onGrantsChange={(grants) =>
+                setLocalGrants({ taskId: task.id, grants })
+              }
               disabled={finished(task) || !session?.connected}
             />
             {resumable(task) && (
@@ -376,6 +384,19 @@ export function TaskPanel({
                 }
                 taskId={task.id}
                 operation={op}
+                localGrant={
+                  localGrants?.taskId === task.id && "localGrantId" in op.action
+                    ? localGrants.grants.find(
+                        (g) =>
+                          g.id ===
+                            (op.action as { localGrantId: string })
+                              .localGrantId &&
+                          g.version ===
+                            (op.action as { localVersion: string })
+                              .localVersion,
+                      )
+                    : undefined
+                }
                 index={index}
                 canApprove={
                   task.state === "awaiting-approval" &&
@@ -602,6 +623,7 @@ function OperationCard({
   taskId,
   operation: op,
   workflowName,
+  localGrant,
   index,
   canApprove,
   disabled,
@@ -610,6 +632,7 @@ function OperationCard({
   taskId: string;
   operation: TaskOperation;
   workflowName?: string;
+  localGrant?: HumanLocalFileGrant;
   index: number;
   canApprove: boolean;
   disabled: boolean;
@@ -645,6 +668,17 @@ function OperationCard({
           ? op.action.cwd
           : op.action.canonicalPath}
       </small>
+      {(op.action.type === "file.upload" ||
+        op.action.type === "file.download") && (
+        <p className="select-text break-all text-xs">
+          {t(
+            op.action.type === "file.upload"
+              ? "tandem.transfer.localSource"
+              : "tandem.transfer.localTarget",
+          )}
+          : {localGrant?.path ?? t("tandem.transfer.localUnavailable")}
+        </p>
+      )}
       {op.decision.matchedRules.length > 0 && (
         <small>
           {t("tandem.collaboration.rules")}:{" "}
@@ -713,7 +747,15 @@ function OperationCard({
         />
       )}
       {canApprove && op.action.type !== "file.write" && (
-        <Button disabled={disabled} onClick={() => onApprove()}>
+        <Button
+          disabled={
+            disabled ||
+            ((op.action.type === "file.upload" ||
+              op.action.type === "file.download") &&
+              localGrant?.state !== "active")
+          }
+          onClick={() => onApprove()}
+        >
           <Check size={14} />
           {t("tandem.collaboration.approveOnce")}
         </Button>

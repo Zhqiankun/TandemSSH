@@ -1,4 +1,7 @@
-import { fileAutomation } from "../collaboration/files/production.js";
+import {
+  fileAutomation,
+  transferAutomation,
+} from "../collaboration/files/production.js";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { runtimePolicy } from "../runtime/policy.js";
@@ -63,6 +66,7 @@ export const desktopSessionRequests = new DesktopSessionRequests({
 });
 const core = new McpCore({
   files: fileAutomation,
+  transfers: transferAutomation,
   tasks: taskRuntime,
   workflows,
   async hosts(principal) {

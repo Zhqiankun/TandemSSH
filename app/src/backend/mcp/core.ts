@@ -1,3 +1,4 @@
+import type { TransferAutomation } from "../collaboration/files/transfers.js";
 import type { FileAutomation } from "../collaboration/files/automation.js";
 import {
   coreInputSchemas,
@@ -14,6 +15,7 @@ import { redact } from "../privacy/redaction.js";
 import type { WorkflowAutomationPort } from "../collaboration/workflows/library.js";
 export interface McpCorePorts {
   files?: FileAutomation;
+  transfers?: TransferAutomation;
   workflows?: WorkflowAutomationPort;
   tasks: TaskRuntime;
   hosts(
@@ -125,6 +127,35 @@ export class McpCore {
   ): Promise<unknown> {
     const identity = actor(principal);
     switch (method) {
+      case "transfers.local": {
+        if (!this.ports.transfers)
+          throw Error("FILE_TRANSFER_EXECUTOR_UNAVAILABLE");
+        const p = coreInputSchemas[method].parse(input);
+        return this.ports.transfers.list(identity, p.taskId);
+      }
+      case "transfers.upload":
+      case "transfers.download": {
+        if (!this.ports.transfers)
+          throw Error("FILE_TRANSFER_EXECUTOR_UNAVAILABLE");
+        const { taskId, requestId, ...value } =
+          coreInputSchemas[method].parse(input);
+        return this.ports.transfers.submit(
+          identity,
+          taskId,
+          value,
+          requestId,
+          method === "transfers.upload" ? "upload" : "download",
+        );
+      }
+      case "transfers.progress":
+      case "transfers.release": {
+        if (!this.ports.transfers)
+          throw Error("FILE_TRANSFER_EXECUTOR_UNAVAILABLE");
+        const p = coreInputSchemas[method].parse(input);
+        return method === "transfers.progress"
+          ? this.ports.transfers.progress(identity, p.taskId, p.operationId)
+          : this.ports.transfers.release(identity, p.taskId, p.operationId);
+      }
       case "files.list":
       case "files.stat": {
         if (!this.ports.files) throw Error("FILE_EXECUTOR_UNAVAILABLE");
@@ -232,6 +263,13 @@ export class McpCore {
             "cooperative-approval",
             "scoped-automatic",
             "human-takeover",
+            ...(this.ports.transfers?.available()
+              ? [
+                  "authorized-local-files",
+                  "binary-transfers",
+                  "transfer-progress",
+                ]
+              : []),
             ...(this.ports.files
               ? ["scoped-file-read", "versioned-file-edit", "human-file-review"]
               : []),

@@ -157,8 +157,28 @@ function rpc(method, params) {
     JSON.stringify(result, null, 2),
   );
   if (
-    tools.length !== 24 ||
+    tools.length !== 29 ||
     ![
+      "list_authorized_files",
+      "upload_file",
+      "download_file",
+      "get_transfer_status",
+      "release_transfer",
+      "list_authorized_files",
+      "upload_file",
+      "download_file",
+      "get_transfer_status",
+      "release_transfer",
+      "list_authorized_files",
+      "upload_file",
+      "download_file",
+      "get_transfer_status",
+      "release_transfer",
+      "list_authorized_files",
+      "upload_file",
+      "download_file",
+      "get_transfer_status",
+      "release_transfer",
       "list_directory",
       "stat_file",
       "run_workflow",

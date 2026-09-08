@@ -213,7 +213,7 @@ describe("production file tools over a reused SSH connection", () => {
             "propose_file_write",
           ]),
         );
-        expect(catalog.tools).toHaveLength(24);
+        expect(catalog.tools).toHaveLength(29);
         expect(catalog.tools.some((t) => /approve|grant/.test(t.name))).toBe(
           false,
         );

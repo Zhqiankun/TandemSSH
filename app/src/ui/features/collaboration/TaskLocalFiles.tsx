@@ -13,9 +13,11 @@ function value<T>(r: { ok: true; value: T } | { ok: false; error: string }): T {
 export function TaskLocalFiles({
   taskId,
   disabled,
+  onGrantsChange,
 }: {
   taskId: string;
   disabled: boolean;
+  onGrantsChange?: (grants: HumanLocalFileGrant[]) => void;
 }) {
   const { t } = useTranslation(),
     [grants, setGrants] = useState<HumanLocalFileGrant[]>([]),
@@ -28,6 +30,8 @@ export function TaskLocalFiles({
     ticket?: string;
     stop: AbortController;
   }>({ live: true, stop: new AbortController() });
+  const notify = useRef(onGrantsChange);
+  notify.current = onGrantsChange;
   const native = window.electronAPI?.localFiles;
   const message = (code: string) =>
     t("tandem.collaboration.errors." + code, {
@@ -42,6 +46,7 @@ export function TaskLocalFiles({
     const data = await localFileGrantsApi.list(taskId, owner.stop.signal);
     if (owner.live) {
       setGrants(data.grants);
+      notify.current?.(data.grants);
       setAvailable(data.available);
     }
   };

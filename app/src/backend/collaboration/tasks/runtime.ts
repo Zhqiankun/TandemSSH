@@ -1038,25 +1038,14 @@ export class TaskRuntime {
       title: task.view.title,
     };
   }
-  fileContext(actor: TaskActor, taskId: string) {
+  fileObservationContext(actor: TaskActor, taskId: string) {
     const task = this.owned(actor, taskId);
-    this.sessionFor(actor, task.view.sessionId);
     if (
       actor.kind === "mcp" &&
       (actor.connectionId !== task.connectionId ||
         !this.clients.has(actor.connectionId))
     )
       throw Error("CLIENT_CONNECTION_CHANGED");
-    if (actor.kind !== "human") {
-      if (
-        !task.lease ||
-        terminalState(task.view.state) ||
-        !task.deadline ||
-        Date.now() >= task.deadline
-      )
-        throw Error("TASK_NOT_RUNNING");
-      task.session.control.assertLease(task.lease);
-    }
     const control = task.session.control.snapshot();
     return {
       userId: task.userId,
@@ -1067,6 +1056,28 @@ export class TaskRuntime {
         controlEpoch: control.controlEpoch,
       },
     };
+  }
+  fileContext(actor: TaskActor, taskId: string) {
+    const context = this.fileObservationContext(actor, taskId),
+      task = this.owned(actor, taskId);
+    this.sessionFor(actor, task.view.sessionId);
+    if (actor.kind !== "human") {
+      if (
+        !task.lease ||
+        terminalState(task.view.state) ||
+        !task.deadline ||
+        Date.now() >= task.deadline
+      )
+        throw Error("TASK_NOT_RUNNING");
+      task.session.control.assertLease(task.lease);
+    }
+    return context;
+  }
+  hasOperationRequest(actor: TaskActor, taskId: string, requestId: string) {
+    const task = this.owned(actor, taskId);
+    return task.operationIds.some(
+      (id) => task.gateway.get(id).context.requestId === requestId,
+    );
   }
   async submitFile(
     actor: TaskActor,

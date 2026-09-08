@@ -5698,7 +5698,10 @@
       "bytes": "已确认 {{bytes}} / {{total}} 字节",
       "verified": "内容校验通过",
       "unverified": "尚未完成整体内容校验",
-      "cleanup": "仍有临时文件或清理事项，请先核对结果。"
+      "cleanup": "仍有临时文件或清理事项，请先核对结果。",
+      "localSource": "本地来源",
+      "localTarget": "本地目标",
+      "localUnavailable": "本地授权尚不可用，请先核对后再批准。"
     },
     "localFiles": {
       "title": "本任务的本地文件授权",

@@ -1,3 +1,5 @@
+import type { TransferAutomation } from "../../collaboration/files/transfers.js";
+import { aiTransferSchemas, aiTransferTools } from "./transfer-tools.js";
 import type { FileAutomation } from "../../collaboration/files/automation.js";
 import { aiFileSchemas, aiFileTools } from "./file-tools.js";
 import { randomUUID } from "node:crypto";
@@ -72,6 +74,7 @@ const tools: ToolDefinition[] = [
 ];
 export interface AiTaskPorts {
   files?: FileAutomation;
+  transfers?: TransferAutomation;
   tasks: TaskRuntime;
   workflows?: WorkflowAutomationPort;
   validate(
@@ -397,6 +400,7 @@ export class AiTaskCoordinator {
                 ...tools,
                 ...(this.ports.workflows ? aiWorkflowTools : []),
                 ...(this.ports.files ? aiFileTools : []),
+                ...(this.ports.transfers ? aiTransferTools : []),
               ],
           signal: controller.signal,
         },
@@ -466,6 +470,48 @@ export class AiTaskCoordinator {
       )
     )
       throw new Error("AGENT_CONTEXT_CHANGED");
+    if (Object.hasOwn(aiTransferSchemas, call.name)) {
+      const port = this.ports.transfers;
+      if (!port) return { error: "FILE_TRANSFER_EXECUTOR_UNAVAILABLE" };
+      const name = call.name as keyof typeof aiTransferSchemas,
+        p = aiTransferSchemas[name].safeParse(call.arguments);
+      if (!p.success) return { error: "INVALID_TOOL_ARGUMENTS" };
+      if (name === "list_authorized_files")
+        return port.list(run.actor, run.view.taskId);
+      if (name === "get_transfer_status" || name === "release_transfer") {
+        const { operationId } = aiTransferSchemas[name].parse(call.arguments);
+        return name === "get_transfer_status"
+          ? port.progress(run.actor, run.view.taskId, operationId)
+          : port.release(run.actor, run.view.taskId, operationId);
+      }
+      run.view.phase = "executing";
+      const submitted = await port.submit(
+        run.actor,
+        run.view.taskId,
+        p.data,
+        "agent-transfer-" + randomUUID(),
+        name === "upload_file" ? "upload" : "download",
+      );
+      const result = await this.result(run, submitted.operationId);
+      let progressReleaseError: string | undefined;
+      if (result.status === "succeeded") {
+        try {
+          port.release(run.actor, run.view.taskId, submitted.operationId);
+        } catch (error) {
+          progressReleaseError = codeOf(error);
+        }
+      }
+      return {
+        operationId: result.id,
+        status: result.status,
+        ...(typeof progressReleaseError !== "undefined"
+          ? { progressReleaseError }
+          : {}),
+        fileResult: result.fileResult,
+        error: result.error,
+        auditGap: result.auditGap,
+      };
+    }
     if (Object.hasOwn(aiFileSchemas, call.name)) {
       if (!this.ports.files) return { error: "FILE_EXECUTOR_UNAVAILABLE" };
       const name = call.name as keyof typeof aiFileSchemas,
@@ -747,6 +793,8 @@ export class AiTaskCoordinator {
                 "read_file",
                 "propose_file_edit",
                 "propose_file_write",
+                "upload_file",
+                "download_file",
               ].includes(call.name)
             ) {
               interrupted = true;

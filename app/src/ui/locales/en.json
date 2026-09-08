@@ -5698,7 +5698,10 @@
       "bytes": "Confirmed {{bytes}} / {{total}} bytes",
       "verified": "Content verification passed",
       "unverified": "Full content verification has not completed",
-      "cleanup": "Temporary files or cleanup work remain. Review the result first."
+      "cleanup": "Temporary files or cleanup work remain. Review the result first.",
+      "localSource": "Local source",
+      "localTarget": "Local destination",
+      "localUnavailable": "Local authorization is unavailable; verify it before approval."
     },
     "localFiles": {
       "title": "Local files authorized for this task",

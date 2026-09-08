@@ -1,4 +1,8 @@
 import {
+  transferRequestSchema,
+  transferObservationSchema,
+} from "../files/transfer-schema.js";
+import {
   fileReadSchema,
   fileListSchema,
   fileStatSchema,
@@ -10,6 +14,19 @@ import { z } from "zod";
 const id = z.string().uuid(),
   requestId = z.string().min(1).max(128);
 export const coreInputSchemas = {
+  "transfers.local": z.object({ taskId: id }).strict(),
+  "transfers.upload": transferRequestSchema
+    .extend({ taskId: id, requestId })
+    .strict(),
+  "transfers.download": transferRequestSchema
+    .extend({ taskId: id, requestId })
+    .strict(),
+  "transfers.progress": transferObservationSchema
+    .extend({ taskId: id })
+    .strict(),
+  "transfers.release": transferObservationSchema
+    .extend({ taskId: id })
+    .strict(),
   "files.list": fileListSchema.extend({ taskId: id, requestId }).strict(),
   "files.stat": fileStatSchema.extend({ taskId: id, requestId }).strict(),
   "files.read": fileReadSchema.extend({ taskId: id, requestId }).strict(),
