@@ -81,7 +81,11 @@ export async function fileSftpFixture() {
               : await fs.lstat(target(remote));
             return {
               size: s.size,
-              mode: s.isDirectory() ? 0o40755 : mode,
+              mode: s.isSymbolicLink()
+                ? 0o120777
+                : s.isDirectory()
+                  ? 0o40755
+                  : mode,
               uid: 1000,
               gid: 1000,
               mtime: Math.floor(s.mtimeMs / 1000),
@@ -90,10 +94,20 @@ export async function fileSftpFixture() {
           };
           stream.on("REALPATH", (id: number, remote: string) =>
             run(id, async () => {
-              await fs.realpath(target(remote));
+              const resolved = await fs.realpath(target(remote));
+              if (
+                resolved !== directory &&
+                !resolved.startsWith(directory + path.sep)
+              )
+                throw Error("fixture escape");
               stream.name(id, [
                 {
-                  filename: path.posix.normalize(remote),
+                  filename:
+                    "/" +
+                    path
+                      .relative(directory, resolved)
+                      .split(path.sep)
+                      .join("/"),
                   longname: "",
                   attrs: {},
                 },
@@ -275,6 +289,12 @@ export async function fileSftpFixture() {
     write: (p: string, body: string | Uint8Array) =>
       fs.writeFile(target(p), body),
     mkdir: (p: string) => fs.mkdir(target(p), { recursive: true }),
+    symlinkDirectory: (link: string, destination: string) =>
+      fs.symlink(
+        target(destination),
+        target(link),
+        process.platform === "win32" ? "junction" : "dir",
+      ),
     directoryReads: () => directoryReads,
     directoryHandles: () => directories.size,
     reconnect: async () => {

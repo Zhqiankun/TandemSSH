@@ -13,6 +13,12 @@ import type {
   RemoteTransferIO,
 } from "./ports.js";
 export type DownloadTarget = FileDocumentTarget & { io: RemoteTransferIO };
+export interface DownloadSourceConstraint {
+  key: string;
+  peer?: string;
+  canonicalPath: string;
+  stat: RemoteFileStat;
+}
 export interface DownloadActor {
   userId: string;
   signal?: AbortSignal;
@@ -99,12 +105,16 @@ export class DownloadService {
   get(actor: DownloadActor, id: string) {
     return structuredClone(this.owned(actor, id).view);
   }
-  prepare(actor: DownloadActor, raw: PrepareDownload): Promise<DownloadSource> {
+  prepare(
+    actor: DownloadActor,
+    raw: PrepareDownload,
+    constraint?: DownloadSourceConstraint,
+  ): Promise<DownloadSource> {
     this.prune();
     this.alive(actor);
     const input = prepareDownloadSchema.parse(raw),
       key = actor.userId + ":" + input.requestId,
-      fingerprint = JSON.stringify(input),
+      fingerprint = JSON.stringify({ input, constraint }),
       old = this.requests.get(key);
     if (old) {
       if (old.fingerprint !== fingerprint)
@@ -118,7 +128,7 @@ export class DownloadService {
     )
       throw Error("DOWNLOAD_LIMIT");
     this.preparing++;
-    const result = this.prepareNew(actor, input).finally(
+    const result = this.prepareNew(actor, input, constraint).finally(
       () => this.preparing--,
     );
     this.requests.set(key, {
@@ -128,12 +138,21 @@ export class DownloadService {
     });
     return result;
   }
-  private async prepareNew(actor: DownloadActor, input: PrepareDownload) {
+  private async prepareNew(
+    actor: DownloadActor,
+    input: PrepareDownload,
+    constraint?: DownloadSourceConstraint,
+  ) {
     const t = await this.ports.target(actor.userId, input.sessionId),
       release = t.retain?.();
     let retained = false;
     try {
       this.alive(actor);
+      if (
+        constraint &&
+        (t.key !== constraint.key || t.acceptedHostKey !== constraint.peer)
+      )
+        throw Error("DOWNLOAD_HOST_IDENTITY_CHANGED");
       t.check("read", input.path, input.path);
       const canonicalPath = await t.io.resolve(input.path);
       if (!posix.isAbsolute(canonicalPath)) throw Error("FILE_PATH_INVALID");
@@ -146,7 +165,19 @@ export class DownloadService {
       if (meta.kind !== "file") throw Error("FILE_NOT_REGULAR");
       if (meta.size > DOWNLOAD_CHUNK_BYTES * DOWNLOAD_MAX_CHUNKS)
         throw Error("FILE_TOO_LARGE");
+      const constrain = (stat: RemoteFileStat) => {
+        if (!constraint) return;
+        if (t.key !== constraint.key || t.acceptedHostKey !== constraint.peer)
+          throw Error("DOWNLOAD_HOST_IDENTITY_CHANGED");
+        if (
+          canonicalPath !== constraint.canonicalPath ||
+          attributes(stat) !== attributes(constraint.stat)
+        )
+          throw Error("DOWNLOAD_SOURCE_CHANGED");
+      };
+      constrain(meta);
       const inspected = await t.io.inspectFile(canonicalPath, guard);
+      constrain(inspected.stat);
       guard();
       if ((await t.io.resolve(input.path)) !== canonicalPath)
         throw Error("DOWNLOAD_SOURCE_CHANGED");

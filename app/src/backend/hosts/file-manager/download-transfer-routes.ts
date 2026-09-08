@@ -1,4 +1,8 @@
 import type { Express, Request, Response } from "express";
+import {
+  scanDownloadTreeSchema,
+  type DownloadTreeService,
+} from "../../files/download-tree-service.js";
 import { z } from "zod";
 import type { AuthenticatedRequest } from "../../../types/index.js";
 import {
@@ -9,6 +13,7 @@ import {
 export function registerDownloadTransferRoutes(
   app: Express,
   service: DownloadService,
+  trees?: DownloadTreeService,
 ) {
   const prefix = "/ssh/file_manager/ssh/downloads",
     uuid = z.string().uuid();
@@ -55,6 +60,38 @@ export function registerDownloadTransferRoutes(
           res.removeListener("close", close);
         });
     };
+  }
+  if (trees) {
+    app.post(
+      prefix + "/trees/scan",
+      route((actor, req) =>
+        trees.scan(actor, scanDownloadTreeSchema.parse(req.body)),
+      ),
+    );
+    app.get(
+      prefix + "/trees/:treeId",
+      route((actor, req) => trees.get(actor, uuid.parse(req.params.treeId))),
+    );
+    app.post(
+      prefix + "/trees/:treeId/forget",
+      route((actor, req) => trees.forget(actor, uuid.parse(req.params.treeId))),
+    );
+    app.post(
+      prefix + "/trees/:treeId/entries/:entryId/prepare",
+      route((actor, req) => {
+        const input = z
+          .object({ requestId: uuid, sessionId: z.string().min(1).max(256) })
+          .strict()
+          .parse(req.body);
+        return trees.prepareEntry(
+          actor,
+          uuid.parse(req.params.treeId),
+          uuid.parse(req.params.entryId),
+          input.requestId,
+          input.sessionId,
+        );
+      }),
+    );
   }
   app.post(
     prefix + "/prepare",

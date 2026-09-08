@@ -1,4 +1,7 @@
 const path = require("node:path");
+const {
+  DownloadDirectoryTargets,
+} = require("./download-directory-targets.cjs");
 const { pathToFileURL } = require("node:url");
 const { DownloadSink, errorCode } = require("./download-sink.cjs");
 function registerDownloadIpc({
@@ -11,6 +14,14 @@ function registerDownloadIpc({
 }) {
   const sink = new DownloadSink(),
     lifetimes = new Map();
+  const directories = new DownloadDirectoryTargets(sink);
+  async function resetOwner(id) {
+    try {
+      await directories.reset(id);
+    } finally {
+      await sink.reset(id);
+    }
+  }
   const acceptedUrl = pathToFileURL(
     path.join(appRoot, "dist", "index.html"),
   ).href;
@@ -37,7 +48,7 @@ function registerDownloadIpc({
       lifetimes.set(sender.id, life);
       const reset = () => {
         life.epoch++;
-        void sink.reset(sender.id);
+        void resetOwner(sender.id);
       };
       sender.once("destroyed", reset);
       sender.on("render-process-gone", reset);
@@ -68,7 +79,7 @@ function registerDownloadIpc({
             return result.canceled ? undefined : result.filePath;
           });
           if (epoch !== scoped.life.epoch) {
-            await sink.reset(id);
+            await resetOwner(id);
             throw Error("DOWNLOAD_CANCELLED");
           }
         } finally {
@@ -76,7 +87,7 @@ function registerDownloadIpc({
         }
       } else if (operation === "reset") {
         scoped.life.epoch++;
-        await sink.reset(id);
+        await resetOwner(id);
         value = null;
       } else {
         if (typeof args[0] !== "string") throw Error("DOWNLOAD_NOT_FOUND");
@@ -100,16 +111,71 @@ function registerDownloadIpc({
       return { ok: false, error: errorCode(error) };
     }
   });
+  ipcMain.handle(
+    "tandem-download-directory",
+    async (event, operation, ...args) => {
+      try {
+        const { id, life } = owner(event);
+        let value;
+        if (operation === "choose") {
+          if (life.choosing) throw Error("DOWNLOAD_BUSY");
+          life.choosing = true;
+          const epoch = life.epoch;
+          try {
+            value = await directories.choose(id, async () => {
+              const result = await dialog.showOpenDialog(getWindow(), {
+                title: "选择整批下载的目标文件夹",
+                buttonLabel: "选择文件夹",
+                properties: ["openDirectory", "createDirectory"],
+              });
+              if (life.epoch !== epoch) throw Error("DOWNLOAD_CANCELLED");
+              return result.canceled ? undefined : result.filePaths[0];
+            });
+            if (life.epoch !== epoch) {
+              await directories.reset(id);
+              throw Error("DOWNLOAD_CANCELLED");
+            }
+          } finally {
+            life.choosing = false;
+          }
+        } else {
+          if (typeof args[0] !== "string") throw Error("DOWNLOAD_NOT_FOUND");
+          if (operation === "preview")
+            value = await directories.preview(id, args[0], args[1]);
+          else if (operation === "confirm")
+            value = directories.confirm(id, args[0], args[1], args[2]);
+          else if (operation === "directories")
+            value = await directories.directories(id, args[0]);
+          else if (operation === "file")
+            value = await directories.file(id, args[0], args[1], args[2]);
+          else if (operation === "complete")
+            value = directories.complete(id, args[0], args[1]);
+          else if (operation === "show") {
+            shell.showItemInFolder(directories.show(id, args[0], args[1]));
+            value = null;
+          } else if (operation === "cancel")
+            value = await directories.cancel(id, args[0]);
+          else if (operation === "forget")
+            value = directories.forget(id, args[0]);
+          else throw Error("DOWNLOAD_REQUEST_INVALID");
+        }
+        return { ok: true, value };
+      } catch (error) {
+        return { ok: false, error: errorCode(error) };
+      }
+    },
+  );
   const timer = setInterval(() => void sink.prune(), 60000);
   timer.unref?.();
   return {
     sink,
+    directories,
     cancelActive: async () => {
-      for (const owner of lifetimes.keys()) await sink.reset(owner);
+      for (const owner of lifetimes.keys()) await resetOwner(owner);
     },
     dispose: async () => {
       clearInterval(timer);
-      for (const owner of lifetimes.keys()) await sink.reset(owner);
+      for (const owner of lifetimes.keys()) await resetOwner(owner);
     },
   };
 }

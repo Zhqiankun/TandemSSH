@@ -72,3 +72,9 @@ CI 和 Release 均增加实际安装/启动/卸载门槛，报告与中文窗口
 第三次安装链路推进：CI [34189826861](https://github.com/Zhqiankun/TandemSSH/actions/runs/34189826861) 已实际通过安装、版本/快捷方式/标记核对、已安装程序的原生模块检查及卸载。安装证据 ZIP（artifact 10042130324）的 SHA-256 已核对为 af472a8083b84c8a3a3648f08c07496c4a861cfbd6aa949aadc3316b8d15a990。桌面探针在身份读取前遇到 Inspector 的 Promise was collected，未完成桌面与用户数据保留验收；报告中的 dataPreserved=false 表示未验证，不能解释为已证明数据被删除。
 
 探针现在等待 app.isReady() 后读取身份，同步表达式不启用 Promise 等待。另一次真实本机启动暴露首次使用向导挡住更新面板的观察问题，现按实际界面点击“跳过设置”再检查更新；失败报告补充具体阶段和窗口状态。隔离开发包已完成首次向导、中文首页、版本/更新源面板及正常退出和端口释放（.cache/local-startup-observer.log 与当前 local-startup-observer-run.json 所指报告目录）。开发包 installed=false 与预期一致；此观察验证仍不替代 CI 安装版的数据保留与真实跨版本升级。
+
+## 安装验收通过
+
+提交 49a533cc3f2d57bd35ac20d8c775120cd151b99f 的 [CI 34192353445](https://github.com/Zhqiankun/TandemSSH/actions/runs/34192353445) 全部通过。完整测试 401 个文件、2969 项通过、3 项跳过。实际 NSIS 安装、版本/标记/快捷方式、已安装程序的原生依赖、中文首次向导/首页/更新面板、正常退出与端口释放、卸载和加密数据库/验证文件摘要保留均通过。
+
+安装证据 artifact 10042976204 的 ZIP SHA-256 为 67c21cd9187d6eb72f6414ab6fde38226e743d4a8ab3d3b25dc45a4fc282a886，已下载校验至 .cache/installer-passed-evidence.zip。installation.json 中 installed/native/desktop/uninstalled/dataPreserved 均为 true，failures 为空；实际安装版 desktop.json 为 installed=true，更新来源为本仓库，中文截图已查看。用户数据检查覆盖本次初始化的加密数据库与验证文件，不等于未保存草稿或进行中任务的跨版本恢复已验收。真实跨版本在线升级、正式 Release 和完整产品验收仍在后续范围。

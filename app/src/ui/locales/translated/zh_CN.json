@@ -5517,7 +5517,17 @@
         "DOWNLOAD_CANCELLED": "下载已取消。",
         "DOWNLOAD_INCOMPLETE": "文件尚未全部写入。",
         "DOWNLOAD_RESULT_UNVERIFIED": "保存结果尚未核实，请检查本地目标。",
-        "DOWNLOAD_OWNER_REQUIRED": "请登录后重试。"
+        "DOWNLOAD_OWNER_REQUIRED": "请登录后重试。",
+        "DOWNLOAD_TREE_LIMIT": "目录预览达到数量、深度或容量上限，请分批选择。",
+        "DOWNLOAD_TREE_TIMEOUT": "扫描目录超时，请缩小范围后重试。",
+        "DOWNLOAD_TREE_ENTRY_UNAVAILABLE": "该项不可下载或预览已失效，请重新预览。",
+        "DOWNLOAD_TREE_LINK_SKIPPED": "符号链接未跟随，请单独核实目标后操作。",
+        "DOWNLOAD_TREE_SPECIAL_SKIPPED": "此类特殊文件不参与下载。",
+        "DOWNLOAD_TREE_DUPLICATE_SKIPPED": "与已选来源重复，已排除重复项。",
+        "DOWNLOAD_TREE_NAME_UNSUPPORTED": "名称包含当前传输接口不支持的字符，已跳过。",
+        "DOWNLOAD_TREE_DUPLICATE_TARGET": "多个来源映射到同一目标路径，请改名或跳过。",
+        "DOWNLOAD_TREE_PARENT_UNAVAILABLE": "父目录尚未确认或创建，请先处理父目录。",
+        "DOWNLOAD_TREE_TYPE_CONFLICT": "目标已存在且类型不同，请改名或跳过。"
       }
     },
     "updates": {

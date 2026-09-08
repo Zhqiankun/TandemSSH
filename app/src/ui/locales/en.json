@@ -5517,7 +5517,17 @@
         "DOWNLOAD_CANCELLED": "download cancelled",
         "DOWNLOAD_INCOMPLETE": "download incomplete",
         "DOWNLOAD_RESULT_UNVERIFIED": "download result unverified",
-        "DOWNLOAD_OWNER_REQUIRED": "download owner required"
+        "DOWNLOAD_OWNER_REQUIRED": "download owner required",
+        "DOWNLOAD_TREE_LIMIT": "The directory preview reached its count, depth or size limit. Select a smaller batch.",
+        "DOWNLOAD_TREE_TIMEOUT": "Directory scanning timed out. Select a smaller scope and retry.",
+        "DOWNLOAD_TREE_ENTRY_UNAVAILABLE": "This entry is unavailable or its preview expired. Prepare a new preview.",
+        "DOWNLOAD_TREE_LINK_SKIPPED": "Symbolic links are not followed. Inspect the target separately.",
+        "DOWNLOAD_TREE_SPECIAL_SKIPPED": "This special file is excluded from the download.",
+        "DOWNLOAD_TREE_DUPLICATE_SKIPPED": "This source duplicates another selected entry and is excluded.",
+        "DOWNLOAD_TREE_NAME_UNSUPPORTED": "The source name contains unsupported characters and is excluded.",
+        "DOWNLOAD_TREE_DUPLICATE_TARGET": "Multiple sources map to the same destination. Rename or skip an entry.",
+        "DOWNLOAD_TREE_PARENT_UNAVAILABLE": "Resolve or create the parent directory before transferring this entry.",
+        "DOWNLOAD_TREE_TYPE_CONFLICT": "The destination exists with a different type. Rename or skip this entry."
       }
     },
     "updates": {

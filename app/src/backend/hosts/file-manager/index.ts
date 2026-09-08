@@ -1,4 +1,4 @@
-import { downloadTransfers } from "../../files/production.js";
+import { downloadTransfers, downloadTrees } from "../../files/production.js";
 import { registerDownloadTransferRoutes } from "./download-transfer-routes.js";
 import { captureAcceptedHostKey } from "../accepted-host-key.js";
 import { getErrorMessage } from "../../utils/error-message.js";
@@ -2459,7 +2459,7 @@ registerFileOperationRoutes(app, {
   verifySessionOwnership,
 });
 
-registerDownloadTransferRoutes(app, downloadTransfers);
+registerDownloadTransferRoutes(app, downloadTransfers, downloadTrees);
 registerFileDownloadRoutes(app, {
   sshSessions,
   scheduleSessionCleanup,

@@ -71,6 +71,31 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("external-editor-saved", listener);
   },
 
+  downloadDirectories: {
+    choose: () => ipcRenderer.invoke("tandem-download-directory", "choose"),
+    preview: (id, entries) =>
+      ipcRenderer.invoke("tandem-download-directory", "preview", id, entries),
+    confirm: (id, revision, decisions) =>
+      ipcRenderer.invoke(
+        "tandem-download-directory",
+        "confirm",
+        id,
+        revision,
+        decisions,
+      ),
+    directories: (id) =>
+      ipcRenderer.invoke("tandem-download-directory", "directories", id),
+    file: (id, entry, spec) =>
+      ipcRenderer.invoke("tandem-download-directory", "file", id, entry, spec),
+    complete: (id, entry) =>
+      ipcRenderer.invoke("tandem-download-directory", "complete", id, entry),
+    show: (id, entry) =>
+      ipcRenderer.invoke("tandem-download-directory", "show", id, entry),
+    cancel: (id) =>
+      ipcRenderer.invoke("tandem-download-directory", "cancel", id),
+    forget: (id) =>
+      ipcRenderer.invoke("tandem-download-directory", "forget", id),
+  },
   downloads: {
     choose: (spec) => ipcRenderer.invoke("tandem-download", "choose", spec),
     start: (id, overwrite) =>

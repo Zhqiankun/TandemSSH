@@ -1,4 +1,5 @@
-import { DownloadService } from "./download-service.js";
+import { DownloadService, type DownloadPorts } from "./download-service.js";
+import { DownloadTreeService } from "./download-tree-service.js";
 import { acceptedHostKeyFor } from "../hosts/accepted-host-key.js";
 import { UploadService } from "./upload-service.js";
 import { fileCommitLocks } from "./path-locks.js";
@@ -265,7 +266,7 @@ export const uploadTransfers = new UploadService({
   locks: fileCommitLocks,
 });
 
-export const downloadTransfers = new DownloadService({
+const downloadPorts: DownloadPorts = {
   async target(userId, sessionId) {
     const target = await resolveFileDocumentTarget(
       { userId, source: "human" },
@@ -277,4 +278,9 @@ export const downloadTransfers = new DownloadService({
   },
   audit: (userId, type, data) =>
     journalFor(userId).record(type, { source: "human", ...data }),
-});
+};
+export const downloadTransfers = new DownloadService(downloadPorts);
+export const downloadTrees = new DownloadTreeService(
+  downloadPorts,
+  downloadTransfers,
+);

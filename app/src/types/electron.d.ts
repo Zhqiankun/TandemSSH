@@ -1,5 +1,6 @@
 import type { DesktopUpdateApi } from "./app-update";
 import type { DesktopDownloadApi } from "./file-download";
+import type { DesktopDownloadDirectoryApi } from "./download-tree";
 interface ServerConfig {
   serverUrl?: string;
   allowInvalidCertificate?: boolean;
@@ -31,6 +32,7 @@ interface DialogResult {
 export interface ElectronAPI {
   updates?: DesktopUpdateApi;
   downloads?: DesktopDownloadApi;
+  downloadDirectories?: DesktopDownloadDirectoryApi;
   getAppVersion: () => Promise<string>;
   getPlatform: () => Promise<string>;
   openNativeRdp: (options: {

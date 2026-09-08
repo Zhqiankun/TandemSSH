@@ -98,6 +98,8 @@ async function baseline(file, guard = () => {}) {
 class DownloadSink {
   constructor() {
     this.records = new Map();
+    this.choosing = 0;
+    this.choosingBytes = 0;
     this.locks = new Set();
   }
   view(r) {
@@ -112,12 +114,13 @@ class DownloadSink {
     if (r.cancelled) throw Error("DOWNLOAD_CANCELLED");
     r.touched = Date.now();
   }
-  async choose(owner, raw, choosePath) {
+  async choose(owner, raw, choosePath, expectedTarget) {
     const spec = validateSpec(raw);
     const bytes = spec.hashes.length * 64;
     if (
-      this.records.size >= 128 ||
+      this.records.size + this.choosing >= 128 ||
       bytes +
+        this.choosingBytes +
         [...this.records.values()].reduce(
           (sum, r) => sum + r.spec.hashes.length * 64,
           0,
@@ -125,45 +128,69 @@ class DownloadSink {
         8 * 1024 * 1024
     )
       throw Error("DOWNLOAD_LIMIT");
-    const chosen = await choosePath(spec.name);
-    if (!chosen) return null;
-    if (!path.isAbsolute(chosen)) throw Error("DOWNLOAD_LOCAL_FILE_INVALID");
-    const name = path.basename(chosen);
-    if (
-      process.platform === "win32" &&
-      (/[<>:"|?*\x00-\x1f]/.test(name) ||
-        /[ .]$/.test(name) ||
-        /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(name))
-    )
-      throw Error("DOWNLOAD_LOCAL_NAME_INVALID");
-    const parent = await fs.realpath(path.dirname(chosen)),
-      parentIdentity = identity(await fs.stat(parent));
-    const destination = path.join(parent, name),
-      previous = await baseline(destination);
-    const r = {
-      owner,
-      spec,
-      parent,
-      parentIdentity,
-      previous,
-      cancelled: false,
-      handle: undefined,
-      stageIdentity: undefined,
-      tail: Promise.resolve(),
-      touched: Date.now(),
-      view: {
-        id: randomUUID(),
-        path: destination,
-        size: spec.size,
-        writtenBytes: 0,
-        state: "preview",
-        existing: previous
-          ? { size: previous.stat.size, modifiedAt: previous.stat.mtimeMs }
-          : undefined,
-      },
-    };
-    this.records.set(r.view.id, r);
-    return this.view(r);
+    this.choosing++;
+    this.choosingBytes += bytes;
+    try {
+      const chosen = await choosePath(spec.name);
+      if (!chosen) return null;
+      if (!path.isAbsolute(chosen)) throw Error("DOWNLOAD_LOCAL_FILE_INVALID");
+      const name = path.basename(chosen);
+      if (
+        process.platform === "win32" &&
+        (/[<>:"|?*\x00-\x1f]/.test(name) ||
+          /[ .]$/.test(name) ||
+          /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(name))
+      )
+        throw Error("DOWNLOAD_LOCAL_NAME_INVALID");
+      const parent = await fs.realpath(path.dirname(chosen)),
+        parentIdentity = identity(await fs.stat(parent));
+      if (expectedTarget?.parent) {
+        const comparable = (p) =>
+          process.platform === "win32" ? p.toLowerCase() : p;
+        if (
+          comparable(parent) !== comparable(expectedTarget.parent.path) ||
+          parentIdentity !== expectedTarget.parent.identity
+        )
+          throw Error("DOWNLOAD_TARGET_CHANGED");
+      }
+      const destination = path.join(parent, name),
+        previous = await baseline(destination);
+      if (
+        expectedTarget &&
+        (Boolean(previous) !== Boolean(expectedTarget.value) ||
+          (previous &&
+            (previous.sha256 !== expectedTarget.value.sha256 ||
+              metadata(previous.stat) !== metadata(expectedTarget.value.stat))))
+      )
+        throw Error("DOWNLOAD_TARGET_CHANGED");
+      const r = {
+        owner,
+        spec,
+        parent,
+        parentIdentity,
+        previous,
+        cancelled: false,
+        handle: undefined,
+        stageIdentity: undefined,
+        tail: Promise.resolve(),
+        touched: Date.now(),
+        view: {
+          id: randomUUID(),
+          path: destination,
+          size: spec.size,
+          writtenBytes: 0,
+          state: "preview",
+          existing: previous
+            ? { size: previous.stat.size, modifiedAt: previous.stat.mtimeMs }
+            : undefined,
+        },
+      };
+      this.records.set(r.view.id, r);
+      return this.view(r);
+    } finally {
+      this.choosing--;
+      this.choosingBytes -= bytes;
+    }
   }
   run(owner, id, work) {
     const r = this.owned(owner, id);
@@ -468,4 +495,5 @@ module.exports = {
   CHUNK_BYTES,
   MAX_CHUNKS,
   errorCode,
+  inspectDownloadTarget: baseline,
 };

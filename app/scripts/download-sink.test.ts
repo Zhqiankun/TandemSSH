@@ -90,6 +90,22 @@ describe("native download destination", () => {
     );
   });
 
+  it("reserves capacity during concurrent destination preparation", async () => {
+    const f = await fixture(Buffer.alloc(0));
+    let closeDialogs!: (value: undefined) => void;
+    const selected = new Promise<undefined>((resolve) => {
+      closeDialogs = resolve;
+    });
+    const choices = Array.from({ length: 128 }, () =>
+      f.sink.choose(1, spec(f.bytes), () => selected),
+    );
+    await expect(
+      f.sink.choose(1, spec(f.bytes), async () => f.target),
+    ).rejects.toThrow("DOWNLOAD_LIMIT");
+    closeDialogs(undefined);
+    expect((await Promise.all(choices)).every((v) => v === null)).toBe(true);
+    expect((await f.choose()).state).toBe("preview");
+  });
   it("does not overwrite an existing destination until explicitly authorized", async () => {
     const f = await fixture();
     await fs.writeFile(f.target, "old");
