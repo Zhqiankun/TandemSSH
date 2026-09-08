@@ -86,6 +86,8 @@ class UpdateService {
     if (!this.module) {
       this.module = this.loadUpdater();
       const updater = this.module.autoUpdater;
+      // The library can print raw HTTP response headers; the UI exposes our sanitized error codes.
+      updater.logger = null;
       updater.setFeedURL({
         provider: "generic",
         url: FEED_URL,
