@@ -38,7 +38,7 @@ it.each(["automatic", "collaborative"] as const)(
       );
       return result.structuredContent!.result as Record<string, unknown>;
     };
-    expect((await client.listTools()).tools).toHaveLength(29);
+    expect((await client.listTools()).tools).toHaveLength(34);
     const task = await call("start_task", {
         sessionId: f.sessionId,
         requestId: randomUUID(),

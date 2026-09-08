@@ -18,6 +18,7 @@ export const localFileGrantsApi = {
     input: {
       windowToken: string;
       direction: "upload" | "download";
+      kind?: "directory";
       allowOverwrite: boolean;
     },
     signal?: AbortSignal,

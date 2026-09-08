@@ -1,10 +1,13 @@
-import { AutomatedTransfers } from "./automated-transfers.js";
+import {
+  AutomatedTransfers,
+  type AutomatedTransferPorts,
+} from "./automated-transfers.js";
 import { localFileGrants } from "./local-file-production.js";
 import { openAutomatedFileTarget } from "./production.js";
 import { SftpFileIO } from "./sftp-io.js";
 import { fileCommitLocks } from "./path-locks.js";
 import { journalFor } from "../collaboration/audit/production.js";
-export const automatedTransfers = new AutomatedTransfers({
+export const automatedTransferPorts: AutomatedTransferPorts = {
   local: localFileGrants,
   locks: fileCommitLocks,
   audit: (context, type, data) =>
@@ -47,4 +50,7 @@ export const automatedTransfers = new AutomatedTransfers({
       },
     };
   },
-});
+};
+export const automatedTransfers = new AutomatedTransfers(
+  automatedTransferPorts,
+);

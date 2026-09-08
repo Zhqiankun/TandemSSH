@@ -24,6 +24,11 @@ vi.mock("@/api/collaboration-api", () => ({
   collaborationApi: api,
   collaborationErrorCode: () => "STALE_CONTROL",
 }));
+vi.mock("@/api/directory-transfer-api", () => ({
+  directoryTransferApi: {
+    snapshot: vi.fn(async () => ({ previews: [], runs: [] })),
+  },
+}));
 vi.mock("@/features/mcp/McpSettings", () => ({ McpSettings: () => null }));
 import { TaskPanel } from "../../features/collaboration/TaskPanel";
 let runtime: TaskRuntime, control: SessionControl;
@@ -283,4 +288,55 @@ it("shows a file outcome in Chinese without inventing a terminal exit code", asy
   await screen.findByText("已处理 42 字节");
   expect(screen.queryByText(/退出码/)).toBeNull();
   expect(writes).toEqual(["context"]);
+});
+
+it("creates a directory task without a command plan and leaves it awaiting scope authorization", async () => {
+  render(<TaskPanel sessionId="session" onClose={() => {}} />);
+  await screen.findByText("你持有控制权");
+  fireEvent.click(screen.getByRole("button", { name: "目录传输" }));
+  expect(screen.queryByRole("textbox", { name: "命令计划" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "检查计划与授权" }));
+  await screen.findByText("本次任务授权");
+  expect(api.create.mock.lastCall?.[0].commands).toBeUndefined();
+  const task = runtime.list(actor).at(-1)!;
+  expect(task.stepCount).toBe(0);
+  expect(task.state).toBe("awaiting-authorization");
+  expect(writes).toEqual([]);
+});
+
+it("pages long operation history and keeps the latest results easy to reach", async () => {
+  const created = await runtime.create(actor, {
+    sessionId: "session",
+    requestId: "long-history",
+    title: "长任务",
+    mode: "automatic",
+    commands: Array.from({ length: 55 }, (_, i) => ({
+      program: "printf",
+      args: [String(i)],
+    })),
+  });
+  await runtime.authorize(actor, created.id, {
+    ...control.snapshot(),
+    policyRevision: 1,
+    shellReady: true,
+    maxOperations: 60,
+    durationMinutes: 10,
+    allowReviewedPlan: true,
+  });
+  await vi.waitFor(() =>
+    expect(runtime.get(actor, created.id).state).toBe("completed"),
+  );
+  const view = render(
+    <TaskPanel
+      sessionId="session"
+      focusTaskId={created.id}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByRole("navigation", { name: "任务操作记录分页" });
+  expect(view.container.querySelectorAll(".tandem-operation")).toHaveLength(5);
+  fireEvent.click(screen.getByRole("button", { name: "上一页" }));
+  expect(view.container.querySelectorAll(".tandem-operation")).toHaveLength(50);
+  fireEvent.click(screen.getByRole("button", { name: "前往最新记录" }));
+  expect(view.container.querySelectorAll(".tandem-operation")).toHaveLength(5);
 });

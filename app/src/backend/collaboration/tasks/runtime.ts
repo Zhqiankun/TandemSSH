@@ -132,6 +132,8 @@ interface RecordTask {
   deadline?: number;
   workflowCwd?: string;
   operationIds: string[];
+  operationRequests: Map<string, string>;
+  pendingOperations: Set<string>;
   steps: Array<TaskPlanStep & { operationId?: string }>;
   fileBindings: TaskFileBindings;
   generation: number;
@@ -140,6 +142,8 @@ interface RecordTask {
   probe?: PreparedCommand;
   submitting?: boolean;
   listeners: Set<() => void>;
+  progressListeners: Set<() => void>;
+  directoryReservation?: object;
   reviews: Map<string, { decision: "skip" | "retry"; at: number }>;
 }
 const terminalState = (state: string) =>
@@ -316,12 +320,15 @@ export class TaskRuntime {
       policy,
       gateway: undefined as never,
       operationIds: [],
+      operationRequests: new Map(),
+      pendingOperations: new Set(),
       steps: structuredClone(plan),
       fileBindings: {},
       generation: 0,
       attempts: new Set(),
       reviews: new Map(),
       listeners: new Set(),
+      progressListeners: new Set(),
       view: {
         id: randomUUID(),
         sessionId: session.id,
@@ -450,6 +457,7 @@ export class TaskRuntime {
   ): Promise<TaskWorkflowRun> {
     this.sessionFor(actor, task.view.sessionId);
     if (
+      task.directoryReservation ||
       task.initialPlan.steps.length ||
       task.steps.length ||
       task.activeWorkflowRunId ||
@@ -643,7 +651,26 @@ export class TaskRuntime {
       unsubscribe();
     };
   }
+  observeTask(actor: TaskActor, taskId: string, listener: () => void) {
+    const task = this.owned(actor, taskId);
+    task.progressListeners.add(listener);
+    const unsubscribe = task.session.control.subscribe(listener);
+    return () => {
+      task.progressListeners.delete(listener);
+      unsubscribe();
+    };
+  }
+  private progress(task: RecordTask) {
+    for (const listener of task.progressListeners) {
+      try {
+        listener();
+      } catch {
+        // A disconnected observer cannot interrupt task state transitions.
+      }
+    }
+  }
   private notify(task: RecordTask): void {
+    this.progress(task);
     for (const listener of task.listeners) {
       try {
         listener();
@@ -674,7 +701,7 @@ export class TaskRuntime {
       ) ||
       !Number.isInteger(scope.maxOperations) ||
       scope.maxOperations < 1 ||
-      scope.maxOperations > 500 ||
+      scope.maxOperations > 5000 ||
       !Number.isFinite(scope.durationMinutes) ||
       scope.durationMinutes < 1 ||
       scope.durationMinutes > 480 ||
@@ -854,6 +881,7 @@ export class TaskRuntime {
       });
       if (task.generation !== version) throw new Error("STALE_CONTROL");
       task.view.state = "ready";
+      this.progress(task);
       void this.pump(task, version);
       return this.view(task);
     } catch (error) {
@@ -1080,7 +1108,10 @@ export class TaskRuntime {
       },
       action,
     );
-    if (!task.operationIds.includes(op.id)) task.operationIds.push(op.id);
+    if (!task.operationRequests.has(op.context.requestId))
+      task.operationIds.push(op.id);
+    task.operationRequests.set(op.context.requestId, op.id);
+    task.pendingOperations.add(op.id);
     if (task.activeWorkflowRunId) {
       const run = task.workflowRuns.get(task.activeWorkflowRunId)!;
       if (!run.summary.operationIds.includes(op.id))
@@ -1121,6 +1152,7 @@ export class TaskRuntime {
       )
         this.pause(task, result.error ?? "COMMAND_FAILED");
       else task.view.state = "ready";
+      this.progress(task);
     }
     return result;
   }
@@ -1215,13 +1247,90 @@ export class TaskRuntime {
       requestId,
     );
   }
+  reserveDirectory(actor: TaskActor, taskId: string): object {
+    this.fileContext(actor, taskId);
+    const t = this.owned(actor, taskId);
+    if (
+      t.directoryReservation ||
+      t.steps.length ||
+      t.attachingWorkflow ||
+      t.activeWorkflowRunId ||
+      t.submitting ||
+      t.view.state !== "ready"
+    )
+      throw Error("DIRECTORY_IN_PROGRESS");
+    if (
+      this.pendingReconciliation(t) ||
+      t.operationIds.some((id) =>
+        ["proposed", "queued", "running", "awaiting-approval"].includes(
+          t.gateway.get(id).status,
+        ),
+      )
+    )
+      throw Error("RECONCILIATION_REQUIRED");
+    const token = Object.freeze({ id: randomUUID() });
+    t.directoryReservation = token;
+    return token;
+  }
+  releaseDirectory(taskId: string, token: object) {
+    const t = this.tasks.get(taskId);
+    if (t?.directoryReservation === token) {
+      t.directoryReservation = undefined;
+      this.progress(t);
+    }
+  }
+  submitDirectory(
+    actor: TaskActor,
+    taskId: string,
+    action: import("../../../types/directory-transfer.js").DirectoryAction,
+    requestId: string,
+    token: object,
+  ) {
+    const t = this.owned(actor, taskId);
+    if (t.directoryReservation !== token) throw Error("DIRECTORY_IN_PROGRESS");
+    return this.submitOperation(
+      actor,
+      taskId,
+      validateFileAction(action),
+      requestId,
+      token,
+    );
+  }
+  private requestOperation(task: RecordTask, requestId: string) {
+    const id = task.operationRequests.get(requestId);
+    return id ? task.gateway.get(id) : undefined;
+  }
+  private hasPendingOperation(task: RecordTask) {
+    for (const id of task.pendingOperations) {
+      if (
+        ["proposed", "awaiting-approval", "queued", "running"].includes(
+          task.gateway.get(id).status,
+        )
+      )
+        return true;
+      task.pendingOperations.delete(id);
+    }
+    return false;
+  }
   private async submitAction(
     actor: TaskActor,
     taskId: string,
     action: OperationAction,
     requestId: string,
   ): Promise<TaskView> {
+    await this.submitOperation(actor, taskId, action, requestId);
+    return this.view(this.owned(actor, taskId));
+  }
+  private async submitOperation(
+    actor: TaskActor,
+    taskId: string,
+    action: OperationAction,
+    requestId: string,
+    reservation?: object,
+  ): Promise<OperationView> {
     const task = this.owned(actor, taskId);
+    if (task.directoryReservation && task.directoryReservation !== reservation)
+      throw Error("DIRECTORY_IN_PROGRESS");
     if (
       actor.kind === "mcp" &&
       (actor.connectionId !== task.connectionId ||
@@ -1230,22 +1339,16 @@ export class TaskRuntime {
       throw new Error("CLIENT_CONNECTION_CHANGED");
     if (task.steps.length || task.attachingWorkflow || task.activeWorkflowRunId)
       throw new Error("WORKFLOW_PLAN_IMMUTABLE");
-    const previous = task.operationIds
-      .map((id) => task.gateway.get(id))
-      .find((op) => op.context.requestId === requestId);
+    const previous = this.requestOperation(task, requestId);
     if (previous) {
       if (JSON.stringify(action) !== JSON.stringify(previous.action))
         throw new Error("REQUEST_CONFLICT");
-      return this.view(task);
+      return previous;
     }
     if (
       task.submitting ||
       task.view.state === "running" ||
-      task.operationIds.some((id) =>
-        ["proposed", "awaiting-approval", "queued", "running"].includes(
-          task.gateway.get(id).status,
-        ),
-      )
+      this.hasPendingOperation(task)
     )
       throw new Error("OPERATION_IN_PROGRESS");
     const version = task.generation;
@@ -1262,8 +1365,9 @@ export class TaskRuntime {
       if (error.message === "APPROVAL_REQUIRED")
         task.view.state = "awaiting-approval";
       else this.pause(task, error.message);
+      this.progress(task);
     });
-    return this.view(task);
+    return task.gateway.get(op.id);
   }
   async approve(
     actor: TaskActor,
@@ -1365,6 +1469,7 @@ export class TaskRuntime {
     if (["completed", "completed-with-errors"].includes(task.view.state))
       return this.view(task);
     if (
+      task.directoryReservation ||
       task.steps.length ||
       task.attachingWorkflow ||
       task.view.state !== "ready" ||

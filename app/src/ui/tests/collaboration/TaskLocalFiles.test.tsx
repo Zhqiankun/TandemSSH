@@ -40,7 +40,7 @@ const grant: HumanLocalFileGrant = {
   createdAt: 0,
   expiresAt: 60000,
 };
-async function fixture() {
+async function fixture(selected: HumanLocalFileGrant = grant) {
   const i18n = createInstance();
   await i18n.init({
     lng: "zh_CN",
@@ -54,7 +54,7 @@ async function fixture() {
       value: { windowToken: "window" },
     })),
     choose: vi.fn(async () => {
-      grants = [grant];
+      grants = [selected];
       return { ok: true, value: { grants } };
     }),
     reset: vi.fn(async () => ({ ok: true, value: null })),
@@ -136,3 +136,37 @@ it("cancels a pending ticket on unmount and does not apply the late picker resul
   await Promise.resolve();
   expect(api.list).toHaveBeenCalledTimes(1);
 });
+
+it.each(["upload", "download"] as const)(
+  "requests a native %s directory ticket and shows its snapshot count",
+  async (direction) => {
+    const selected: HumanLocalFileGrant = {
+      ...grant,
+      direction,
+      kind: "directory",
+      name: "目录",
+      path: "C:/chosen/目录",
+      entries: 3,
+      excluded: 1,
+    };
+    const f = await fixture(selected);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: direction === "upload" ? "选择上传目录" : "选择下载目录",
+      }),
+    );
+    await screen.findByText("C:/chosen/目录");
+    expect(api.ticket).toHaveBeenCalledWith(
+      "task",
+      {
+        windowToken: "window",
+        direction,
+        allowOverwrite: false,
+        kind: "directory",
+      },
+      expect.any(AbortSignal),
+    );
+    expect(f.native.choose).toHaveBeenCalledWith("ticket");
+    expect(screen.getByText("已固定 3 项，排除 1 项")).toBeInTheDocument();
+  },
+);

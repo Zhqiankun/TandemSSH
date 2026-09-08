@@ -1,4 +1,5 @@
 import {
+  directoryAutomation,
   fileAutomation,
   transferAutomation,
 } from "../../collaboration/files/production.js";
@@ -97,6 +98,7 @@ async function* stream(
   }
 }
 export const aiTasks = new AiTaskCoordinator({
+  directories: directoryAutomation,
   files: fileAutomation,
   transfers: transferAutomation,
   tasks: taskRuntime,

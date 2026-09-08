@@ -58,7 +58,18 @@ export interface TaskLocalTransferPort {
     signal: AbortSignal,
   ): Promise<LocalDownloadAccess>;
 }
+export interface DirectoryBinaryServices {
+  uploads: UploadService;
+  downloads: DownloadService;
+  prepareUpload(
+    input: import("../../types/file-upload.js").PrepareUpload,
+  ): Promise<UploadView>;
+  prepareDownload(
+    input: import("../../types/file-download.js").PrepareDownload,
+  ): Promise<DownloadSource>;
+}
 export interface AutomatedTransferPorts {
+  directoryServices?: DirectoryBinaryServices;
   local: TaskLocalTransferPort;
   open(
     context: TransferTaskContext,
@@ -284,24 +295,29 @@ export class AutomatedTransfers {
         guard();
         const manifest = uploadManifestSchema.parse(source.manifest);
         r.view.totalBytes = manifest.size;
-        uploads = new UploadService({
-          target: async () => {
-            guard();
-            return target;
-          },
-          beginWrite: () => {
-            guard();
-            return opened!.beginWrite();
-          },
-          audit,
-          locks: this.ports.locks,
-        });
-        remoteUpload = await uploads.prepare(actor, {
+        uploads =
+          this.ports.directoryServices?.uploads ??
+          new UploadService({
+            target: async () => {
+              guard();
+              return target;
+            },
+            beginWrite: () => {
+              guard();
+              return opened!.beginWrite();
+            },
+            audit,
+            locks: this.ports.locks,
+          });
+        const uploadInput = {
           requestId: context.operationId,
           sessionId: context.sessionId,
           path: action.path,
           manifest,
-        });
+        };
+        remoteUpload = this.ports.directoryServices
+          ? await this.ports.directoryServices.prepareUpload(uploadInput)
+          : await uploads.prepare(actor, uploadInput);
         guard(remoteUpload.canonicalPath);
         remoteUpload = await uploads.start(actor, remoteUpload.id, {
           overwrite: action.overwrite,
@@ -343,18 +359,23 @@ export class AutomatedTransfers {
         )
           throw Error(remoteUpload.error ?? "UPLOAD_RESULT_INVALID");
       } else {
-        downloads = new DownloadService({
-          target: async () => {
-            guard();
-            return target;
-          },
-          audit,
-        });
-        remoteDownload = await downloads.prepare(actor, {
+        downloads =
+          this.ports.directoryServices?.downloads ??
+          new DownloadService({
+            target: async () => {
+              guard();
+              return target;
+            },
+            audit,
+          });
+        const downloadInput = {
           requestId: randomUUID(),
           sessionId: context.sessionId,
           path: action.path,
-        });
+        };
+        remoteDownload = this.ports.directoryServices
+          ? await this.ports.directoryServices.prepareDownload(downloadInput)
+          : await downloads.prepare(actor, downloadInput);
         guard(remoteDownload.canonicalPath);
         r.view.totalBytes = remoteDownload.size;
         destination = await this.ports.local.download(
@@ -440,8 +461,10 @@ export class AutomatedTransfers {
       } catch {
         /* The native capability retains the cleanup record. */
       }
-      uploads?.dispose();
-      downloads?.dispose();
+      if (!this.ports.directoryServices) {
+        uploads?.dispose();
+        downloads?.dispose();
+      }
       try {
         opened?.close();
       } catch {

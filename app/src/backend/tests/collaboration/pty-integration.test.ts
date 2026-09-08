@@ -586,7 +586,7 @@ describe.runIf(!!shell && fs.existsSync(shell))(
             const toolNames = (await client.listTools()).tools.map(
               (tool) => tool.name,
             );
-            expect(toolNames).toHaveLength(29);
+            expect(toolNames).toHaveLength(34);
             expect(toolNames).toEqual(
               expect.arrayContaining([
                 "list_directory",

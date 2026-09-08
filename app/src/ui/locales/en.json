@@ -4939,7 +4939,7 @@
         "FILE_TRANSFER_LIMIT": "Transfer record limit reached. Resolve and clear existing records.",
         "FILE_TRANSFER_NOT_FOUND": "No such transfer belongs to this task.",
         "FILE_TRANSFER_ALREADY_STARTED": "This operation has already started and will not be repeated.",
-        "FILE_TRANSFER_CLEANUP_PENDING": "This transfer is active or needs reconciliation and cannot be cleared.",
+        "FILE_TRANSFER_CLEANUP_PENDING": "A transfer, unknown result or temporary file needs review before release.",
         "FILE_LOCAL_DESKTOP_REQUIRED": "A connected desktop backend is required.",
         "FILE_LOCAL_WINDOW_CLOSED": "The window or login changed. Select the file again.",
         "FILE_LOCAL_GRANT_LIMIT": "Local file grant limit reached. Clear old records first.",
@@ -4975,8 +4975,19 @@
         "FILE_LOCAL_DIRECTORY_CHANGED": "The selected local directory changed. Select and review it again.",
         "FILE_DIRECTORY_DECISION_CHANGED": "The directory conflict decision changed. Review the preview again.",
         "FILE_DIRECTORY_RESULT_UNKNOWN": "The directory creation result is unknown. Verify it before continuing.",
-        "FILE_DIRECTORY_UNAVAILABLE": "Directory transfer capability is unavailable.",
-        "FILE_DIRECTORY_ENTRY_INVALID": "The entry is missing from this preview or is not a directory."
+        "FILE_DIRECTORY_UNAVAILABLE": "Directory transfer is unavailable.",
+        "FILE_DIRECTORY_ENTRY_INVALID": "Invalid entry or rename. Review the manifest.",
+        "DIRECTORY_IN_PROGRESS": "A directory batch owns this task. Wait for completion or take over.",
+        "DIRECTORY_PREVIEW_CHANGED": "The manifest changed. Preview and review again.",
+        "DIRECTORY_PREVIEW_USED": "This preview already has a batch. Inspect its result.",
+        "DIRECTORY_PREVIEW_NOT_FOUND": "The preview is missing or has been released.",
+        "DIRECTORY_NOT_CONFIRMED": "Confirm the complete manifest first.",
+        "DIRECTORY_TRANSFER_FAILED": "Directory transfer did not complete. Check task history.",
+        "DIRECTORY_ENTRY_FAILED": "The current entry failed; remaining entries are paused.",
+        "DIRECTORY_RUN_NOT_FOUND": "The batch is missing or belongs to a different task.",
+        "DIRECTORY_RUN_LIMIT": "Directory batch history capacity reached.",
+        "DIRECTORY_PREVIEW_LIMIT": "The manifest exceeds capacity. Choose a smaller directory.",
+        "DIRECTORY_PREVIEW_EXPIRED": "Directory preview expired. Release it and preview again."
       },
       "allowedPrograms": "Programs allowed for this task (one per line)",
       "operationProgress": "{{done}} / {{total}} commands completed",
@@ -4986,7 +4997,12 @@
         "list": "List directory",
         "stat": "Inspect file",
         "upload": "Upload file",
-        "download": "Download file"
+        "download": "Download file",
+        "directory": {
+          "preview": "Preview directory transfer",
+          "confirm": "Confirm directory manifest",
+          "entry": "Transfer directory entry"
+        }
       }
     },
     "mcp": {
@@ -5764,6 +5780,79 @@
         "revoked": "Revoked",
         "consumed": "Used"
       }
+    },
+    "directoryTask": {
+      "title": "Directory transfer",
+      "select": {
+        "upload": "Choose upload folder",
+        "download": "Choose download folder"
+      },
+      "direction": {
+        "upload": "Upload directory",
+        "download": "Download directory"
+      },
+      "grantCount": "{{count}} fixed entries, {{excluded}} excluded",
+      "manifest": "Directory manifest",
+      "loading": "Loading directory manifest…",
+      "failed": "Directory operation did not complete. Check task history, authorization and connection.",
+      "summary": "{{entries}} entries · {{files}} files · {{directories}} directories · {{excluded}} excluded · {{totalBytes}} B",
+      "budget": "Preview, confirmation and entries may need up to {{count}} authorized operations.",
+      "blocked": "Entry unavailable. Check paths, permissions and policy.",
+      "kinds": {
+        "file": "File",
+        "directory": "Directory",
+        "excluded": "Excluded"
+      },
+      "statuses": {
+        "new": "New",
+        "directory": "Merge directory",
+        "conflict": "Target conflict",
+        "blocked": "Blocked"
+      },
+      "action": "Action",
+      "actionFor": "Action for {{name}}",
+      "choices": {
+        "create": "Create",
+        "merge": "Merge directory",
+        "overwrite": "Overwrite file",
+        "skip": "Skip"
+      },
+      "rename": "Target name",
+      "renameFor": "Rename {{name}}",
+      "operationState": "Task operation",
+      "physicalResult": "Filesystem result",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "{{from}}–{{to}} / {{total}} entries",
+      "reviewPage": "I have reviewed every entry, target path and action on this page",
+      "hint": "Directories follow task scopes and per-entry approvals. Use Take over above to stop subsequent automatic operations.",
+      "chooseFirst": "Choose an upload or download folder in local authorizations first.",
+      "localGrant": "Authorized local folder",
+      "remoteParent": "Remote destination parent folder",
+      "remoteSource": "Remote source directory",
+      "allowOverwrite": "Allow overwrite choices for conflicts in this preview (local permission is also required)",
+      "authorizeFirst": "Authorize remote file scopes for this task before generating a preview.",
+      "preview": "Preview directory",
+      "previews": "Directory previews",
+      "runStates": {
+        "running": "Transferring",
+        "awaiting-approval": "Waiting for entry approval",
+        "paused-human": "Paused for human control",
+        "paused-error": "Paused; attention required",
+        "completed": "Directory batch completed",
+        "completed-with-errors": "Batch ended with unsuccessful entries",
+        "cancelled": "Directory batch cancelled"
+      },
+      "progress": "Processed {{done}} / {{total}} entries",
+      "takeoverHint": "Review results and return control in task authorization to continue the remaining entries.",
+      "applyRenames": "Apply names and preview again",
+      "run": "Submit directory batch",
+      "release": "Release this preview",
+      "finish": "Finish task",
+      "createHint": "Create a directory task, choose a local folder and authorize remote file scopes. Review the manifest before execution; no command list is needed.",
+      "operationPages": "Task operation history pages",
+      "latest": "Latest entries",
+      "previewBinding": "Local directory bound to this preview"
     }
   },
   "fileDocument": {

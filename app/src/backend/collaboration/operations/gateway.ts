@@ -1,3 +1,4 @@
+import { isDirectoryAction } from "../../../types/directory-transfer.js";
 import { validateFileResult } from "./file-result.js";
 import type {
   FileAction,
@@ -9,6 +10,7 @@ import {
   validateFileAction,
   evaluateFilePolicy,
   fileScopeAllows,
+  fileAccess,
   fileScopeSchema,
 } from "../policies/file-policy.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -82,6 +84,11 @@ export interface PreparedCommand {
 export interface FileOperationGuard {
   (canonicalPath?: string): void;
   canListEntry?(requestedPath: string, canonicalPath: string): boolean;
+  checkDirectoryPath?(
+    requestedPath: string,
+    canonicalPath: string,
+    access: "read" | "write",
+  ): void;
 }
 export interface PreparedFileOperation {
   // Preparation must not read or mutate a remote file. Execution uses only the
@@ -147,6 +154,8 @@ const isFinal = (status: OperationStatus) =>
 /** Session-bound authority shared by AI, workflow and MCP adapters. Human-only
  * grant/approval methods must be exposed only by authenticated UI handlers. */
 export class OperationGateway {
+  private ordinaryOperationCount = 0;
+  private directoryActionBytes = 0;
   private readonly operations = new Map<string, StoredOperation>();
   private readonly requests = new Map<string, string>();
   private readonly grants = new Map<string, TaskGrant>();
@@ -231,7 +240,16 @@ export class OperationGateway {
       return structuredClone(existing.view);
     }
     this.control.assertLease(context.lease);
-    if (this.operations.size >= 512)
+    const directoryAction = isDirectoryAction(action),
+      directoryBytes = directoryAction
+        ? Buffer.byteLength(JSON.stringify(action))
+        : 0;
+    if (
+      (!directoryAction && this.ordinaryOperationCount >= 512) ||
+      this.operations.size >= 8192 ||
+      directoryBytes > 512000 ||
+      this.directoryActionBytes + directoryBytes > 8 * 1024 * 1024
+    )
       throw new GatewayError("SESSION_OPERATION_LIMIT");
     const decision = this.evaluate(
       this.policy(),
@@ -248,6 +266,8 @@ export class OperationGateway {
     };
     const operation = { view };
     this.operations.set(view.id, operation);
+    if (directoryAction) this.directoryActionBytes += directoryBytes;
+    else this.ordinaryOperationCount++;
     this.requests.set(requestKey, view.id);
     try {
       await this.audit.append({
@@ -329,7 +349,7 @@ export class OperationGateway {
       ) ||
       !Number.isInteger(scope.maxOperations) ||
       scope.maxOperations < 1 ||
-      scope.maxOperations > 500 ||
+      scope.maxOperations > 5000 ||
       !Number.isFinite(scope.expiresAt) ||
       scope.expiresAt <= this.now() ||
       scope.expiresAt > this.now() + 8 * 60 * 60_000
@@ -524,7 +544,8 @@ export class OperationGateway {
             if (
               (view.action.type === "file.write" ||
                 view.action.type === "file.upload" ||
-                view.action.type === "file.download") &&
+                view.action.type === "file.download" ||
+                isDirectoryAction(view.action)) &&
               view.action.canonicalPath !== undefined &&
               posix.normalize(canonicalPath) !==
                 posix.normalize(view.action.canonicalPath)
@@ -538,6 +559,53 @@ export class OperationGateway {
             operation.resolvedPath = posix.normalize(canonicalPath);
           }
           this.authority(operation);
+        };
+        guard.checkDirectoryPath = (requested, canonical, access) => {
+          guard();
+          const action = view.action;
+          if (
+            !isDirectoryAction(action) ||
+            !operation.resolvedPath ||
+            access !== fileAccess(action)
+          )
+            throw new GatewayError("INVALID_FILE_ACTION");
+          const root = posix.normalize(
+              action.type === "file.directory.entry"
+                ? action.rootPath
+                : action.path,
+            ),
+            resolved = posix.normalize(
+              action.type === "file.directory.entry"
+                ? action.canonicalRoot
+                : operation.resolvedPath,
+            );
+          const inside = (p: string, r: string) =>
+            p === r ||
+            p.startsWith(r === "/" ? "/" : r.replace(/\/$/, "") + "/");
+          if (
+            !requested.startsWith("/") ||
+            !canonical.startsWith("/") ||
+            (!inside(posix.normalize(requested), root) &&
+              !inside(posix.normalize(requested), resolved)) ||
+            !inside(posix.normalize(canonical), resolved)
+          )
+            throw new GatewayError("FILE_SCOPE_EXCEEDED");
+          const child = validateFileAction({
+            ...action,
+            path: requested,
+            canonicalPath: canonical,
+          });
+          const grant = this.grants.get(view.context.taskId);
+          if (!grant || !fileScopeAllows(grant.fileScopes, child))
+            throw new GatewayError("FILE_SCOPE_EXCEEDED");
+          if (
+            this.evaluate(
+              this.policy(),
+              { ...this.target(), taskId: view.context.taskId },
+              child,
+            ).outcome === "deny"
+          )
+            throw new GatewayError("POLICY_DENIED");
         };
         guard.canListEntry = (requestedPath, canonicalPath) => {
           guard();

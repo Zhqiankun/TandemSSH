@@ -166,7 +166,7 @@ export function TaskAuthorizationForm({
           <input
             type="number"
             min={1}
-            max={500}
+            max={5000}
             required
             value={budget}
             onChange={(e) => setBudget(e.target.valueAsNumber)}

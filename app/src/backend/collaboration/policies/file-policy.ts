@@ -1,3 +1,4 @@
+import { isDirectoryAction } from "../../../types/directory-transfer.js";
 import { posix } from "node:path";
 import { z } from "zod";
 import type { FileAction, FileScope } from "../../../types/file-operations.js";
@@ -36,7 +37,57 @@ const transfer = {
   overwrite: z.boolean(),
   timeoutMs,
 };
+const directoryFields = {
+  ...transfer,
+  direction: z.enum(["upload", "download"]),
+};
 const schema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("file.directory.preview"),
+      ...directoryFields,
+      renames: z
+        .array(
+          z
+            .object({
+              relativePath: z.string().min(1).max(4096),
+              name: z.string().min(1).max(255),
+            })
+            .strict(),
+        )
+        .max(4096)
+        .optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("file.directory.confirm"),
+      ...directoryFields,
+      previewId: z.string().uuid(),
+      revision: z.string().uuid(),
+      choices: z
+        .array(
+          z
+            .object({
+              id: z.string().min(1).max(128),
+              action: z.enum(["create", "merge", "overwrite", "skip"]),
+            })
+            .strict(),
+        )
+        .max(4096),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("file.directory.entry"),
+      ...directoryFields,
+      previewId: z.string().uuid(),
+      revision: z.string().uuid(),
+      entryId: z.string().min(1).max(128),
+      rootPath: filePathSchema,
+      canonicalRoot: filePathSchema,
+    })
+    .strict(),
   z.object({ type: z.literal("file.upload"), ...transfer }).strict(),
   z.object({ type: z.literal("file.download"), ...transfer }).strict(),
   z
@@ -119,14 +170,20 @@ export function matchesFilePath(
         target.startsWith(root === "/" ? "/" : root.replace(/\/$/, "") + "/")))
   );
 }
+export function fileAccess(action: FileAction): "read" | "write" {
+  return isDirectoryAction(action)
+    ? action.direction === "upload"
+      ? "write"
+      : "read"
+    : action.type === "file.write" || action.type === "file.upload"
+      ? "write"
+      : "read";
+}
 export function fileScopeAllows(
   scopes: FileScope[],
   action: FileAction,
 ): boolean {
-  const access =
-    action.type === "file.write" || action.type === "file.upload"
-      ? "write"
-      : "read";
+  const access = fileAccess(action);
   return filePaths(action).every((path) =>
     scopes.some(
       (scope) =>
@@ -142,10 +199,7 @@ export function evaluateFilePolicy(
 ): CommandDecision {
   const action = validateFileAction(input),
     paths = filePaths(action),
-    access =
-      action.type === "file.write" || action.type === "file.upload"
-        ? "write"
-        : "read";
+    access = fileAccess(action);
   return evaluateFilePathPolicy(snapshot, target, paths, access);
 }
 /** Read-only policy simulation for a plan whose local capabilities are not selected yet. */

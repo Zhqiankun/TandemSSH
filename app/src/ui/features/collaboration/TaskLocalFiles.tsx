@@ -78,7 +78,10 @@ export function TaskLocalFiles({
     // The keyed task panel owns one task and its pending native selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
-  const choose = async (direction: "upload" | "download") => {
+  const choose = async (
+    direction: "upload" | "download",
+    kind?: "directory",
+  ) => {
     if (!native || busy || disabled) return;
     const owner = owned.current;
     setBusy(true);
@@ -92,6 +95,7 @@ export function TaskLocalFiles({
           windowToken: identity.windowToken,
           direction,
           allowOverwrite: overwrite,
+          ...(kind ? { kind } : {}),
         },
         owner.stop.signal,
       );
@@ -160,6 +164,17 @@ export function TaskLocalFiles({
         >
           {t("tandem.localFiles.download")}
         </Button>
+        {(["upload", "download"] as const).map((direction) => (
+          <Button
+            key={direction}
+            size="sm"
+            variant="outline"
+            disabled={busy || disabled || !native || !available}
+            onClick={() => void choose(direction, "directory")}
+          >
+            {t("tandem.directoryTask.select." + direction)}
+          </Button>
+        ))}
       </div>
       {(!native || !available) && <p>{t("tandem.localFiles.desktop")}</p>}
       {busy && <p role="status">{t("tandem.localFiles.busy")}</p>}
@@ -176,8 +191,12 @@ export function TaskLocalFiles({
           <strong>{g.name}</strong>
           <p className="break-all select-text">{g.path}</p>
           <p>
-            {t("tandem.collaboration.fileActions." + g.direction)} ·{" "}
-            {t("tandem.localFiles.states." + g.state)} ·{" "}
+            {t(
+              g.kind === "directory"
+                ? "tandem.directoryTask.direction." + g.direction
+                : "tandem.collaboration.fileActions." + g.direction,
+            )}{" "}
+            · {t("tandem.localFiles.states." + g.state)} ·{" "}
             {t(
               g.allowOverwrite
                 ? "tandem.localFiles.mayOverwrite"
@@ -185,6 +204,14 @@ export function TaskLocalFiles({
             )}
           </p>
           {g.size !== undefined && <p>{g.size} B</p>}
+          {g.kind === "directory" && g.entries !== undefined && (
+            <p>
+              {t("tandem.directoryTask.grantCount", {
+                count: g.entries,
+                excluded: g.excluded ?? 0,
+              })}
+            </p>
+          )}
           {g.existing && (
             <p>{t("tandem.localFiles.existing", { size: g.existing.size })}</p>
           )}

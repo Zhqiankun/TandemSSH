@@ -157,23 +157,8 @@ function rpc(method, params) {
     JSON.stringify(result, null, 2),
   );
   if (
-    tools.length !== 29 ||
+    tools.length !== 34 ||
     ![
-      "list_authorized_files",
-      "upload_file",
-      "download_file",
-      "get_transfer_status",
-      "release_transfer",
-      "list_authorized_files",
-      "upload_file",
-      "download_file",
-      "get_transfer_status",
-      "release_transfer",
-      "list_authorized_files",
-      "upload_file",
-      "download_file",
-      "get_transfer_status",
-      "release_transfer",
       "list_authorized_files",
       "upload_file",
       "download_file",
@@ -186,6 +171,11 @@ function rpc(method, params) {
       "get_file_content",
       "propose_file_edit",
       "propose_file_write",
+      "preview_directory_transfer",
+      "get_directory_transfer",
+      "run_directory_transfer",
+      "get_directory_run",
+      "release_directory_transfer",
     ].every((name) => tools.some((tool) => tool.name === name))
   )
     throw Error("Codex did not discover all workflow and file tools");

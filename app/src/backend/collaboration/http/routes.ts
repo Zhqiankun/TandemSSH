@@ -1,3 +1,5 @@
+import { directoryTaskRoutes } from "../files/directory-http.js";
+import { directoryAutomation } from "../files/production.js";
 import { fileBindingsSchema } from "../tasks/plan.js";
 import { localFileGrants } from "../../files/local-file-production.js";
 import { localFileGrantRoutes } from "../../files/local-file-routes.js";
@@ -55,6 +57,7 @@ router.use(
 router.use("/mcp", mcpRoutes);
 router.use("/ai-tasks", aiTaskRoutes);
 router.use("/workflows", workflowRoutes);
+router.use("/directories", directoryTaskRoutes(directoryAutomation));
 const id = z.string().uuid();
 const word = z.string().min(1).max(4096);
 const match = commandMatchSchema;
@@ -74,7 +77,7 @@ const authorization = z
     policyRevision: z.number().int().positive(),
     shellReady: z.literal(true),
     directory: z.string().startsWith("/").max(4096).optional(),
-    maxOperations: z.number().int().min(1).max(500),
+    maxOperations: z.number().int().min(1).max(5000),
     durationMinutes: z.number().min(1).max(480),
     matches: z.array(match).max(128).optional(),
     fileScopes: z.array(fileScopeSchema).max(128).optional(),
@@ -156,7 +159,7 @@ router.post(
           requestId: z.string().min(1).max(128),
           title: z.string().min(1).max(8000),
           mode: z.enum(["collaborative", "automatic"]),
-          commands: z.array(command).min(1).max(100),
+          commands: z.array(command).min(1).max(100).optional(),
         })
         .strict()
         .parse(req.body),
@@ -208,6 +211,15 @@ router.get(
       id.parse(req.params.operationId),
     ),
   ),
+);
+router.post(
+  "/tasks/:id/finish",
+  route((req) => {
+    z.object({})
+      .strict()
+      .parse(req.body ?? {});
+    return taskRuntime.finish(actor(req), id.parse(req.params.id));
+  }),
 );
 router.post(
   "/tasks/:id/cancel",

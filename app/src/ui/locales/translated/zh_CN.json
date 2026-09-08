@@ -4939,7 +4939,7 @@
         "FILE_TRANSFER_LIMIT": "传输记录已达上限，请先处理并清理已有记录。",
         "FILE_TRANSFER_NOT_FOUND": "当前任务没有此传输记录。",
         "FILE_TRANSFER_ALREADY_STARTED": "此操作已经开始，不会重复传输。",
-        "FILE_TRANSFER_CLEANUP_PENDING": "此传输仍在进行或存在待核实结果，暂不能清除。",
+        "FILE_TRANSFER_CLEANUP_PENDING": "仍有传输、未知结果或临时文件需要核对，暂时不能释放。",
         "FILE_LOCAL_DESKTOP_REQUIRED": "本地文件授权需要已连接的桌面后台。",
         "FILE_LOCAL_WINDOW_CLOSED": "原窗口或登录状态已变化，请重新选择文件。",
         "FILE_LOCAL_GRANT_LIMIT": "本地文件授权数量已达上限，请先清理旧记录。",
@@ -4976,7 +4976,18 @@
         "FILE_DIRECTORY_DECISION_CHANGED": "目录冲突处理选择已变化，请重新核对预览。",
         "FILE_DIRECTORY_RESULT_UNKNOWN": "目录创建结果未知，请人工核实后再继续。",
         "FILE_DIRECTORY_UNAVAILABLE": "目录传输能力当前不可用。",
-        "FILE_DIRECTORY_ENTRY_INVALID": "该目录条目不在本次预览中，或不是目录。"
+        "FILE_DIRECTORY_ENTRY_INVALID": "目录条目或重命名配置无效，请重新核对清单。",
+        "DIRECTORY_IN_PROGRESS": "目录批次正在占用本任务。请等待结束，或人工接管。",
+        "DIRECTORY_PREVIEW_CHANGED": "目录清单已经变化，请重新预览并核对。",
+        "DIRECTORY_PREVIEW_USED": "该预览已用于一个批次，请查看原批次结果。",
+        "DIRECTORY_PREVIEW_NOT_FOUND": "目录预览不存在或已经释放。",
+        "DIRECTORY_NOT_CONFIRMED": "请先确认完整目录清单。",
+        "DIRECTORY_TRANSFER_FAILED": "目录传输未完成，请核对当前项和任务记录。",
+        "DIRECTORY_ENTRY_FAILED": "当前目录条目执行失败，剩余项目已暂停。",
+        "DIRECTORY_RUN_NOT_FOUND": "目录批次不存在或不属于此任务。",
+        "DIRECTORY_RUN_LIMIT": "目录批次记录已达到本次运行的容量上限。",
+        "DIRECTORY_PREVIEW_LIMIT": "目录清单超过容量限制，请缩小选择范围。",
+        "DIRECTORY_PREVIEW_EXPIRED": "目录预览已过期，请释放后重新生成。"
       },
       "allowedPrograms": "本次允许的程序（每行一个）",
       "operationProgress": "已完成 {{done}} / {{total}} 条命令",
@@ -4986,7 +4997,12 @@
         "list": "查看目录",
         "stat": "查看文件属性",
         "upload": "上传文件",
-        "download": "下载文件"
+        "download": "下载文件",
+        "directory": {
+          "preview": "预览目录传输",
+          "confirm": "确认目录清单",
+          "entry": "执行目录条目"
+        }
       }
     },
     "mcp": {
@@ -5764,6 +5780,79 @@
         "revoked": "已撤销",
         "consumed": "已使用"
       }
+    },
+    "directoryTask": {
+      "title": "目录传输",
+      "select": {
+        "upload": "选择上传目录",
+        "download": "选择下载目录"
+      },
+      "direction": {
+        "upload": "上传目录",
+        "download": "下载目录"
+      },
+      "grantCount": "已固定 {{count}} 项，排除 {{excluded}} 项",
+      "manifest": "目录清单",
+      "loading": "正在读取目录清单…",
+      "failed": "目录操作未完成，请检查任务记录、授权和连接状态。",
+      "summary": "共 {{entries}} 项 · {{files}} 个文件 · {{directories}} 个目录 · 排除 {{excluded}} 项 · {{totalBytes}} B",
+      "budget": "预览、确认和逐项执行预计最多需要 {{count}} 次操作授权。",
+      "blocked": "此条目无法执行，请检查路径、权限或规则。",
+      "kinds": {
+        "file": "文件",
+        "directory": "目录",
+        "excluded": "已排除"
+      },
+      "statuses": {
+        "new": "新建",
+        "directory": "可合并目录",
+        "conflict": "目标冲突",
+        "blocked": "不可执行"
+      },
+      "action": "处理方式",
+      "actionFor": "处理 {{name}}",
+      "choices": {
+        "create": "新建",
+        "merge": "合并目录",
+        "overwrite": "覆盖文件",
+        "skip": "跳过"
+      },
+      "rename": "目标名称",
+      "renameFor": "重命名 {{name}}",
+      "operationState": "任务操作",
+      "physicalResult": "文件系统结果",
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "{{from}}–{{to}} / {{total}} 项",
+      "reviewPage": "我已核对本页所有条目、目标路径和处理方式",
+      "hint": "目录也遵循本任务授权和逐项审批。随时使用上方“人工接管”停止后续自动操作。",
+      "chooseFirst": "先在本地授权区域选择上传或下载目录。",
+      "localGrant": "已授权的本地目录",
+      "remoteParent": "远端目标父目录",
+      "remoteSource": "远端来源目录",
+      "allowOverwrite": "允许在本次预览中选择覆盖冲突文件（同时需要本地授权）",
+      "authorizeFirst": "先在任务授权中配置远端文件范围，再生成预览。",
+      "preview": "生成目录预览",
+      "previews": "已有目录预览",
+      "runStates": {
+        "running": "正在传输",
+        "awaiting-approval": "等待逐项确认",
+        "paused-human": "已暂停，人工接管中",
+        "paused-error": "已暂停，需要处理问题",
+        "completed": "目录批次已完成",
+        "completed-with-errors": "批次已结束，部分项目未成功",
+        "cancelled": "目录批次已取消"
+      },
+      "progress": "已处理 {{done}} / {{total}} 项",
+      "takeoverHint": "在任务授权区域核对结果并交还控制权后，原批次继续剩余项目。",
+      "applyRenames": "应用改名并重新预览",
+      "run": "提交目录批次",
+      "release": "释放此预览",
+      "finish": "完成任务",
+      "createHint": "创建目录任务后，选择本地目录，并授权远端路径范围。预览清单后再执行，不需要填写命令。",
+      "operationPages": "任务操作记录分页",
+      "latest": "前往最新记录",
+      "previewBinding": "此预览绑定的本地目录"
     }
   },
   "fileDocument": {

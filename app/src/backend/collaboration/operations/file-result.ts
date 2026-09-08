@@ -1,3 +1,4 @@
+import { isDirectoryAction } from "../../../types/directory-transfer.js";
 import { posix } from "node:path";
 import { z } from "zod";
 import type {
@@ -74,6 +75,32 @@ const schema = z
       .optional(),
     result: z
       .object({
+        directoryTransfer: z
+          .object({
+            previewId: z.string().uuid(),
+            revision: z.string().uuid(),
+            direction: z.enum(["upload", "download"]),
+            phase: z.enum(["preview", "confirmed", "entry"]),
+            entries: z.number().int().min(0).max(4096),
+            files: z.number().int().min(0).max(4096),
+            directories: z.number().int().min(0).max(4096),
+            excluded: z.number().int().min(0).max(4096),
+            totalBytes: z.number().int().nonnegative().safe(),
+            entryId: z.string().min(1).max(128).optional(),
+            entryKind: z.enum(["file", "directory"]).optional(),
+            entryState: z
+              .enum([
+                "created",
+                "merged",
+                "skipped",
+                "succeeded",
+                "failed",
+                "unknown",
+              ])
+              .optional(),
+          })
+          .strict()
+          .optional(),
         transfer: z
           .object({
             direction: z.enum(["upload", "download"]),
@@ -135,6 +162,59 @@ export function validateFileResult(
     directory = resultView?.directory,
     meta = resultView?.metadata;
   const transfer = resultView?.transfer;
+  const tree = resultView?.directoryTransfer;
+  if (tree) {
+    if (
+      !action ||
+      !isDirectoryAction(action) ||
+      tree.direction !== action.direction ||
+      tree.files + tree.directories + tree.excluded !== tree.entries ||
+      directory ||
+      meta ||
+      resultView?.document ||
+      resultView?.contentAvailable !== undefined
+    )
+      throw Error("INVALID_FILE_RESULT");
+    if (
+      action.type !== "file.directory.preview" &&
+      (tree.previewId !== action.previewId || tree.revision !== action.revision)
+    )
+      throw Error("INVALID_FILE_RESULT");
+    if (action.type === "file.directory.entry") {
+      if (
+        tree.phase !== "entry" ||
+        tree.entryId !== action.entryId ||
+        !tree.entryKind ||
+        !tree.entryState
+      )
+        throw Error("INVALID_FILE_RESULT");
+      if (
+        data.status === "succeeded" &&
+        (tree.entryKind === "file"
+          ? !transfer || tree.entryState !== "succeeded"
+          : !["created", "merged", "skipped"].includes(tree.entryState) ||
+            !!transfer)
+      )
+        throw Error("INVALID_FILE_RESULT");
+    } else if (
+      tree.phase !==
+        (action.type === "file.directory.preview" ? "preview" : "confirmed") ||
+      tree.entryId ||
+      tree.entryKind ||
+      tree.entryState ||
+      transfer ||
+      resultView?.bytes !== undefined ||
+      resultView?.temporaryPath
+    )
+      throw Error("INVALID_FILE_RESULT");
+  }
+  if (
+    action &&
+    isDirectoryAction(action) &&
+    data.status === "succeeded" &&
+    !tree
+  )
+    throw Error("INVALID_FILE_RESULT");
   if (transfer) {
     if (
       directory ||
@@ -148,7 +228,12 @@ export function validateFileResult(
       throw Error("INVALID_FILE_RESULT");
     if (
       action &&
-      (action.type !== "file." + transfer.direction ||
+      ((action.type !== "file." + transfer.direction &&
+        !(
+          action.type === "file.directory.entry" &&
+          tree?.entryKind === "file" &&
+          action.direction === transfer.direction
+        )) ||
         !("localGrantId" in action) ||
         action.localGrantId !== transfer.localGrantId ||
         action.localVersion !== transfer.localVersion)

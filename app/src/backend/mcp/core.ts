@@ -1,3 +1,4 @@
+import type { DirectoryAutomation } from "../collaboration/files/directories.js";
 import type { TransferAutomation } from "../collaboration/files/transfers.js";
 import type { FileAutomation } from "../collaboration/files/automation.js";
 import {
@@ -14,6 +15,7 @@ import type {
 import { redact } from "../privacy/redaction.js";
 import type { WorkflowAutomationPort } from "../collaboration/workflows/library.js";
 export interface McpCorePorts {
+  directories?: DirectoryAutomation;
   files?: FileAutomation;
   transfers?: TransferAutomation;
   workflows?: WorkflowAutomationPort;
@@ -204,6 +206,49 @@ export class McpCore {
           "write",
         );
       }
+      case "directories.preview": {
+        const p = coreInputSchemas[method].parse(input);
+        if (!this.ports.directories) throw Error("FILE_DIRECTORY_UNAVAILABLE");
+        const { taskId, requestId, ...data } = p;
+        return this.ports.directories.preview(
+          identity,
+          taskId,
+          { type: "file.directory.preview", ...data },
+          requestId,
+        );
+      }
+      case "directories.page": {
+        const p = coreInputSchemas[method].parse(input);
+        if (!this.ports.directories) throw Error("FILE_DIRECTORY_UNAVAILABLE");
+        return this.ports.directories.page(
+          identity,
+          p.taskId,
+          p.previewId,
+          p.offset,
+        );
+      }
+      case "directories.run": {
+        const p = coreInputSchemas[method].parse(input);
+        if (!this.ports.directories) throw Error("FILE_DIRECTORY_UNAVAILABLE");
+        return this.ports.directories.run(
+          identity,
+          p.taskId,
+          p.previewId,
+          p.revision,
+          p.choices,
+          p.requestId,
+        );
+      }
+      case "directories.state": {
+        const p = coreInputSchemas[method].parse(input);
+        if (!this.ports.directories) throw Error("FILE_DIRECTORY_UNAVAILABLE");
+        return this.ports.directories.get(identity, p.taskId, p.runId);
+      }
+      case "directories.release": {
+        const p = coreInputSchemas[method].parse(input);
+        if (!this.ports.directories) throw Error("FILE_DIRECTORY_UNAVAILABLE");
+        return this.ports.directories.release(identity, p.taskId, p.previewId);
+      }
       case "workflows.list": {
         const p = coreInputSchemas[method].parse(input);
         if (!this.ports.workflows) throw new Error("WORKFLOW_UNAVAILABLE");
@@ -263,6 +308,9 @@ export class McpCore {
             "cooperative-approval",
             "scoped-automatic",
             "human-takeover",
+            ...(this.ports.directories && this.ports.transfers?.available()
+              ? ["directory-previews", "per-entry-directory-transfers"]
+              : []),
             ...(this.ports.transfers?.available()
               ? [
                   "authorized-local-files",

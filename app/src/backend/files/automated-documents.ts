@@ -497,6 +497,8 @@ export class AutomatedDocuments {
                 };
               }
               this.prune();
+              if (action.type !== "file.write")
+                throw Error("FILE_EXECUTOR_UNAVAILABLE");
               const p = this.proposals.get(action.proposalId);
               if (
                 !p ||

@@ -551,3 +551,82 @@ it("preserves unknown status and revokes control for malformed command frames", 
   expect(f.control.snapshot().controller.kind).toBe("human");
   expect(f.writes).toEqual(["command"]);
 });
+
+it("allows directory records past the ordinary command cap while keeping that cap intact", async () => {
+  const f = fixture();
+  f.grant(5000);
+  const directory = {
+    type: "file.directory.preview" as const,
+    direction: "upload" as const,
+    path: "/srv/app",
+    localGrantId: "00000000-0000-4000-8000-000000000001",
+    localVersion: "00000000-0000-4000-8000-000000000002",
+    overwrite: false,
+  };
+  try {
+    for (let i = 0; i < 513; i++)
+      await f.gateway.propose(f.context("directory-" + i), directory);
+    for (let i = 0; i < 512; i++)
+      await f.gateway.propose(f.context("command-" + i), action());
+    await expect(
+      f.gateway.propose(f.context("command-over-limit"), action()),
+    ).rejects.toThrow("SESSION_OPERATION_LIMIT");
+    const extra = await f.gateway.propose(
+      f.context("directory-extra"),
+      directory,
+    );
+    expect(
+      (await f.gateway.propose(f.context("directory-extra"), directory)).id,
+    ).toBe(extra.id);
+    expect(f.writes).toEqual([]);
+  } finally {
+    f.control.close();
+  }
+});
+it("bounds both individual and cumulative directory manifests without consuming command slots", async () => {
+  const f = fixture();
+  const directory = {
+    type: "file.directory.preview" as const,
+    direction: "upload" as const,
+    path: "/srv/app",
+    localGrantId: "00000000-0000-4000-8000-000000000001",
+    localVersion: "00000000-0000-4000-8000-000000000002",
+    overwrite: false,
+  };
+  try {
+    await expect(
+      f.gateway.propose(f.context("too-large"), {
+        ...directory,
+        renames: Array.from({ length: 4096 }, (_, i) => ({
+          relativePath: "file-" + i,
+          name: "a".repeat(255),
+        })),
+      }),
+    ).rejects.toThrow("SESSION_OPERATION_LIMIT");
+    const manifest = {
+      ...directory,
+      renames: Array.from({ length: 1024 }, (_, i) => ({
+        relativePath: "file-" + i,
+        name: "a".repeat(200),
+      })),
+    };
+    let rejected = false;
+    for (let i = 0; i < 100; i++) {
+      try {
+        await f.gateway.propose(f.context("manifest-" + i), manifest);
+      } catch (e) {
+        expect((e as Error).message).toBe("SESSION_OPERATION_LIMIT");
+        rejected = true;
+        break;
+      }
+    }
+    expect(rejected).toBe(true);
+    expect(
+      (await f.gateway.propose(f.context("ordinary-after-manifests"), action()))
+        .status,
+    ).toBe("proposed");
+    expect(f.writes).toEqual([]);
+  } finally {
+    f.control.close();
+  }
+});

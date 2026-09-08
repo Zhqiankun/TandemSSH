@@ -1,3 +1,6 @@
+import { DirectoryAutomation } from "../collaboration/files/directories";
+import { DirectoryTransfers } from "../files/directory-transfers";
+import type { AutomatedTransferPorts } from "../files/automated-transfers";
 import { WorkflowLibrary } from "../collaboration/workflows/library";
 import type { CommandPolicySnapshot } from "../../types/collaboration-operations";
 import fs from "node:fs/promises";
@@ -70,7 +73,13 @@ export async function transferToolsFixture() {
             control,
             files: {
               prepare: (...args) =>
-                transfers.executor(userId, sessionId).prepare(...args),
+                directoryTransfers
+                  .executor(
+                    userId,
+                    sessionId,
+                    transfers.executor(userId, sessionId),
+                  )
+                  .prepare(...args),
             },
             executor: {
               prepareContext: () => ({
@@ -116,7 +125,7 @@ export async function transferToolsFixture() {
   });
   const windowToken = randomUUID();
   grants.bindWindow(windowToken);
-  const transfers = new AutomatedTransfers({
+  const transferPorts: AutomatedTransferPorts = {
     local: grants,
     locks: new FilePathLocks(),
     audit: async (_ctx, type, data) => {
@@ -133,7 +142,9 @@ export async function transferToolsFixture() {
       close: () => {},
       beginWrite: () => () => {},
     }),
-  });
+  };
+  const transfers = new AutomatedTransfers(transferPorts);
+  const directoryTransfers = new DirectoryTransfers(grants, transferPorts);
   runtime.connectClient(principal.connectionId);
   const automation = new TransferAutomation(runtime, grants, transfers);
   const workflowStore = new Map<string, string>();
@@ -150,7 +161,12 @@ export async function transferToolsFixture() {
     },
     tasks: runtime,
   });
+  const directoryAutomation = new DirectoryAutomation(
+    runtime,
+    directoryTransfers,
+  );
   const core = new McpCore({
+    directories: directoryAutomation,
     workflows,
     transfers: automation,
     tasks: runtime,
@@ -194,6 +210,8 @@ export async function transferToolsFixture() {
     });
   const close = async () => {
     control.close();
+    directoryAutomation.dispose();
+    directoryTransfers.dispose();
     transfers.dispose();
     await grants.dispose();
     await remote.close();
@@ -207,6 +225,9 @@ export async function transferToolsFixture() {
   };
   return {
     remote,
+    directoryTransfers,
+    directoryAutomation,
+    windowToken,
     workflows,
     policy,
     folder,

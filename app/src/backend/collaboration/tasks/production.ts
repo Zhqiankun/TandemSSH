@@ -1,3 +1,4 @@
+import { directoryTransfers } from "../../files/directory-transfer-production.js";
 import { automatedTransfers } from "../../files/automated-transfer-production.js";
 import {
   bindLocalTaskContext,
@@ -97,10 +98,14 @@ export const taskRuntime = new TaskRuntime({
         ];
       },
       control: session.control,
-      files: automatedTransfers.executor(
+      files: directoryTransfers.executor(
         session.userId,
         session.id,
-        automatedDocuments.executor(session.userId, session.id),
+        automatedTransfers.executor(
+          session.userId,
+          session.id,
+          automatedDocuments.executor(session.userId, session.id),
+        ),
       ),
       executor: new PtyCommandExecutor(
         () => sessionManager.getSession(id)?.sshStream ?? null,

@@ -285,9 +285,14 @@ describe.runIf(process.platform === "win32" && fs.existsSync(entry))(
       expect(JSON.stringify(output)).toContain("同舟 MCP 已执行");
       expect(JSON.stringify(output)).not.toContain("do-not-export");
       expect(writes).toEqual(["context", "printf"]);
-      expect(tools.tools).toHaveLength(29);
+      expect(tools.tools).toHaveLength(34);
       expect(tools.tools.map((tool) => tool.name)).toEqual(
         expect.arrayContaining([
+          "preview_directory_transfer",
+          "get_directory_transfer",
+          "run_directory_transfer",
+          "get_directory_run",
+          "release_directory_transfer",
           "list_directory",
           "stat_file",
           "read_file",

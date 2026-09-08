@@ -1,6 +1,7 @@
 import {
   fileAutomation,
   transferAutomation,
+  directoryAutomation,
 } from "../collaboration/files/production.js";
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -67,6 +68,7 @@ export const desktopSessionRequests = new DesktopSessionRequests({
 const core = new McpCore({
   files: fileAutomation,
   transfers: transferAutomation,
+  directories: directoryAutomation,
   tasks: taskRuntime,
   workflows,
   async hosts(principal) {

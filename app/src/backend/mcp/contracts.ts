@@ -1,3 +1,8 @@
+import {
+  directoryPreviewSchema,
+  directoryRunSchema,
+  directoryPageSchema,
+} from "../files/directory-transfer-schema.js";
 import { fileBindingsSchema } from "../collaboration/tasks/plan.js";
 import {
   transferRequestSchema,
@@ -15,6 +20,15 @@ import { z } from "zod";
 const id = z.string().uuid(),
   requestId = z.string().min(1).max(128);
 export const coreInputSchemas = {
+  "directories.preview": directoryPreviewSchema
+    .extend({ taskId: id, requestId })
+    .strict(),
+  "directories.page": directoryPageSchema.extend({ taskId: id }).strict(),
+  "directories.run": directoryRunSchema
+    .extend({ taskId: id, requestId })
+    .strict(),
+  "directories.state": z.object({ taskId: id, runId: id }).strict(),
+  "directories.release": z.object({ taskId: id, previewId: id }).strict(),
   "transfers.local": z.object({ taskId: id }).strict(),
   "transfers.upload": transferRequestSchema
     .extend({ taskId: id, requestId })

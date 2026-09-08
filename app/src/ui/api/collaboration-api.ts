@@ -52,7 +52,7 @@ export const collaborationApi = {
     requestId: string;
     title: string;
     mode: TaskMode;
-    commands: TaskCommand[];
+    commands?: TaskCommand[];
   }) {
     return (await authApi.post<TaskView>("/tandem/tasks", input)).data;
   },
@@ -81,6 +81,10 @@ export const collaborationApi = {
         { signal },
       )
     ).data;
+  },
+  async finish(id: string) {
+    return (await authApi.post<TaskView>("/tandem/tasks/" + id + "/finish", {}))
+      .data;
   },
   async cancel(id: string) {
     return (await authApi.post<TaskView>("/tandem/tasks/" + id + "/cancel"))
