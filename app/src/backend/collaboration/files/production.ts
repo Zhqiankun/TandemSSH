@@ -1,3 +1,4 @@
+import { releaseTaskFileResources } from "./task-resources.js";
 import { DirectoryAutomation } from "./directories.js";
 import { directoryTransfers } from "../../files/directory-transfer-production.js";
 import { TransferAutomation } from "./transfers.js";
@@ -21,3 +22,22 @@ export const directoryAutomation = new DirectoryAutomation(
   taskRuntime,
   directoryTransfers,
 );
+
+export function releaseTaskFiles(userId: string, taskId: string) {
+  return releaseTaskFileResources(
+    {
+      context: (user, task) =>
+        taskRuntime.fileObservationContext(
+          { kind: "human", userId: user },
+          task,
+        ),
+      directories: directoryAutomation,
+      directoryTransfers,
+      transfers: automatedTransfers,
+      documents: automatedDocuments,
+      local: localFileGrants,
+    },
+    userId,
+    taskId,
+  );
+}

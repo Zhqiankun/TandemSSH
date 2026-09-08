@@ -80,6 +80,28 @@ export function useTaskWorkbench(sessionId: string) {
       if (alive.current) setBusy(false);
     }
   };
+  const archive = async (id: string) => {
+    const scope = errorScope.current;
+    setBusy(true);
+    setError(undefined);
+    try {
+      await collaborationApi.archive(id);
+      if (alive.current)
+        setSnapshot((previous) =>
+          previous
+            ? { ...previous, tasks: previous.tasks.filter((t) => t.id !== id) }
+            : previous,
+        );
+      await refresh();
+      return true;
+    } catch (error) {
+      if (alive.current && scope === errorScope.current)
+        setError(collaborationErrorCode(error));
+      return false;
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  };
   // Takeover stays available while an authorization or command request is pending.
   const takeover = async () => {
     if (takingOver.current) return;
@@ -103,6 +125,7 @@ export function useTaskWorkbench(sessionId: string) {
     error: error ?? connectionError,
     busy,
     run,
+    archive,
     takeover,
     takeoverPending,
   };

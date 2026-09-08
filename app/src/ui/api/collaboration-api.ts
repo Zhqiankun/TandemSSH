@@ -9,6 +9,7 @@ import type {
   TaskCommand,
   TaskMode,
   TaskView,
+  TaskOperation,
 } from "@/types/collaboration-task";
 export interface CollaborationSession {
   id: string;
@@ -28,7 +29,7 @@ export const collaborationApi = {
   async snapshot(sessionId: string, signal?: AbortSignal) {
     const [tasks, sessions, policy, agents] = await Promise.all([
       authApi.get<{ tasks: TaskView[] }>("/tandem/tasks", {
-        params: { sessionId },
+        params: { sessionId, operationLimit: 0 },
         signal,
       }),
       authApi.get<{ sessions: CollaborationSession[] }>("/tandem/sessions", {
@@ -47,6 +48,25 @@ export const collaborationApi = {
       policy: policy.data,
     };
   },
+  async taskPage(id: string, operationOffset?: number, signal?: AbortSignal) {
+    return (
+      await authApi.get<TaskView>("/tandem/tasks/" + encodeURIComponent(id), {
+        params: { operationLimit: 50, operationOffset },
+        signal,
+      })
+    ).data;
+  },
+  async operationDetail(taskId: string, id: string, signal?: AbortSignal) {
+    return (
+      await authApi.get<TaskOperation>(
+        "/tandem/tasks/" +
+          encodeURIComponent(taskId) +
+          "/operations/" +
+          encodeURIComponent(id),
+        { signal },
+      )
+    ).data;
+  },
   async create(input: {
     sessionId: string;
     requestId: string;
@@ -58,7 +78,11 @@ export const collaborationApi = {
   },
   async authorize(id: string, input: TaskAuthorization) {
     return (
-      await authApi.post<TaskView>("/tandem/tasks/" + id + "/authorize", input)
+      await authApi.post<TaskView>(
+        "/tandem/tasks/" + id + "/authorize",
+        input,
+        { params: { operationLimit: 50 } },
+      )
     ).data;
   },
   async approve(
@@ -71,7 +95,9 @@ export const collaborationApi = {
     },
   ) {
     return (
-      await authApi.post<TaskView>("/tandem/tasks/" + id + "/approve", input)
+      await authApi.post<TaskView>("/tandem/tasks/" + id + "/approve", input, {
+        params: { operationLimit: 50 },
+      })
     ).data;
   },
   async fileReview(taskId: string, operationId: string, signal?: AbortSignal) {
@@ -82,13 +108,31 @@ export const collaborationApi = {
       )
     ).data;
   },
+  async archive(id: string) {
+    return (
+      await authApi.post<{ id: string; archived: boolean }>(
+        "/tandem/tasks/" + encodeURIComponent(id) + "/archive",
+        {},
+      )
+    ).data;
+  },
   async finish(id: string) {
-    return (await authApi.post<TaskView>("/tandem/tasks/" + id + "/finish", {}))
-      .data;
+    return (
+      await authApi.post<TaskView>(
+        "/tandem/tasks/" + id + "/finish",
+        {},
+        { params: { operationLimit: 50 } },
+      )
+    ).data;
   },
   async cancel(id: string) {
-    return (await authApi.post<TaskView>("/tandem/tasks/" + id + "/cancel"))
-      .data;
+    return (
+      await authApi.post<TaskView>(
+        "/tandem/tasks/" + id + "/cancel",
+        {},
+        { params: { operationLimit: 50 } },
+      )
+    ).data;
   },
   async takeover(sessionId: string) {
     await authApi.post("/tandem/sessions/" + sessionId + "/takeover");

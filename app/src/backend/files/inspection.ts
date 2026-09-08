@@ -42,6 +42,13 @@ const same = (a: RemoteFileStat, b: RemoteFileStat) =>
 const metadata = (s: RemoteFileStat) => ({ ...s, mode: s.mode & 0o7777 });
 export class FileInspectionStore {
   private readonly snapshots = new Map<string, Snapshot>();
+  forgetTask(context: FileTaskContext) {
+    const prefix =
+      JSON.stringify([context.userId, context.taskId]).slice(0, -1) + ",";
+    for (const [id, s] of this.snapshots)
+      if (s.userId === context.userId && s.context.startsWith(prefix))
+        this.snapshots.delete(id);
+  }
   clear() {
     this.snapshots.clear();
   }

@@ -37,6 +37,7 @@ function fixture(
       record(type: string, data: unknown): Promise<void>;
     };
     hold?: boolean;
+    operationOutput?: string;
     contextResult?: Awaited<PreparedCommand["completion"]>;
     assertAvailable?: () => void;
     files?: FileExecutorPort;
@@ -92,7 +93,7 @@ function fixture(
               ? completion.promise
               : Promise.resolve({
                   exitCode: 0,
-                  output: action.program + " output",
+                  output: options.operationOutput ?? action.program + " output",
                   cwd: action.program === "cd" ? "/srv/app/child" : action.cwd,
                 }),
           dispose: () => {
@@ -711,3 +712,149 @@ it.each([
     }
   },
 );
+
+it("serves bounded live pages and fetches full output only on demand", async () => {
+  const f = fixture({
+    operationOutput: "x".repeat(20000),
+    policy: {
+      revision: 1,
+      sets: [
+        {
+          id: "allow",
+          scope: { type: "global" },
+          strictAllowlist: false,
+          rules: [
+            {
+              id: "pwd",
+              effect: "allow",
+              match: { kind: "program", program: "pwd" },
+              reason: "fixture",
+            },
+          ],
+        },
+      ],
+    },
+  });
+  const task = await f.create("automatic", [], mcp, "paged");
+  await f.authorize(task, {
+    maxOperations: 40,
+    matches: [{ kind: "program", program: "pwd" }],
+  });
+  for (let i = 0; i < 30; i++) {
+    await f.runtime.submit(
+      mcp,
+      task.id,
+      { program: "pwd", args: ["a".repeat(40000)] },
+      "page-" + i,
+    );
+    await vi.waitFor(
+      () => expect(f.runtime.state(mcp, task.id).state).toBe("ready"),
+      { interval: 1 },
+    );
+  }
+  const summary = f.runtime.list(human, undefined, { operationLimit: 0 })[0];
+  expect(summary.operations).toEqual([]);
+  expect(summary.commands).toEqual([]);
+  expect(summary.operationPage?.total).toBe(30);
+  expect(JSON.stringify(summary)).not.toContain("x".repeat(100));
+  const latest = f.runtime.get(human, task.id, { operationLimit: 50 });
+  expect(latest.operations.length).toBeLessThan(30);
+  expect(latest.operations.at(-1)?.id).toBe(summary.operationPage?.latest?.id);
+  expect(
+    Buffer.byteLength(JSON.stringify(latest.operations)),
+  ).toBeLessThanOrEqual(1024 * 1024);
+  expect(latest.operations[0].outputTruncated).toBe(true);
+  expect(
+    f.runtime.operationDetail(human, task.id, latest.operations[0].id).output,
+  ).toHaveLength(20000);
+  const ids: string[] = [];
+  let offset: number | undefined = 0;
+  while (offset !== undefined) {
+    const page = f.runtime.get(human, task.id, {
+      operationLimit: 50,
+      operationOffset: offset,
+    });
+    ids.push(...page.operations.map((o) => o.id));
+    offset = page.operationPage?.nextOffset ?? undefined;
+  }
+  expect(ids).toHaveLength(30);
+  expect(new Set(ids).size).toBe(30);
+  f.disconnect();
+});
+it("archives completed tasks, releases subscriptions and refuses to recreate their request IDs", async () => {
+  const recorded: Array<{ type: string; data: unknown }> = [],
+    f = fixture({
+      audit: {
+        append: async () => {},
+        record: async (type, data) => {
+          recorded.push({ type, data });
+        },
+      },
+    });
+  let listeners = 0;
+  const original = f.control.subscribe.bind(f.control);
+  vi.spyOn(f.control, "subscribe").mockImplementation((callback) => {
+    listeners++;
+    const off = original(callback);
+    let closed = false;
+    return () => {
+      if (!closed) {
+        closed = true;
+        listeners--;
+      }
+      off();
+    };
+  });
+  for (let i = 0; i < 130; i++) {
+    const task = await f.create("automatic", [], human, "archived-" + i);
+    f.runtime.cancel(human, task.id);
+    expect(f.runtime.get(human, task.id).canArchive).toBe(true);
+    await f.runtime.archive(human, task.id, async () => {});
+    expect(() => f.runtime.get(human, task.id)).toThrow("TASK_ARCHIVED");
+  }
+  expect(listeners).toBe(0);
+  expect(f.runtime.list(human)).toEqual([]);
+  await expect(f.create("automatic", [], human, "archived-0")).rejects.toThrow(
+    "TASK_ARCHIVED",
+  );
+  expect(recorded.filter((r) => r.type === "task.archived")).toHaveLength(130);
+  expect(f.writes).toEqual([]);
+  f.disconnect();
+});
+it("preserves unknown results and keeps a task when archival persistence fails", async () => {
+  const active = fixture({ hold: true }),
+    task = await active.create();
+  await active.authorize(task, { allowReviewedPlan: true });
+  await vi.waitFor(() =>
+    expect(active.runtime.get(human, task.id).state).toBe("running"),
+  );
+  const cleanup = vi.fn(async () => {});
+  await expect(active.runtime.archive(human, task.id, cleanup)).rejects.toThrow(
+    "TASK_NOT_COMPLETE",
+  );
+  active.runtime.cancel(human, task.id);
+  await expect(active.runtime.archive(human, task.id, cleanup)).rejects.toThrow(
+    "TASK_ARCHIVE_RECONCILIATION_REQUIRED",
+  );
+  expect(cleanup).not.toHaveBeenCalled();
+  active.disconnect();
+  let fail = true;
+  const f = fixture({
+      audit: {
+        append: async () => {},
+        record: async (type) => {
+          if (fail && type === "task.archived") throw Error("PERSIST_FAILED");
+        },
+      },
+    }),
+    ended = await f.create("automatic", [], human, "persist");
+  f.runtime.cancel(human, ended.id);
+  await expect(
+    f.runtime.archive(human, ended.id, async () => {}),
+  ).rejects.toThrow("PERSIST_FAILED");
+  expect(f.runtime.get(human, ended.id).state).toBe("cancelled");
+  fail = false;
+  await f.runtime.archive(human, ended.id, async () => {});
+  expect(f.runtime.list(human)).toEqual([]);
+  f.disconnect();
+});

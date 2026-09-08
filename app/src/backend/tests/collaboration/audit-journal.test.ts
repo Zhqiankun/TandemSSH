@@ -100,3 +100,113 @@ describe("persistent redacted audit journal", () => {
     expect((await fs.readdir(f.directory)).length).toBe(1);
   });
 });
+
+it("reads redacted history after restart and pages without duplicating events", async () => {
+  const f = await fixture();
+  for (let i = 0; i < 4; i++)
+    await f.journal.record("operation.result", {
+      context: { taskId: i === 1 ? "other" : "task" },
+      id: randomUUID(),
+      status: "succeeded",
+      action: { type: "terminal.command", program: "echo", args: [] },
+      output: "API_KEY=must-not-leak " + i,
+    });
+  const restarted = new AuditJournal(f.root, "user"),
+    first = await restarted.queryHistory({ taskId: "task", limit: 2 }),
+    second = await restarted.queryHistory({
+      taskId: "task",
+      limit: 2,
+      cursor: first.nextCursor!,
+    });
+  expect(first.items).toHaveLength(2);
+  expect(second.items).toHaveLength(1);
+  expect(new Set([...first.items, ...second.items].map((e) => e.id)).size).toBe(
+    3,
+  );
+  const detail = await restarted.historyDetail(first.items[0].detail);
+  expect(detail.text).not.toContain("must-not-leak");
+  expect(detail.text).toContain("[redacted]");
+  await expect(
+    new AuditJournal(f.root, "another-user").historyDetail(
+      first.items[0].detail,
+    ),
+  ).rejects.toThrow("HISTORY_CURSOR_INVALID");
+  await expect(
+    restarted.queryHistory({ taskId: "other", cursor: first.nextCursor! }),
+  ).rejects.toThrow("HISTORY_CURSOR_INVALID");
+});
+it("reports blank, corrupt and partial records without hanging or losing valid lines", async () => {
+  const f = await fixture();
+  await f.journal.record("task.created", { taskId: "task", title: "目录任务" });
+  const name = (await fs.readdir(f.directory))[0],
+    file = path.join(f.directory, name),
+    valid = await fs.readFile(file, "utf8");
+  await fs.writeFile(file, "\n{broken}\n" + valid + '{"unfinished":');
+  const history = await f.journal.queryHistory({});
+  expect(history.items).toHaveLength(1);
+  expect(history.items[0].title).toBe("目录任务");
+  expect(history.skipped).toBe(3);
+});
+it("bounds detail pages and tolerates a shard removed by retention", async () => {
+  const f = await fixture();
+  await f.journal.record("one", { text: "一".repeat(230000) });
+  await f.journal.record("two", { text: "二".repeat(230000) });
+  const first = await f.journal.queryHistory({ limit: 1 });
+  const detail = await f.journal.historyDetail(first.items[0].detail);
+  expect(detail.text.length).toBeLessThanOrEqual(16000);
+  expect(detail.nextOffset).not.toBeNull();
+  const token = JSON.parse(
+    Buffer.from(first.items[0].detail, "base64url").toString(),
+  );
+  await fs.unlink(path.join(f.directory, token.file));
+  const next = await f.journal.queryHistory({
+    cursor: first.nextCursor!,
+    limit: 1,
+  });
+  expect(next.items[0].type).toBe("one");
+  expect(next.skipped).toBeGreaterThan(0);
+});
+it("rejects arbitrary file cursors and a redirected journal directory", async () => {
+  const f = await fixture();
+  await f.journal.record("task.created", { taskId: "task" });
+  const page = await f.journal.queryHistory({});
+  const token = JSON.parse(
+    Buffer.from(page.items[0].detail, "base64url").toString(),
+  );
+  token.file = "../../user-notes.txt";
+  await expect(
+    f.journal.historyDetail(
+      Buffer.from(JSON.stringify(token)).toString("base64url"),
+    ),
+  ).rejects.toThrow();
+  const relocated = path.join(f.root, "relocated");
+  if (
+    !path.resolve(f.directory).startsWith(path.resolve(f.root) + path.sep) ||
+    path.dirname(relocated) !== f.root
+  )
+    throw Error("Move scope");
+  await fs.rename(f.directory, relocated);
+  await fs.symlink(
+    relocated,
+    f.directory,
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  await expect(f.journal.queryHistory({})).rejects.toThrow(
+    "AUDIT_PATH_INVALID",
+  );
+});
+
+it("does not expose expired records even before the next writer retention pass", async () => {
+  const f = await fixture();
+  await f.journal.record("task.created", { taskId: "task", title: "expired" });
+  const page = await f.journal.queryHistory({}),
+    files = await fs.readdir(f.directory),
+    file = path.join(f.directory, files[0]),
+    record = JSON.parse((await fs.readFile(file, "utf8")).trim());
+  record.at = Date.now() - 8 * 86400000;
+  await fs.writeFile(file, JSON.stringify(record) + "\n");
+  expect((await f.journal.queryHistory({})).items).toEqual([]);
+  await expect(f.journal.historyDetail(page.items[0].detail)).rejects.toThrow(
+    "HISTORY_RECORD_NOT_FOUND",
+  );
+});

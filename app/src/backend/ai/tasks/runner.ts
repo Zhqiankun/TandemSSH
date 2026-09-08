@@ -4,7 +4,7 @@ import type { TransferAutomation } from "../../collaboration/files/transfers.js"
 import { aiTransferSchemas, aiTransferTools } from "./transfer-tools.js";
 import type { FileAutomation } from "../../collaboration/files/automation.js";
 import { aiFileSchemas, aiFileTools } from "./file-tools.js";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
 import type {
   TaskRuntime,
@@ -93,6 +93,8 @@ export interface AiTaskPorts {
   audit(userId: string, type: string, data: unknown): Promise<void>;
 }
 interface Run {
+  creationKey: string;
+  finished?: boolean;
   view: AiTaskView;
   userId: string;
   actor: TaskActor;
@@ -117,6 +119,7 @@ const codeOf = (error: unknown) =>
  * executable tool enters the same task runtime used by workflows and MCP. */
 export class AiTaskCoordinator {
   private readonly runs = new Map<string, Run>();
+  private readonly archivedRequests = new Map<string, string>();
   private globalDisabled = false;
   private readonly disabledUsers = new Set<string>();
   private readonly requests = new Map<
@@ -136,12 +139,21 @@ export class AiTaskCoordinator {
     const frozen = structuredClone(input),
       key = JSON.stringify([userId, input.requestId]),
       fingerprint = JSON.stringify(frozen);
+    const archived = this.archivedRequests.get(key);
+    if (archived)
+      return Promise.reject(
+        Error(
+          archived === createHash("sha256").update(fingerprint).digest("hex")
+            ? "AI_TASK_ARCHIVED"
+            : "REQUEST_CONFLICT",
+        ),
+      );
     const previous = this.requests.get(key);
     if (previous)
       return previous.fingerprint === fingerprint
         ? previous.promise
         : Promise.reject(new Error("REQUEST_CONFLICT"));
-    if (this.requests.size >= 64)
+    if (this.requests.size >= 64 || this.archivedRequests.size >= 10000)
       return Promise.reject(new Error("AI_TASK_LIMIT"));
     const promise = this.initialize(userId, frozen).catch((error) => {
       this.requests.delete(key);
@@ -166,6 +178,7 @@ export class AiTaskCoordinator {
       source: "assistant",
     });
     const run: Run = {
+      creationKey: JSON.stringify([userId, input.requestId]),
       userId,
       actor,
       history: [],
@@ -218,6 +231,42 @@ export class AiTaskCoordinator {
     });
     void this.work(run);
     return { task, run: this.view(run) };
+  }
+  assertArchiveReady(userId: string, taskId: string) {
+    if (
+      [...this.runs.values()].some(
+        (r) => r.userId === userId && r.view.taskId === taskId && !r.finished,
+      )
+    )
+      throw Error("AI_TASK_BUSY");
+  }
+  async archiveTask(userId: string, taskId: string) {
+    this.assertArchiveReady(userId, taskId);
+    const runs = [...this.runs.values()].filter(
+      (r) => r.userId === userId && r.view.taskId === taskId,
+    );
+    if (runs.some((r) => !r.finished)) throw Error("AI_TASK_BUSY");
+    for (const run of runs) {
+      await this.ports.audit(userId, "agent.archived", {
+        taskId,
+        runId: run.view.id,
+        goal: run.view.goal,
+        phase: run.view.phase,
+        turns: run.view.turns,
+        summary: run.view.messages
+          .filter((m) => m.role === "assistant")
+          .at(-1)
+          ?.content.slice(0, 16000),
+      });
+      const request = this.requests.get(run.creationKey);
+      if (request)
+        this.archivedRequests.set(
+          run.creationKey,
+          createHash("sha256").update(request.fingerprint).digest("hex"),
+        );
+      this.requests.delete(run.creationKey);
+      this.runs.delete(run.view.id);
+    }
   }
   list(userId: string, sessionId?: string): AiTaskView[] {
     return [...this.runs.values()]
@@ -913,6 +962,8 @@ export class AiTaskCoordinator {
       if (!run.abort.signal.aborted) run.view.error = codeOf(error);
     } finally {
       run.closed?.();
+      run.closed = undefined;
+      run.finished = true;
       run.modelAbort?.abort();
       run.view.question = undefined;
       if (!run.view.phase.startsWith("completed"))

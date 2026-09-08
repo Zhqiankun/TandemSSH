@@ -137,6 +137,21 @@ export class AutomatedTransfers {
       throw Error("FILE_TRANSFER_CLEANUP_PENDING");
     this.records.delete(operationId);
   }
+  forgetTask(context: FileTaskContext) {
+    const ids = [...this.records]
+      .filter(([, r]) => sameTask(r.context, context))
+      .map(([id]) => id);
+    for (const id of ids) {
+      const r = this.records.get(id)!;
+      if (
+        r.running ||
+        r.view.state === "unknown" ||
+        r.view.result?.cleanupRequired
+      )
+        throw Error("FILE_TRANSFER_CLEANUP_PENDING");
+    }
+    for (const id of ids) this.records.delete(id);
+  }
   private reserve(
     context: TransferTaskContext,
     direction: "upload" | "download",

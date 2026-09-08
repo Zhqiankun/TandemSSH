@@ -154,6 +154,7 @@ const isFinal = (status: OperationStatus) =>
 /** Session-bound authority shared by AI, workflow and MCP adapters. Human-only
  * grant/approval methods must be exposed only by authenticated UI handlers. */
 export class OperationGateway {
+  private unsubscribe?: () => void;
   private ordinaryOperationCount = 0;
   private directoryActionBytes = 0;
   private readonly operations = new Map<string, StoredOperation>();
@@ -196,8 +197,18 @@ export class OperationGateway {
       }
       if (control.snapshot().closed) unsubscribe();
     });
+    this.unsubscribe = unsubscribe;
   }
 
+  dispose() {
+    this.unsubscribe?.();
+    this.unsubscribe = undefined;
+    for (const operation of this.operations.values())
+      operation.prepared?.dispose();
+    this.operations.clear();
+    this.requests.clear();
+    this.grants.clear();
+  }
   async propose(
     context: OperationContext,
     input: OperationAction,
@@ -284,6 +295,31 @@ export class OperationGateway {
     return structuredClone(view);
   }
 
+  canDiscard(id: string): boolean {
+    const op = this.required(id).view;
+    return (
+      ["succeeded", "failed", "cancelled-before-send"].includes(op.status) &&
+      !op.auditGap &&
+      !(op.status === "succeeded" && op.error) &&
+      !op.fileResult?.temporaryPath &&
+      !op.fileResult?.commitMayHaveOccurred &&
+      !op.fileResult?.transfer?.cleanupRequired
+    );
+  }
+  status(id: string): OperationView["status"] {
+    return this.required(id).view.status;
+  }
+  getSummary(
+    id: string,
+  ): Pick<OperationView, "id" | "status" | "error" | "auditGap"> {
+    const op = this.required(id).view;
+    return {
+      id: op.id,
+      status: op.status,
+      error: op.error,
+      auditGap: op.auditGap,
+    };
+  }
   get(id: string): OperationView {
     return structuredClone(this.required(id).view);
   }

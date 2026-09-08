@@ -1,3 +1,4 @@
+import { TaskHistoryButton } from "@/features/collaboration/TaskHistory";
 import { DesktopUpdateButton } from "@/updates/UpdateCenter";
 import { translateUiText } from "@/i18n/ui-text";
 import { useState, useRef, useCallback, useEffect } from "react";
@@ -157,6 +158,7 @@ function StatsBarCard({
           {versionText || "—"}
         </span>
         <DesktopUpdateButton />
+        <TaskHistoryButton />
         <VersionBadge
           status={versionStatus}
           releaseUrl={releaseUrl}

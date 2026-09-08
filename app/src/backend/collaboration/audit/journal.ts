@@ -1,3 +1,5 @@
+import { AuditHistoryReader } from "./history-reader.js";
+import type { AuditHistoryQuery } from "../../../types/task-history.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -7,6 +9,7 @@ import type { OperationAuditPort } from "../operations/gateway.js";
 /** One journal per OS workspace/user. Only this class owns its generated
  * shards; unrelated files are never removed during retention cleanup. */
 export class AuditJournal implements OperationAuditPort {
+  private readonly history: AuditHistoryReader;
   private queue: Promise<unknown> = Promise.resolve();
   private current?: { file: string; bytes: number; day: string };
   private readonly directory: string;
@@ -22,6 +25,19 @@ export class AuditJournal implements OperationAuditPort {
       "tandem-audit",
       createHash("sha256").update(userId).digest("hex").slice(0, 24),
     );
+    this.history = new AuditHistoryReader(
+      this.directory,
+      this.retentionMs,
+      this.maxBytes,
+    );
+  }
+  async queryHistory(query: AuditHistoryQuery) {
+    await this.queue;
+    return this.history.query(query);
+  }
+  async historyDetail(token: string, offset?: number) {
+    await this.queue;
+    return this.history.detail(token, offset);
   }
   append(event: Parameters<OperationAuditPort["append"]>[0]): Promise<void> {
     return this.record(event.type, event.operation);

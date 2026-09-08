@@ -34,6 +34,7 @@ export interface WorkflowReference {
   shellState: "explicit-cwd" | "stateful-shell";
 }
 export interface TaskWorkflowRun {
+  operationCount?: number;
   id: string;
   taskId: string;
   name: string;
@@ -57,6 +58,7 @@ export interface TaskCommand {
   cwd?: string;
 }
 export interface TaskOperation {
+  outputTruncated?: boolean;
   id: string;
   requestId?: string;
   digest: string;
@@ -76,7 +78,21 @@ export interface TaskOperation {
   workflowRunId?: string;
   reviewed?: { decision: "skip" | "retry"; at: number };
 }
+export interface TaskViewOptions {
+  operationLimit: number;
+  operationOffset?: number;
+}
+export interface TaskOperationPage {
+  offset: number;
+  total: number;
+  succeeded: number;
+  previousOffset: number | null;
+  nextOffset: number | null;
+  latest?: { id: string; status: string; error?: string; auditGap?: boolean };
+}
 export interface TaskView {
+  canArchive?: boolean;
+  operationPage?: TaskOperationPage;
   id: string;
   sessionId: string;
   hostId: number;

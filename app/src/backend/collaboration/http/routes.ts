@@ -1,3 +1,6 @@
+import { releaseTaskFiles } from "../files/production.js";
+import { aiTasks } from "../../ai/tasks/production.js";
+import { journalFor } from "../audit/production.js";
 import { directoryTaskRoutes } from "../files/directory-http.js";
 import { directoryAutomation } from "../files/production.js";
 import { fileBindingsSchema } from "../tasks/plan.js";
@@ -115,6 +118,58 @@ function route(
       });
   };
 }
+const pageOptions = (req: express.Request) => {
+  if (
+    req.query.operationLimit === undefined &&
+    req.query.operationOffset === undefined
+  )
+    return undefined;
+  return z
+    .object({
+      operationLimit: z.coerce.number().int().min(0).max(100),
+      operationOffset: z.coerce.number().int().nonnegative().optional(),
+    })
+    .parse({
+      operationLimit: req.query.operationLimit ?? 50,
+      operationOffset: req.query.operationOffset,
+    });
+};
+router.post(
+  "/history/query",
+  route((req) =>
+    journalFor(actor(req).userId).queryHistory(
+      z
+        .object({
+          cursor: z.string().max(2048).optional(),
+          taskId: z.string().min(1).max(128).optional(),
+          limit: z.number().int().min(1).max(50).optional(),
+        })
+        .strict()
+        .parse(req.body),
+    ),
+  ),
+);
+router.post(
+  "/history/detail",
+  route((req) => {
+    const input = z
+      .object({
+        token: z.string().max(2048),
+        offset: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(4 * 1024 * 1024)
+          .optional(),
+      })
+      .strict()
+      .parse(req.body);
+    return journalFor(actor(req).userId).historyDetail(
+      input.token,
+      input.offset,
+    );
+  }),
+);
 router.post(
   "/legacy/tasks",
   route((req) => {
@@ -145,6 +200,7 @@ router.get(
     tasks: taskRuntime.list(
       actor(req),
       typeof req.query.sessionId === "string" ? req.query.sessionId : undefined,
+      pageOptions(req),
     ),
   })),
 );
@@ -168,7 +224,19 @@ router.post(
 );
 router.get(
   "/tasks/:id",
-  route((req) => taskRuntime.get(actor(req), id.parse(req.params.id))),
+  route((req) =>
+    taskRuntime.get(actor(req), id.parse(req.params.id), pageOptions(req)),
+  ),
+);
+router.get(
+  "/tasks/:id/operations/:operationId",
+  route((req) =>
+    taskRuntime.operationDetail(
+      actor(req),
+      id.parse(req.params.id),
+      id.parse(req.params.operationId),
+    ),
+  ),
 );
 router.post(
   "/tasks/:id/authorize",
@@ -177,6 +245,7 @@ router.post(
       actor(req),
       id.parse(req.params.id),
       authorization.parse(req.body),
+      pageOptions(req),
     ),
   ),
 );
@@ -199,6 +268,7 @@ router.post(
       body.digest,
       body.policyRevision,
       body.fileReviewId,
+      pageOptions(req),
     );
   }),
 );
@@ -218,12 +288,33 @@ router.post(
     z.object({})
       .strict()
       .parse(req.body ?? {});
-    return taskRuntime.finish(actor(req), id.parse(req.params.id));
+    return taskRuntime.finish(
+      actor(req),
+      id.parse(req.params.id),
+      pageOptions(req),
+    );
+  }),
+);
+router.post(
+  "/tasks/:id/archive",
+  route((req) => {
+    z.object({})
+      .strict()
+      .parse(req.body ?? {});
+    const identity = actor(req),
+      taskId = id.parse(req.params.id);
+    return taskRuntime.archive(identity, taskId, async () => {
+      aiTasks.assertArchiveReady(identity.userId, taskId);
+      await releaseTaskFiles(identity.userId, taskId);
+      await aiTasks.archiveTask(identity.userId, taskId);
+    });
   }),
 );
 router.post(
   "/tasks/:id/cancel",
-  route((req) => taskRuntime.cancel(actor(req), id.parse(req.params.id))),
+  route((req) =>
+    taskRuntime.cancel(actor(req), id.parse(req.params.id), pageOptions(req)),
+  ),
 );
 router.post(
   "/sessions/:id/takeover",

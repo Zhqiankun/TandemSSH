@@ -1,3 +1,6 @@
+import { TaskHistoryButton } from "./TaskHistory";
+import { useTaskOperationPage } from "./use-task-operation-page";
+import { OperationOutput } from "./OperationOutput";
 import { isDirectoryAction } from "@/types/directory-transfer";
 import { TaskDirectoryTransfers } from "./TaskDirectoryTransfers";
 import { DirectoryTransferManifest } from "./DirectoryTransferManifest";
@@ -64,7 +67,6 @@ export function TaskPanel({
   const { t } = useTranslation();
   const work = useTaskWorkbench(sessionId);
   const [selected, setSelected] = useState<string>();
-  const [operationPage, setOperationPage] = useState<number | null>(null);
   const [directoryActive, setDirectoryActive] = useState<{
     taskId: string;
     active: boolean;
@@ -88,16 +90,12 @@ export function TaskPanel({
   const [mode, setMode] = useState<TaskMode>("collaborative");
   const [formError, setFormError] = useState("");
   const tasks = work.snapshot?.tasks ?? [];
-  const task = tasks.find((item) => item.id === selected) ?? tasks.at(-1);
-  const latestOperationPage = Math.max(
-    0,
-    Math.ceil((task?.operations.length ?? 0) / 50) - 1,
-  );
-  const operationOffset =
-    Math.min(operationPage ?? latestOperationPage, latestOperationPage) * 50;
-  useEffect(() => {
-    setOperationPage(null);
-  }, [task?.id]);
+  const selectedTask =
+    tasks.find((item) => item.id === selected) ?? tasks.at(-1);
+  const page = useTaskOperationPage(composing ? undefined : selectedTask),
+    task = page.task;
+  const operationOffset = task?.operationPage?.offset ?? 0,
+    operationTotal = task?.operationPage?.total ?? 0;
   const clearActionError = work.clearActionError;
   useEffect(() => {
     clearActionError();
@@ -357,10 +355,8 @@ export function TaskPanel({
                       total: task.stepCount,
                     })
                   : t("tandem.collaboration.operationProgress", {
-                      done: task.operations.filter(
-                        (op) => op.status === "succeeded",
-                      ).length,
-                      total: task.operations.length,
+                      done: task.operationPage?.succeeded ?? 0,
+                      total: operationTotal,
                     })}
               </span>
             </div>
@@ -406,9 +402,9 @@ export function TaskPanel({
                   setDirectoryActive({ taskId: task.id, active })
                 }
                 operationVersion={[
-                  task.operations.at(-1)?.id,
-                  task.operations.at(-1)?.status,
-                  task.operations.at(-1)?.auditGap,
+                  task.operationPage?.latest?.id,
+                  task.operationPage?.latest?.status,
+                  task.operationPage?.latest?.auditGap,
                   task.state,
                 ].join(":")}
                 ready={task.state === "ready"}
@@ -420,7 +416,7 @@ export function TaskPanel({
                 }}
               />
             )}
-            {resumable(task) && (
+            {resumable(task) && !page.loading && !page.error && (
               <TaskAuthorizationForm
                 key={
                   task.id +
@@ -437,6 +433,8 @@ export function TaskPanel({
                 }
                 disabled={
                   work.busy ||
+                  page.loading ||
+                  !!page.error ||
                   !session?.connected ||
                   ownsAutomation ||
                   (task.source === "assistant" &&
@@ -448,7 +446,19 @@ export function TaskPanel({
                 }
               />
             )}
-            {task.operations.length > 50 && (
+            {page.error && (
+              <p role="alert" className="tandem-task-error">
+                {t("tandem.collaboration.errors." + page.error, {
+                  defaultValue: t("tandem.history.failed"),
+                })}
+              </p>
+            )}
+            {page.loading && (
+              <p role="status" className="text-xs text-muted-foreground">
+                {t("tandem.history.loadingOperations")}
+              </p>
+            )}
+            {operationTotal > task.operations.length && (
               <nav
                 className="flex flex-wrap items-center gap-2 text-xs"
                 aria-label={t("tandem.directoryTask.operationPages")}
@@ -456,80 +466,84 @@ export function TaskPanel({
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={operationOffset === 0}
-                  onClick={() => setOperationPage(operationOffset / 50 - 1)}
+                  disabled={
+                    page.loading || task.operationPage?.previousOffset === null
+                  }
+                  onClick={() =>
+                    page.move(task.operationPage?.previousOffset ?? undefined)
+                  }
                 >
                   {t("tandem.directoryTask.previous")}
                 </Button>
                 <span>
                   {t("tandem.directoryTask.page", {
                     from: operationOffset + 1,
-                    to: Math.min(operationOffset + 50, task.operations.length),
-                    total: task.operations.length,
+                    to: operationOffset + task.operations.length,
+                    total: operationTotal,
                   })}
                 </span>
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={operationOffset / 50 >= latestOperationPage}
-                  onClick={() => setOperationPage(operationOffset / 50 + 1)}
+                  disabled={
+                    page.loading || task.operationPage?.nextOffset === null
+                  }
+                  onClick={() =>
+                    page.move(task.operationPage?.nextOffset ?? undefined)
+                  }
                 >
                   {t("tandem.directoryTask.next")}
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => setOperationPage(null)}
+                  onClick={() => page.move(undefined)}
                 >
                   {t("tandem.directoryTask.latest")}
                 </Button>
               </nav>
             )}
-            {task.operations
-              .slice(operationOffset, operationOffset + 50)
-              .map((op, index) => (
-                <OperationCard
-                  key={op.id}
-                  workflowName={
-                    task.workflowRuns?.find(
-                      (run) => run.id === op.workflowRunId,
-                    )?.name
-                  }
-                  taskId={task.id}
-                  operation={op}
-                  localGrant={
-                    localGrants?.taskId === task.id &&
-                    "localGrantId" in op.action
-                      ? localGrants.grants.find(
-                          (g) =>
-                            g.id ===
-                              (op.action as { localGrantId: string })
-                                .localGrantId &&
-                            g.version ===
-                              (op.action as { localVersion: string })
-                                .localVersion,
-                        )
-                      : undefined
-                  }
-                  index={operationOffset + index}
-                  canApprove={
-                    task.state === "awaiting-approval" &&
-                    op.status === "awaiting-approval" &&
-                    op.decision.outcome !== "deny"
-                  }
-                  disabled={work.busy}
-                  onApprove={(fileReviewId) =>
-                    void work.run(() =>
-                      collaborationApi.approve(task.id, {
-                        operationId: op.id,
-                        digest: op.digest,
-                        policyRevision: task.policyRevision,
-                        fileReviewId,
-                      }),
-                    )
-                  }
-                />
-              ))}
+            {task.operations.map((op, index) => (
+              <OperationCard
+                key={op.id}
+                workflowName={
+                  task.workflowRuns?.find((run) => run.id === op.workflowRunId)
+                    ?.name
+                }
+                taskId={task.id}
+                operation={op}
+                localGrant={
+                  localGrants?.taskId === task.id && "localGrantId" in op.action
+                    ? localGrants.grants.find(
+                        (g) =>
+                          g.id ===
+                            (op.action as { localGrantId: string })
+                              .localGrantId &&
+                          g.version ===
+                            (op.action as { localVersion: string })
+                              .localVersion,
+                      )
+                    : undefined
+                }
+                index={operationOffset + index}
+                canApprove={
+                  task.state === "awaiting-approval" &&
+                  op.status === "awaiting-approval" &&
+                  op.decision.outcome !== "deny"
+                }
+                disabled={work.busy || page.loading || !!page.error}
+                onApprove={(fileReviewId) =>
+                  void work.run(() =>
+                    collaborationApi.approve(task.id, {
+                      operationId: op.id,
+                      digest: op.digest,
+                      policyRevision: task.policyRevision,
+                      fileReviewId,
+                    }),
+                  )
+                }
+              />
+            ))}
             {task.stepCount === 0 && task.state === "ready" && (
               <Button
                 variant="outline"
@@ -544,6 +558,30 @@ export function TaskPanel({
               >
                 {t("tandem.directoryTask.finish")}
               </Button>
+            )}
+            {finished(task) && (
+              <section className="space-y-2 mt-3">
+                <p className="text-xs text-muted-foreground">
+                  {t("tandem.history.archiveHint")}
+                </p>
+                {task.canArchive === false && (
+                  <p className="text-xs text-amber-500">
+                    {t("tandem.history.archiveBlocked")}
+                  </p>
+                )}
+                <Button
+                  variant="outline"
+                  disabled={work.busy || task.canArchive === false}
+                  onClick={async () => {
+                    if (await work.archive(task.id)) {
+                      setSelected(undefined);
+                      setComposing(true);
+                    }
+                  }}
+                >
+                  {t("tandem.history.archive")}
+                </Button>
+              </section>
             )}
             {!finished(task) && (
               <Button
@@ -579,6 +617,7 @@ export function TaskPanel({
             taskId={task?.id}
           />
         </Suspense>
+        <TaskHistoryButton taskId={task?.id} />
         <McpSettings hostId={session?.hostId} />
       </footer>
     </aside>
@@ -707,12 +746,12 @@ function OperationCard({
           )}
         </div>
       )}
-      {op.output && (
-        <details open={index === 0}>
-          <summary>{t("tandem.collaboration.output")}</summary>
-          <pre>{op.output}</pre>
-        </details>
-      )}
+      <OperationOutput
+        key={op.id}
+        taskId={taskId}
+        operation={op}
+        open={index === 0}
+      />
       {op.action.type === "file.write" && (
         <FileOperationReview
           taskId={taskId}

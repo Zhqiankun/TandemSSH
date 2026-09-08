@@ -34,6 +34,8 @@ import type {
   TaskCommand,
   TaskMode,
   TaskView,
+  TaskViewOptions,
+  TaskOperation,
 } from "../../../types/collaboration-task.js";
 import { redact } from "../../privacy/redaction.js";
 import {
@@ -118,6 +120,8 @@ type RuntimeStep = TaskPlanStep & {
   directoryCursor?: DirectoryStepCursor;
 };
 interface RecordTask {
+  unsubscribe?: () => void;
+  archiving?: boolean;
   view: Omit<TaskView, "control" | "operations" | "policyRevision">;
   initialPlan: { steps: TaskPlanStep[]; workflow?: TaskView["workflow"] };
   workflowRuns: Map<string, TaskWorkflowRecord>;
@@ -143,6 +147,7 @@ interface RecordTask {
   workflowCwd?: string;
   operationIds: string[];
   operationRequests: Map<string, string>;
+  operationWorkflows: Map<string, string>;
   pendingOperations: Set<string>;
   steps: RuntimeStep[];
   fileBindings: TaskFileBindings;
@@ -165,6 +170,10 @@ const inactive = (state: string) =>
 
 export class TaskRuntime {
   private readonly tasks = new Map<string, RecordTask>();
+  private readonly archived = new Map<
+    string,
+    { userId: string; hostId: number; clientId?: string; agentRunId?: string }
+  >();
   private readonly requests = new Map<string, string>();
   private readonly pendingCreates = new Map<
     string,
@@ -188,6 +197,7 @@ export class TaskRuntime {
         task.view.state = "cancelled";
         this.closeDirectorySteps(task);
         task.view.error ??= "CLIENT_DISCONNECTED";
+        this.recordCancellation(task, "CLIENT_DISCONNECTED");
         task.probe?.dispose();
         this.returnControl(task);
       }
@@ -204,6 +214,17 @@ export class TaskRuntime {
   }
   private owned(actor: TaskActor, id: string): RecordTask {
     const task = this.tasks.get(id);
+    const archived = this.archived.get(id);
+    if (
+      !task &&
+      archived?.userId === actor.userId &&
+      (actor.kind === "human" ||
+        (actor.kind === "mcp" &&
+          archived.clientId === actor.clientId &&
+          actor.allowedHostIds.includes(archived.hostId)) ||
+        (actor.kind === "agent" && archived.agentRunId === actor.agentRunId))
+    )
+      throw Error("TASK_ARCHIVED");
     if (
       !task ||
       task.userId !== actor.userId ||
@@ -308,7 +329,8 @@ export class TaskRuntime {
         throw new Error("REQUEST_CONFLICT");
       return this.view(prior);
     }
-    if (this.tasks.size >= 128) throw new Error("TASK_CAPACITY_REACHED");
+    if (this.tasks.size >= 128 || this.requests.size >= 10000)
+      throw new Error("TASK_CAPACITY_REACHED");
     const policy = await this.ports.policy(actor.userId),
       audit = this.ports.audit(actor.userId);
     const plan = validateTaskPlan(input.plan ?? input.commands ?? []);
@@ -332,6 +354,7 @@ export class TaskRuntime {
       gateway: undefined as never,
       operationIds: [],
       operationRequests: new Map(),
+      operationWorkflows: new Map(),
       pendingOperations: new Set(),
       steps: structuredClone(plan),
       fileBindings: {},
@@ -364,6 +387,10 @@ export class TaskRuntime {
       },
     };
     await audit.record("task.created", {
+      taskId: task.view.id,
+      hostId: task.view.hostId,
+      hostName: task.view.hostName,
+      createdAt: task.view.createdAt,
       id: task.view.id,
       sessionId: session.id,
       title: input.title,
@@ -412,6 +439,7 @@ export class TaskRuntime {
         unsubscribe();
       }
     });
+    task.unsubscribe = unsubscribe;
     this.tasks.set(task.view.id, task);
     this.requests.set(key, task.view.id);
     if (task.clientId)
@@ -570,11 +598,18 @@ export class TaskRuntime {
       task.attachingWorkflow = false;
     }
   }
-  private workflowSummary(task: RecordTask, id: string): TaskWorkflowRun {
+  private workflowSummary(
+    task: RecordTask,
+    id: string,
+    compact = false,
+  ): TaskWorkflowRun {
     const run = task.workflowRuns.get(id);
     if (!run) throw new Error("WORKFLOW_RUN_NOT_FOUND");
     return structuredClone({
       ...run.summary,
+      ...(compact
+        ? { operationIds: [], operationCount: run.summary.operationIds.length }
+        : {}),
       ...(task.activeWorkflowRunId === id
         ? {
             state: task.view.state,
@@ -596,7 +631,11 @@ export class TaskRuntime {
     };
   }
 
-  list(actor: TaskActor, sessionId?: string): TaskView[] {
+  list(
+    actor: TaskActor,
+    sessionId?: string,
+    options?: TaskViewOptions,
+  ): TaskView[] {
     return [...this.tasks.values()]
       .filter(
         (task) =>
@@ -608,10 +647,10 @@ export class TaskRuntime {
               : task.clientId === actor.clientId &&
                 actor.allowedHostIds.includes(task.view.hostId))),
       )
-      .map((task) => this.view(task));
+      .map((task) => this.view(task, options));
   }
-  get(actor: TaskActor, taskId: string): TaskView {
-    return this.view(this.owned(actor, taskId));
+  get(actor: TaskActor, taskId: string, options?: TaskViewOptions): TaskView {
+    return this.view(this.owned(actor, taskId), options);
   }
 
   state(actor: TaskActor, taskId: string, includeMatches = true) {
@@ -701,6 +740,7 @@ export class TaskRuntime {
     actor: TaskActor,
     taskId: string,
     scope: TaskAuthorization,
+    viewOptions?: TaskViewOptions,
   ): Promise<TaskView> {
     this.human(actor);
     if (
@@ -726,7 +766,12 @@ export class TaskRuntime {
       throw new Error("INVALID_TASK_GRANT");
     this.authorizing.add(taskId);
     try {
-      return await this.authorizeTask(actor, taskId, structuredClone(scope));
+      return await this.authorizeTask(
+        actor,
+        taskId,
+        structuredClone(scope),
+        viewOptions,
+      );
     } finally {
       this.authorizing.delete(taskId);
     }
@@ -736,6 +781,7 @@ export class TaskRuntime {
     actor: TaskActor,
     taskId: string,
     scope: TaskAuthorization,
+    viewOptions?: TaskViewOptions,
   ): Promise<TaskView> {
     this.human(actor);
     const task = this.owned(actor, taskId);
@@ -919,7 +965,7 @@ export class TaskRuntime {
       task.view.state = "ready";
       this.progress(task);
       void this.pump(task, version);
-      return this.view(task);
+      return this.view(task, viewOptions);
     } catch (error) {
       try {
         task.probe?.dispose();
@@ -1208,6 +1254,7 @@ export class TaskRuntime {
       const run = task.workflowRuns.get(task.activeWorkflowRunId)!;
       if (!run.summary.operationIds.includes(op.id))
         run.summary.operationIds.push(op.id);
+      task.operationWorkflows.set(op.id, task.activeWorkflowRunId);
     }
     return op;
   }
@@ -1468,6 +1515,7 @@ export class TaskRuntime {
     digest: string,
     revision: number,
     fileReviewId?: string,
+    viewOptions?: TaskViewOptions,
   ): Promise<TaskView> {
     this.human(actor);
     const task = this.owned(actor, taskId);
@@ -1538,29 +1586,39 @@ export class TaskRuntime {
         if (version === task.generation) this.pause(task, error.message);
       });
     }
-    return this.view(task);
+    return this.view(task, viewOptions);
   }
   takeover(actor: TaskActor, sessionId: string): void {
     this.human(actor);
     this.sessionFor(actor, sessionId).control.takeover();
   }
-  cancel(actor: TaskActor, taskId: string): TaskView {
+  cancel(
+    actor: TaskActor,
+    taskId: string,
+    viewOptions?: TaskViewOptions,
+  ): TaskView {
     const task = this.owned(actor, taskId);
+    if (task.archiving) throw Error("TASK_ARCHIVE_IN_PROGRESS");
     task.generation++;
     task.view.state = "cancelled";
     this.closeDirectorySteps(task);
+    this.recordCancellation(task, "USER_CANCELLED");
     if (task.activeWorkflowRunId)
       task.workflowRuns.get(task.activeWorkflowRunId)!.summary.endedAt =
         Date.now();
     this.notify(task);
     task.probe?.dispose();
     this.returnControl(task);
-    return this.view(task);
+    return this.view(task, viewOptions);
   }
-  async finish(actor: TaskActor, taskId: string): Promise<TaskView> {
+  async finish(
+    actor: TaskActor,
+    taskId: string,
+    viewOptions?: TaskViewOptions,
+  ): Promise<TaskView> {
     const task = this.owned(actor, taskId);
     if (["completed", "completed-with-errors"].includes(task.view.state))
-      return this.view(task);
+      return this.view(task, viewOptions);
     if (
       task.directoryReservation ||
       task.steps.length ||
@@ -1592,7 +1650,71 @@ export class TaskRuntime {
       ? "completed-with-errors"
       : "completed";
     this.returnControl(task);
-    return this.view(task);
+    return this.view(task, viewOptions);
+  }
+  async archive(
+    actor: TaskActor,
+    taskId: string,
+    release: () => Promise<void>,
+  ) {
+    this.human(actor);
+    const task = this.owned(actor, taskId);
+    if (task.archiving) throw Error("TASK_ARCHIVE_IN_PROGRESS");
+    if (!terminalState(task.view.state)) throw Error("TASK_NOT_COMPLETE");
+    if (task.operationIds.some((id) => !task.gateway.canDiscard(id)))
+      throw Error("TASK_ARCHIVE_RECONCILIATION_REQUIRED");
+    task.archiving = true;
+    const metadata = {
+      taskId,
+      sessionId: task.view.sessionId,
+      hostId: task.view.hostId,
+      hostName: task.view.hostName,
+      title: task.view.title,
+      source: task.view.source,
+      mode: task.view.mode,
+      state: task.view.state,
+      error: task.view.error,
+      createdAt: task.view.createdAt,
+      operationCount: task.operationIds.length,
+    };
+    try {
+      await this.ports
+        .audit(task.userId)
+        .record("task.archive-requested", metadata);
+      await release();
+      await this.ports.audit(task.userId).record("task.archived", metadata);
+      this.closeDirectorySteps(task);
+      task.unsubscribe?.();
+      task.unsubscribe = undefined;
+      task.gateway.dispose();
+      task.listeners.clear();
+      task.progressListeners.clear();
+      this.archived.set(taskId, {
+        userId: task.userId,
+        hostId: task.view.hostId,
+        clientId: task.clientId,
+        agentRunId: task.agentRunId,
+      });
+      this.tasks.delete(taskId);
+      return { id: taskId, archived: true };
+    } finally {
+      task.archiving = false;
+    }
+  }
+  private recordCancellation(task: RecordTask, reason: string) {
+    void this.ports
+      .audit(task.userId)
+      .record("task.cancelled", {
+        taskId: task.view.id,
+        title: task.view.title,
+        hostId: task.view.hostId,
+        hostName: task.view.hostName,
+        state: "cancelled",
+        reason,
+      })
+      .catch(() => {
+        task.view.error = "AUDIT_UNAVAILABLE";
+      });
   }
   private returnControl(task: RecordTask): void {
     if (task.lease) {
@@ -1612,57 +1734,161 @@ export class TaskRuntime {
     this.returnControl(task);
   }
   private pendingReconciliation(task: RecordTask): OperationView | undefined {
-    return [...task.operationIds]
-      .reverse()
-      .map((id) => task.gateway.get(id))
-      .find(
-        (op) =>
-          ["unknown", "failed"].includes(op.status) &&
-          !task.reviews.has(op.id) &&
-          !task.continuedFailures.has(op.id),
-      );
+    for (let i = task.operationIds.length - 1; i >= 0; i--) {
+      const id = task.operationIds[i];
+      if (
+        !task.reviews.has(id) &&
+        !task.continuedFailures.has(id) &&
+        ["unknown", "failed"].includes(task.gateway.status(id))
+      )
+        return task.gateway.get(id);
+    }
   }
-  private view(task: RecordTask): TaskView {
+  operationDetail(actor: TaskActor, taskId: string, id: string): TaskOperation {
+    const task = this.owned(actor, taskId);
+    if (!task.operationIds.includes(id)) throw Error("OPERATION_NOT_FOUND");
+    return this.projectOperation(task, id);
+  }
+  private projectOperation(
+    task: RecordTask,
+    id: string,
+    outputLimit?: number,
+  ): TaskOperation {
+    const op = task.gateway.get(id),
+      output = redact(op.output) as string | undefined;
     return {
-      ...structuredClone(task.view),
+      id: op.id,
+      requestId: op.context.requestId,
+      digest: op.digest,
+      action: op.action,
+      fileResult: op.fileResult,
+      decision: op.decision,
+      status: op.status,
+      output:
+        outputLimit === undefined ? output : output?.slice(0, outputLimit),
+      ...(outputLimit !== undefined && (output?.length ?? 0) > outputLimit
+        ? { outputTruncated: true }
+        : {}),
+      error: op.error,
+      exitCode: op.exitCode,
+      resultingCwd: op.resultingCwd,
+      auditGap: op.auditGap,
+      startedAt: op.startedAt,
+      endedAt: op.endedAt,
+      timedOut: op.timedOut,
+      interruptionRequested: op.interruptionRequested,
+      workflowRunId: task.operationWorkflows.get(id),
+      reviewed: task.reviews.get(id),
+    };
+  }
+  private view(task: RecordTask, options?: TaskViewOptions): TaskView {
+    if (
+      options &&
+      (!Number.isInteger(options.operationLimit) ||
+        options.operationLimit < 0 ||
+        options.operationLimit > 100 ||
+        (options.operationOffset !== undefined &&
+          (!Number.isInteger(options.operationOffset) ||
+            options.operationOffset < 0)))
+    )
+      throw Error("INVALID_REQUEST");
+    const total = task.operationIds.length,
+      summary = options?.operationLimit === 0;
+    const {
+      commands: _commands,
+      plan: _plan,
+      fileBindings: _fileBindings,
+      ...metadata
+    } = task.view;
+    const base = summary
+      ? structuredClone({
+          ...metadata,
+          title: metadata.title.slice(0, 512),
+          commands: [],
+        })
+      : structuredClone(task.view);
+    let offset =
+      options?.operationOffset === undefined
+        ? options?.operationLimit
+          ? Math.max(
+              0,
+              Math.floor((total - 1) / options.operationLimit) *
+                options.operationLimit,
+            )
+          : 0
+        : Math.min(total, options.operationOffset);
+    const operations: TaskOperation[] = [];
+    let bytes = 2;
+    if (!summary) {
+      const end = options
+        ? Math.min(total, offset + options.operationLimit)
+        : total;
+      const backwards = options?.operationOffset === undefined && !!options;
+      for (
+        let i = backwards ? end - 1 : offset;
+        backwards ? i >= offset : i < end;
+        backwards ? i-- : i++
+      ) {
+        const op = this.projectOperation(
+            task,
+            task.operationIds[i],
+            options ? 8000 : undefined,
+          ),
+          size = options ? Buffer.byteLength(JSON.stringify(op)) + 1 : 0;
+        if (options && size > 1024 * 1024)
+          throw Error("TASK_OPERATION_TOO_LARGE");
+        if (options && bytes + size > 1024 * 1024) {
+          if (backwards) offset = i + 1;
+          break;
+        }
+        bytes += size;
+        if (backwards) operations.unshift(op);
+        else operations.push(op);
+      }
+    }
+    const stepId = task.steps[task.view.nextStep]?.operationId;
+    return {
+      ...base,
+      canArchive:
+        terminalState(task.view.state) &&
+        task.operationIds.every((id) => task.gateway.canDiscard(id)),
       activeWorkflowRunId: task.activeWorkflowRunId,
-      workflowRuns: [...task.workflowRuns.keys()].map((id) =>
-        this.workflowSummary(task, id),
-      ),
+      workflowRuns: summary
+        ? []
+        : [...task.workflowRuns.keys()].map((id) =>
+            this.workflowSummary(task, id, !!options),
+          ),
       reconciliationRequired: task.steps.length
-        ? !!task.steps[task.view.nextStep]?.operationId &&
-          ["unknown", "failed"].includes(
-            task.gateway.get(task.steps[task.view.nextStep].operationId!)
-              .status,
-          )
+        ? !!stepId &&
+          ["unknown", "failed"].includes(task.gateway.status(stepId))
         : !!this.pendingReconciliation(task),
       control: task.session.control.snapshot(),
       policyRevision: task.policy.revision,
-      operations: task.operationIds.map((id) => {
-        const op = task.gateway.get(id);
-        return {
-          id: op.id,
-          requestId: op.context.requestId,
-          digest: op.digest,
-          action: op.action,
-          fileResult: op.fileResult,
-          decision: op.decision,
-          status: op.status,
-          output: redact(op.output) as string | undefined,
-          error: op.error,
-          exitCode: op.exitCode,
-          resultingCwd: op.resultingCwd,
-          auditGap: op.auditGap,
-          startedAt: op.startedAt,
-          endedAt: op.endedAt,
-          timedOut: op.timedOut,
-          interruptionRequested: op.interruptionRequested,
-          workflowRunId: [...task.workflowRuns.values()].find((run) =>
-            run.summary.operationIds.includes(op.id),
-          )?.summary.id,
-          reviewed: task.reviews.get(op.id),
-        };
-      }),
+      operations,
+      ...(options
+        ? {
+            operationPage: {
+              offset,
+              total,
+              succeeded: task.operationIds.reduce(
+                (n, id) =>
+                  n + (task.gateway.status(id) === "succeeded" ? 1 : 0),
+                0,
+              ),
+              previousOffset:
+                offset > 0
+                  ? Math.max(0, offset - options.operationLimit)
+                  : null,
+              nextOffset:
+                !summary && offset + operations.length < total
+                  ? offset + operations.length
+                  : null,
+              latest: total
+                ? task.gateway.getSummary(task.operationIds[total - 1])
+                : undefined,
+            },
+          }
+        : {}),
     };
   }
 }

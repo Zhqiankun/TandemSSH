@@ -1,3 +1,4 @@
+import { TaskHistoryDialog } from "@/features/collaboration/TaskHistory";
 import { LocalFileGrantMonitor } from "@/features/collaboration/TaskLocalFiles";
 import { UpdateCenter } from "@/updates/UpdateCenter";
 import { DownloadQueueMonitor } from "@/features/file-manager/downloads/DownloadQueuePanel";
@@ -2997,6 +2998,7 @@ export function AppShell({
       <TransferMonitor />
       <HostTrustMonitor userId={userId} />
       <UpdateCenter />
+      <TaskHistoryDialog key={userId ?? "signed-out-history"} userId={userId} />
       <DownloadQueueMonitor userId={userId} />
       <UploadQueueMonitor userId={userId} />
       <LocalFileGrantMonitor userId={userId} />

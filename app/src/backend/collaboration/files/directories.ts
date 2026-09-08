@@ -312,6 +312,16 @@ export class DirectoryAutomation {
       throw Error("DIRECTORY_IN_PROGRESS");
     return this.directories.release(c, previewId);
   }
+  forgetTask(userId: string, taskId: string) {
+    const runs = [...this.runs.values()].filter(
+      (r) => r.actor.userId === userId && r.view.taskId === taskId,
+    );
+    if (runs.some((r) => !r.view.endedAt)) throw Error("DIRECTORY_IN_PROGRESS");
+    const ids = new Set(runs.map((r) => r.view.id));
+    for (const id of ids) this.runs.delete(id);
+    for (const [key, value] of this.requests)
+      if (ids.has(value.id)) this.requests.delete(key);
+  }
   dispose() {
     this.disposed = true;
     for (const r of this.runs.values()) {

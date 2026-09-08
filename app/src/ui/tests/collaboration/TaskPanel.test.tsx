@@ -14,6 +14,7 @@ import { SessionControl } from "../../../backend/collaboration/sessions/control"
 import i18n from "../../i18n/i18n";
 const api = vi.hoisted(() => ({
   snapshot: vi.fn(),
+  taskPage: vi.fn(),
   create: vi.fn(),
   authorize: vi.fn(),
   approve: vi.fn(),
@@ -339,4 +340,50 @@ it("pages long operation history and keeps the latest results easy to reach", as
   expect(view.container.querySelectorAll(".tandem-operation")).toHaveLength(50);
   fireEvent.click(screen.getByRole("button", { name: "前往最新记录" }));
   expect(view.container.querySelectorAll(".tandem-operation")).toHaveLength(5);
+});
+
+it("waits for the selected directory plan before initializing authorization defaults", async () => {
+  const task = await runtime.create(actor, {
+    sessionId: "session",
+    requestId: "paged-directory-form",
+    title: "分页目录任务",
+    mode: "automatic",
+    plan: [
+      {
+        kind: "directory-transfer",
+        stepId: "dir",
+        name: "目录",
+        direction: "upload",
+        path: "/srv",
+        localFile: "folder",
+        overwrite: false,
+        onConflict: "fail",
+      },
+    ],
+  });
+  const original = api.snapshot.getMockImplementation()!;
+  api.snapshot.mockImplementation(async () => ({
+    ...(await original()),
+    tasks: runtime.list(actor, undefined, { operationLimit: 0 }),
+  }));
+  let resolve!: (value: ReturnType<TaskRuntime["get"]>) => void;
+  api.taskPage.mockReturnValue(
+    new Promise((r) => {
+      resolve = r;
+    }),
+  );
+  render(
+    <TaskPanel sessionId="session" focusTaskId={task.id} onClose={() => {}} />,
+  );
+  await waitFor(() => expect(api.taskPage).toHaveBeenCalled());
+  expect(screen.queryByText("本次任务授权")).toBeNull();
+  resolve(runtime.get(actor, task.id, { operationLimit: 50 }));
+  await screen.findByText("本次任务授权");
+  expect(
+    (
+      screen.getByRole("spinbutton", {
+        name: i18n.t("tandem.collaboration.maxOperations"),
+      }) as HTMLInputElement
+    ).value,
+  ).toBe("100");
 });

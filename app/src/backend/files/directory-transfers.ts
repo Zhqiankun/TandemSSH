@@ -702,6 +702,24 @@ export class DirectoryTransfers {
     };
     return result;
   }
+  async pruneExpired() {
+    let removed = 0;
+    for (const r of [...this.records.values()])
+      if (
+        !r.view.assigned &&
+        !r.busy &&
+        !r.holders.size &&
+        r.view.expiresAt <= Date.now()
+      ) {
+        try {
+          await this.release(r.context, r.view.id);
+          removed++;
+        } catch {
+          /* Preserve resources when cleanup cannot be verified. */
+        }
+      }
+    return removed;
+  }
   executor(
     userId: string,
     sessionId: string,
@@ -733,6 +751,7 @@ export class DirectoryTransfers {
               throw Error("DIRECTORY_TRANSFER_CANCELLED");
             let r: Record;
             if (action.type === "file.directory.preview") {
+              await this.pruneExpired();
               if (
                 this.preparing >= 2 ||
                 this.records.size + this.preparing >= 16 ||

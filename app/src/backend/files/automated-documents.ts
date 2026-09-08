@@ -119,6 +119,25 @@ export class AutomatedDocuments {
     this.receipts.clear();
     this.requests.clear();
   }
+  forgetTask(context: FileTaskContext) {
+    const owned = (c: FileTaskContext) =>
+      c.userId === context.userId && c.taskId === context.taskId;
+    const proposals = new Set(
+      [...this.proposals].filter(([, p]) => owned(p.context)).map(([id]) => id),
+    );
+    for (const [id, r] of this.reads)
+      if (owned(r.context)) {
+        this.documents.close(r.actor, r.file.document.documentId);
+        this.reads.delete(id);
+      }
+    for (const id of proposals) this.proposals.delete(id);
+    for (const [id, r] of this.receipts)
+      if (r.userId === context.userId && r.taskId === context.taskId)
+        this.receipts.delete(id);
+    for (const [id, r] of this.requests)
+      if (proposals.has(r.proposalId)) this.requests.delete(id);
+    this.inspection.forgetTask(context);
+  }
   private prune() {
     this.inspection.prune();
     const now = Date.now();
