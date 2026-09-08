@@ -4931,7 +4931,15 @@
         "FILE_DIRECTORY_CHANGED": "读取期间目录发生变化，请重新查询",
         "FILE_DIRECTORY_CURSOR_EXPIRED": "目录分页已过期或不属于当前任务，请重新查询",
         "FILE_DIRECTORY_CACHE_FULL": "目录快照缓存已满，请稍后重新查询",
-        "FILE_DIRECTORY_SCOPE_REQUIRED": "目录查询需要本任务的目录读取授权"
+        "FILE_DIRECTORY_SCOPE_REQUIRED": "目录查询需要本任务的目录读取授权",
+        "FILE_TRANSFER_EXECUTOR_UNAVAILABLE": "自动文件传输入口尚未配置。",
+        "FILE_LOCAL_GRANT_REQUIRED": "请先为本任务选择并授权本地文件来源或目标。",
+        "FILE_TRANSFER_FAILED": "文件传输未完成，请检查逐项结果。",
+        "FILE_TRANSFER_CANCELLED": "文件传输已中断，请核对已完成内容与临时文件。",
+        "FILE_TRANSFER_LIMIT": "传输记录已达上限，请先处理并清理已有记录。",
+        "FILE_TRANSFER_NOT_FOUND": "当前任务没有此传输记录。",
+        "FILE_TRANSFER_ALREADY_STARTED": "此操作已经开始，不会重复传输。",
+        "FILE_TRANSFER_CLEANUP_PENDING": "此传输仍在进行或存在待核实结果，暂不能清除。"
       },
       "allowedPrograms": "本次允许的程序（每行一个）",
       "operationProgress": "已完成 {{done}} / {{total}} 条命令",
@@ -4939,7 +4947,9 @@
         "read": "读取文件",
         "write": "保存文件",
         "list": "查看目录",
-        "stat": "查看文件属性"
+        "stat": "查看文件属性",
+        "upload": "上传文件",
+        "download": "下载文件"
       }
     },
     "mcp": {
@@ -5661,6 +5671,13 @@
       "batchNotice": "上传 {{name}}：完成 {{completed}}，失败 {{failed}}，未知 {{unknown}}，跳过 {{skipped}}",
       "uploadDirectory": "上传目录",
       "takeover": "允许本批次在写入时接管 AI 的控制权"
+    },
+    "transfer": {
+      "result": "文件传输结果",
+      "bytes": "已确认 {{bytes}} / {{total}} 字节",
+      "verified": "内容校验通过",
+      "unverified": "尚未完成整体内容校验",
+      "cleanup": "仍有临时文件或清理事项，请先核对结果。"
     }
   },
   "fileDocument": {

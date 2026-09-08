@@ -1,3 +1,4 @@
+import { FileTransferResult } from "./FileTransferResult";
 import { FileInspectionResult } from "./FileInspectionResult";
 import { FileOperationReview } from "./FileOperationReview";
 import { FileScopeEditor } from "./FileScopes";
@@ -666,12 +667,15 @@ function OperationCard({
       {op.fileResult && (
         <div className="tandem-file-operation-result">
           <FileInspectionResult result={op.fileResult} />
+          {op.fileResult.transfer && (
+            <FileTransferResult result={op.fileResult.transfer} />
+          )}
           {op.fileResult.document && (
             <small className="tandem-task-directory">
               {op.fileResult.document.canonicalPath}
             </small>
           )}
-          {op.fileResult.bytes !== undefined && (
+          {op.fileResult.bytes !== undefined && !op.fileResult.transfer && (
             <small>
               {t("tandem.fileScope.bytes", { bytes: op.fileResult.bytes })}
             </small>

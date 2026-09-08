@@ -1,4 +1,8 @@
 import type {
+  FileTransferAction,
+  FileTransferResult,
+} from "./file-transfer.js";
+import type {
   FileInspectionAction,
   FileDirectoryView,
   FileStatView,
@@ -20,6 +24,7 @@ export interface FileRule {
   reason: string;
 }
 export type FileAction =
+  | FileTransferAction
   | FileInspectionAction
   | {
       type: "file.read";
@@ -41,6 +46,7 @@ export type FileAction =
     };
 // Bodies are kept in a file-owned proposal store, never in policy, audit or task DTOs.
 export interface FileResultView {
+  transfer?: FileTransferResult;
   directory?: FileDirectoryView;
   metadata?: FileStatView;
   document?: FileDocumentInfo;

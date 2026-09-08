@@ -74,6 +74,23 @@ const schema = z
       .optional(),
     result: z
       .object({
+        transfer: z
+          .object({
+            direction: z.enum(["upload", "download"]),
+            localGrantId: z.string().uuid(),
+            localVersion: z.string().uuid(),
+            transferId: z.string().uuid(),
+            bytes: z.number().int().nonnegative().safe().max(68719476736),
+            totalBytes: z.number().int().nonnegative().safe().max(68719476736),
+            verification: z.enum(["none", "sha256"]),
+            sha256: z
+              .string()
+              .regex(/^[a-f0-9]{64}$/)
+              .optional(),
+            cleanupRequired: z.boolean(),
+          })
+          .strict()
+          .optional(),
         directory: z
           .object({
             ...inspectionPath,
@@ -117,6 +134,42 @@ export function validateFileResult(
     resultView = data.result,
     directory = resultView?.directory,
     meta = resultView?.metadata;
+  const transfer = resultView?.transfer;
+  if (transfer) {
+    if (
+      directory ||
+      meta ||
+      resultView?.document ||
+      resultView?.contentAvailable !== undefined ||
+      transfer.bytes > transfer.totalBytes ||
+      (transfer.verification === "sha256") !== !!transfer.sha256 ||
+      (resultView?.bytes !== undefined && resultView.bytes !== transfer.bytes)
+    )
+      throw Error("INVALID_FILE_RESULT");
+    if (
+      action &&
+      (action.type !== "file." + transfer.direction ||
+        !("localGrantId" in action) ||
+        action.localGrantId !== transfer.localGrantId ||
+        action.localVersion !== transfer.localVersion)
+    )
+      throw Error("INVALID_FILE_RESULT");
+    if (
+      data.status === "succeeded" &&
+      (transfer.bytes !== transfer.totalBytes ||
+        transfer.verification !== "sha256" ||
+        transfer.cleanupRequired ||
+        resultView?.temporaryPath)
+    )
+      throw Error("INVALID_FILE_RESULT");
+  }
+  if (
+    action &&
+    (action.type === "file.upload" || action.type === "file.download") &&
+    data.status === "succeeded" &&
+    !transfer
+  )
+    throw Error("INVALID_FILE_RESULT");
   if (directory || meta) {
     if (
       (directory && meta) ||

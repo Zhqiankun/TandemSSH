@@ -4931,7 +4931,15 @@
         "FILE_DIRECTORY_CHANGED": "Directory changed while reading; inspect again",
         "FILE_DIRECTORY_CURSOR_EXPIRED": "Directory cursor expired or belongs to another task; inspect again",
         "FILE_DIRECTORY_CACHE_FULL": "Directory snapshot cache is full; try again later",
-        "FILE_DIRECTORY_SCOPE_REQUIRED": "Directory inspection requires a directory read grant"
+        "FILE_DIRECTORY_SCOPE_REQUIRED": "Directory inspection requires a directory read grant",
+        "FILE_TRANSFER_EXECUTOR_UNAVAILABLE": "Automatic file transfer is not configured.",
+        "FILE_LOCAL_GRANT_REQUIRED": "Select and authorize a local source or destination for this task.",
+        "FILE_TRANSFER_FAILED": "The transfer did not complete. Review its result.",
+        "FILE_TRANSFER_CANCELLED": "The transfer was interrupted. Review completed data and temporary files.",
+        "FILE_TRANSFER_LIMIT": "Transfer record limit reached. Resolve and clear existing records.",
+        "FILE_TRANSFER_NOT_FOUND": "No such transfer belongs to this task.",
+        "FILE_TRANSFER_ALREADY_STARTED": "This operation has already started and will not be repeated.",
+        "FILE_TRANSFER_CLEANUP_PENDING": "This transfer is active or needs reconciliation and cannot be cleared."
       },
       "allowedPrograms": "Programs allowed for this task (one per line)",
       "operationProgress": "{{done}} / {{total}} commands completed",
@@ -4939,7 +4947,9 @@
         "read": "Read file",
         "write": "Save file",
         "list": "List directory",
-        "stat": "Inspect file"
+        "stat": "Inspect file",
+        "upload": "Upload file",
+        "download": "Download file"
       }
     },
     "mcp": {
@@ -5661,6 +5671,13 @@
       "batchNotice": "Upload {{name}}: completed {{completed}}, failed {{failed}}, unknown {{unknown}}, skipped {{skipped}}",
       "uploadDirectory": "Upload directory",
       "takeover": "Allow this batch to take over from AI when writing files."
+    },
+    "transfer": {
+      "result": "File transfer result",
+      "bytes": "Confirmed {{bytes}} / {{total}} bytes",
+      "verified": "Content verification passed",
+      "unverified": "Full content verification has not completed",
+      "cleanup": "Temporary files or cleanup work remain. Review the result first."
     }
   },
   "fileDocument": {

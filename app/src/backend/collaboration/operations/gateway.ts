@@ -421,8 +421,20 @@ export class OperationGateway {
       approval.digest === view.digest &&
       approval.revision === view.decision.revision &&
       approval.expiresAt > this.now()
-    )
-      return fileGrant;
+    ) {
+      if (fileGrant) return fileGrant;
+      const approvedGrant = this.grants.get(view.context.taskId);
+      if (
+        approvedGrant &&
+        (approvedGrant.revision !== view.decision.revision ||
+          leaseKey(approvedGrant.lease) !== leaseKey(view.context.lease) ||
+          approvedGrant.expiresAt <= this.now() ||
+          approvedGrant.remaining <= 0)
+      )
+        throw new GatewayError("APPROVAL_REQUIRED");
+      // A per-action confirmation does not remove the containing task's budget.
+      return approvedGrant;
+    }
     // Cooperative mode always confirms each immutable action. A broad task
     // grant also cannot silently approve an opaque shell/interpreter request.
     if (
@@ -509,7 +521,10 @@ export class OperationGateway {
             )
               throw new GatewayError("INVALID_FILE_ACTION");
             if (
-              view.action.type === "file.write" &&
+              (view.action.type === "file.write" ||
+                view.action.type === "file.upload" ||
+                view.action.type === "file.download") &&
+              view.action.canonicalPath !== undefined &&
               posix.normalize(canonicalPath) !==
                 posix.normalize(view.action.canonicalPath)
             )

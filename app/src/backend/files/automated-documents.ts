@@ -397,6 +397,8 @@ export class AutomatedDocuments {
   executor(userId: string, sessionId: string): FileExecutorPort {
     return {
       prepare: async (action, operationId, operation) => {
+        if (action.type === "file.upload" || action.type === "file.download")
+          throw Error("FILE_TRANSFER_EXECUTOR_UNAVAILABLE");
         const context: FileTaskContext = {
           userId,
           sessionId,

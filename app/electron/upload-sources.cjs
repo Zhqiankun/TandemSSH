@@ -26,7 +26,10 @@ class UploadSourceStore {
     if (!r || r.owner !== owner) throw Error("UPLOAD_SOURCE_NOT_FOUND");
     return r;
   }
-  guard(r) {
+  guard(r, authorize) {
+    if (authorize !== undefined && typeof authorize !== "function")
+      throw Error("UPLOAD_REQUEST_INVALID");
+    authorize?.();
     if (
       r.cancelled ||
       this.records.get(r.id) !== r ||
@@ -202,10 +205,10 @@ class UploadSourceStore {
       this.scanning--;
     }
   }
-  async checked(owner, id, entryId) {
+  async checked(owner, id, entryId, authorize) {
     const r = this.owned(owner, id),
       e = r.entries.get(entryId);
-    this.guard(r);
+    this.guard(r, authorize);
     if (!e || e.view.kind !== "file" || e.view.error)
       throw Error("UPLOAD_SOURCE_UNAVAILABLE");
     let parent = e.view.parentId ? r.entries.get(e.view.parentId) : undefined;
@@ -218,7 +221,7 @@ class UploadSourceStore {
         !equivalent(await fs.realpath(parent.view.path), parent.view.path)
       )
         throw Error("UPLOAD_SOURCE_CHANGED");
-      this.guard(r);
+      this.guard(r, authorize);
       parent = parent.view.parentId
         ? r.entries.get(parent.view.parentId)
         : undefined;
@@ -231,14 +234,14 @@ class UploadSourceStore {
       !equivalent(await fs.realpath(e.view.path), e.view.path)
     )
       throw Error("UPLOAD_SOURCE_CHANGED");
-    this.guard(r);
+    this.guard(r, authorize);
     return { r, e };
   }
-  async check(owner, id, entryId) {
-    const { e } = await this.checked(owner, id, entryId);
+  async check(owner, id, entryId, authorize) {
+    const { e } = await this.checked(owner, id, entryId, authorize);
     return { ...e.view };
   }
-  async chunk(owner, id, entryId, offset, length) {
+  async chunk(owner, id, entryId, offset, length, authorize) {
     if (
       !Number.isSafeInteger(offset) ||
       offset < 0 ||
@@ -249,7 +252,7 @@ class UploadSourceStore {
       throw Error("UPLOAD_CHUNK_INVALID");
     const r = this.owned(owner, id),
       e = r.entries.get(entryId);
-    this.guard(r);
+    this.guard(r, authorize);
     if (!e || e.view.kind !== "file" || offset + length > e.view.size)
       throw Error("UPLOAD_CHUNK_INVALID");
     if (e.busy || this.reading >= 4) throw Error("UPLOAD_BUSY");
@@ -257,7 +260,7 @@ class UploadSourceStore {
     this.reading++;
     let handle;
     try {
-      await this.checked(owner, id, entryId);
+      await this.checked(owner, id, entryId, authorize);
       handle = await fs.open(
         e.view.path,
         constants.O_RDONLY |
@@ -270,7 +273,7 @@ class UploadSourceStore {
       const bytes = Buffer.alloc(length);
       let read = 0;
       while (read < length) {
-        this.guard(r);
+        this.guard(r, authorize);
         const result = await handle.read(
           bytes,
           read,
@@ -282,7 +285,7 @@ class UploadSourceStore {
       }
       if (version(await handle.stat()) !== e.version)
         throw Error("UPLOAD_SOURCE_CHANGED");
-      await this.checked(owner, id, entryId);
+      await this.checked(owner, id, entryId, authorize);
       return new Uint8Array(bytes);
     } finally {
       try {

@@ -112,9 +112,13 @@ class DownloadSink {
   }
   guard(r) {
     if (r.cancelled) throw Error("DOWNLOAD_CANCELLED");
+    r.authorize?.();
     r.touched = Date.now();
   }
-  async choose(owner, raw, choosePath, expectedTarget) {
+  async choose(owner, raw, choosePath, expectedTarget, authorize) {
+    if (authorize !== undefined && typeof authorize !== "function")
+      throw Error("DOWNLOAD_SPEC_INVALID");
+    authorize?.();
     const spec = validateSpec(raw);
     const bytes = spec.hashes.length * 64;
     if (
@@ -132,6 +136,7 @@ class DownloadSink {
     this.choosingBytes += bytes;
     try {
       const chosen = await choosePath(spec.name);
+      authorize?.();
       if (!chosen) return null;
       if (!path.isAbsolute(chosen)) throw Error("DOWNLOAD_LOCAL_FILE_INVALID");
       const name = path.basename(chosen);
@@ -154,7 +159,8 @@ class DownloadSink {
           throw Error("DOWNLOAD_TARGET_CHANGED");
       }
       const destination = path.join(parent, name),
-        previous = await baseline(destination);
+        previous = await baseline(destination, authorize);
+      authorize?.();
       if (
         expectedTarget &&
         (Boolean(previous) !== Boolean(expectedTarget.value) ||
@@ -165,6 +171,7 @@ class DownloadSink {
         throw Error("DOWNLOAD_TARGET_CHANGED");
       const r = {
         owner,
+        authorize,
         spec,
         parent,
         parentIdentity,

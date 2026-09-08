@@ -28,7 +28,17 @@ const charset = z.enum(["utf8", "utf16le", "utf16be", "gbk", "gb18030"]),
 export const directoryCursorSchema = z
   .string()
   .regex(/^[a-f0-9-]{36}:[0-9]{1,5}$/);
+const transfer = {
+  path: filePathSchema,
+  canonicalPath: filePathSchema.optional(),
+  localGrantId: z.string().uuid(),
+  localVersion: z.string().uuid(),
+  overwrite: z.boolean(),
+  timeoutMs,
+};
 const schema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("file.upload"), ...transfer }).strict(),
+  z.object({ type: z.literal("file.download"), ...transfer }).strict(),
   z
     .object({
       type: z.literal("file.list"),
@@ -113,7 +123,10 @@ export function fileScopeAllows(
   scopes: FileScope[],
   action: FileAction,
 ): boolean {
-  const access = action.type === "file.write" ? "write" : "read";
+  const access =
+    action.type === "file.write" || action.type === "file.upload"
+      ? "write"
+      : "read";
   return filePaths(action).every((path) =>
     scopes.some(
       (scope) =>
@@ -129,7 +142,10 @@ export function evaluateFilePolicy(
 ): CommandDecision {
   const action = validateFileAction(input),
     paths = filePaths(action),
-    access = action.type === "file.write" ? "write" : "read";
+    access =
+      action.type === "file.write" || action.type === "file.upload"
+        ? "write"
+        : "read";
   const sets = snapshot.sets.filter(
     (set) =>
       set.scope.type === "global" ||
