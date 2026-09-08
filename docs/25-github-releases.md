@@ -25,3 +25,11 @@
 更新服务专项覆盖固定来源、安装包与 SHA-512 元数据、显式下载、取消、重复请求、安装门槛和首次无发行版错误。Windows 验证包中的真实仪表盘显示“检查更新 / 更新版本”，打开中文面板后能显示当前 0.1.0-alpha.0 版本和本仓库尚未发布安装包的真实状态；截图 .cache/release-preview-update.png，UI 观察记录 .cache/release-preview-ui-result.json。
 
 完整测试为 397 文件 / 2950 项通过，5 项跳过；首次完整检查发现五个旧 i18n mock 未保留初始化导出，修正后再把两个旧英文标题期望更新为实际默认中文，未跳过失败测试。类型、前后端构建、中文键与工作流 YAML 解析通过。全库 lint 0 错误、102 警告。当前 Windows 窗口来自 npmRebuild=false 的检查包；尚不能据此宣称标准 NSIS 构建、发布后的完整安装升级已通过。GitHub 首推后的实际 Actions 结果另行记录。
+
+## 首次云端检查与修复
+
+首次提交 750c437 已推送并触发 CI 34179518306。干净环境发现新增队列测试的返回值推断过宽；补充 Promise<DownloadSource> 后本地类型检查通过。npm 11 的依赖安装脚本默认拦截需要显式策略，现已通过 npm install-scripts approve 为六个已核对的当前版本写入 allowScripts，未启用任意后续版本的全局放行。
+
+官方 npm audit 报告的 xmldom、browserslist、fast-uri 与 qs 问题已更新至对应修复版本，复查报告为 0 项。普通推送的 CI 增加 Windows 安装包预览产物，使用带 MSVC Spectre 库的 windows-2022 镜像并保留检查；不禁用缓解配置、不把本地跳过重编译的包作为正式结果。[镜像组件清单](https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Readme.md) 是选择依据，实际原生编译仍以 Actions 运行结果为准。
+
+真实隔离桌面再次通过原生更新 IPC 等待完整检查，568 ms 返回 UPDATE_NOT_PUBLISHED；按钮恢复可用后的截图为 .cache/release-preview-update-ready.png，结果记录 .cache/release-preview-live-check.json。启动检测到新版本后现在会显示可点击提示，下载与安装仍由人工触发。

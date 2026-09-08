@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   windows-x64:
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 60
     defaults:
       run:

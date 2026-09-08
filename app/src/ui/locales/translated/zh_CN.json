@@ -5555,7 +5555,9 @@
         "UPDATE_INSTALL_FAILED": "安装程序未能启动，请打开发布页手动安装。",
         "UPDATE_NOT_DOWNLOADED": "请先下载并校验更新。",
         "UPDATE_UNSUPPORTED": "请在 Windows 桌面安装版中更新。"
-      }
+      },
+      "availableNotice": "同舟 SSH 有新版本：{{version}}",
+      "view": "查看更新"
     }
   },
   "fileDocument": {

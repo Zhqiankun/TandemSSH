@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   windows:
-    runs-on: windows-latest
-    timeout-minutes: 30
+    runs-on: windows-2022
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: app
@@ -43,6 +43,25 @@ jobs:
         run: npm test
       - name: Build application
         run: npm run build
+      - name: Verify Spectre-enabled MSVC toolchain
+        if: github.event_name != 'pull_request'
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $compiler = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre -property installationPath
+          if (-not $compiler) { throw 'Spectre-enabled MSVC libraries are required for the native build' }
+      - name: Build Windows preview installers
+        if: github.event_name != 'pull_request'
+        run: npm run build:win-installer
+      - name: Preserve Windows preview installers
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: TandemSSH-Windows-preview
+          path: |
+            app/release/TandemSSH-*-x64.exe
+            app/release/TandemSSH-*-x64.zip
+          retention-days: 14
+          if-no-files-found: error
       - name: Preserve build output
         uses: actions/upload-artifact@v7
         with:

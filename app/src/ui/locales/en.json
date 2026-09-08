@@ -5555,7 +5555,9 @@
         "UPDATE_INSTALL_FAILED": "update install failed",
         "UPDATE_NOT_DOWNLOADED": "update not downloaded",
         "UPDATE_UNSUPPORTED": "update unsupported"
-      }
+      },
+      "availableNotice": "TandemSSH {{version}} is available",
+      "view": "View update"
     }
   },
   "fileDocument": {

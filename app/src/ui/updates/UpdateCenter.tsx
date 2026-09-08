@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/button";
 import {
@@ -29,6 +30,26 @@ export function UpdateCenter() {
     [state, setState] = useState<AppUpdateSnapshot>(),
     [error, setError] = useState<string>(),
     [busy, setBusy] = useState(false);
+  const notifiedVersion = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (
+      state?.status !== "available" ||
+      !state.latestVersion ||
+      notifiedVersion.current === state.latestVersion
+    )
+      return;
+    notifiedVersion.current = state.latestVersion;
+    if (!open)
+      toast.info(
+        t("tandem.updates.availableNotice", { version: state.latestVersion }),
+        {
+          action: {
+            label: t("tandem.updates.view"),
+            onClick: () => setOpen(true),
+          },
+        },
+      );
+  }, [state?.status, state?.latestVersion, open, t]);
   const api = window.electronAPI?.updates;
   useEffect(() => {
     const show = () => setOpen(true);
