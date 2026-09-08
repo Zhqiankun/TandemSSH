@@ -96,11 +96,17 @@ export class DownloadService {
     if (this.stopped || actor.signal?.aborted || r?.cancelled)
       throw Error("DOWNLOAD_CANCELLED");
     if (r && r.view.expiresAt < Date.now()) throw Error("DOWNLOAD_EXPIRED");
+    if (r) r.view.expiresAt = Date.now() + idleMs;
   }
   private owned(actor: DownloadActor, id: string) {
     const r = this.records.get(id);
     if (!r || r.owner !== actor.userId) throw Error("DOWNLOAD_NOT_FOUND");
     return r;
+  }
+  touch(actor: DownloadActor, id: string) {
+    const r = this.owned(actor, id);
+    this.alive(actor, r);
+    return structuredClone(r.view);
   }
   get(actor: DownloadActor, id: string) {
     return structuredClone(this.owned(actor, id).view);

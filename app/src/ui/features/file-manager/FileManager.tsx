@@ -1,4 +1,8 @@
 import { downloadQueue } from "./downloads/queue";
+import {
+  DownloadTreeDialog,
+  type DirectoryDownloadRequest,
+} from "./downloads/DownloadTreeDialog";
 import { DownloadQueuePanel } from "./downloads/DownloadQueuePanel";
 import { downloadErrorCode } from "@/api/file-download-api";
 import { uploadQueue } from "./uploads/queue";
@@ -143,6 +147,8 @@ function FileManagerContent({
   ]);
   const [navIndex, setNavIndex] = useState(0);
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [directoryDownload, setDirectoryDownload] =
+    useState<DirectoryDownloadRequest | null>(null);
   const filesRef = useRef(files);
   filesRef.current = files;
   const directoryRequestRef = useRef(0);
@@ -1151,6 +1157,17 @@ function FileManagerContent({
     }
   }
 
+  function handleDownloadSelection(selected: FileItem[]) {
+    if (!sshSessionId || !selected.length) return;
+    if (selected.length > 1 || selected.some((file) => file.type !== "file")) {
+      setDirectoryDownload({
+        sessionId: sshSessionId,
+        paths: selected.map((file) => file.path),
+        hostId: currentHost?.id,
+        hostLabel: currentHost?.name ?? currentHost?.ip ?? "SSH",
+      });
+    } else void handleDownloadFile(selected[0]);
+  }
   async function handleDownloadFile(file: FileItem) {
     if (!sshSessionId) return;
     try {
@@ -3199,11 +3216,7 @@ function FileManagerContent({
                     setSortOrder("asc");
                   }
                 }}
-                onDownload={(files) =>
-                  files
-                    .filter((f) => f.type === "file")
-                    .forEach(handleDownloadFile)
-                }
+                onDownload={handleDownloadSelection}
                 onContextMenu={handleContextMenu}
                 viewMode={viewMode}
                 onRename={handleRenameConfirm}
@@ -3235,11 +3248,7 @@ function FileManagerContent({
                 onClose={() =>
                   setContextMenu((prev) => ({ ...prev, isVisible: false }))
                 }
-                onDownload={(files) =>
-                  files
-                    .filter((f) => f.type === "file")
-                    .forEach(handleDownloadFile)
-                }
+                onDownload={handleDownloadSelection}
                 onPreview={handleFileOpen}
                 onRename={handleRenameFile}
                 onCopy={handleCopyFiles}
@@ -3318,6 +3327,12 @@ function FileManagerContent({
         />
       )}
 
+      {directoryDownload && (
+        <DownloadTreeDialog
+          request={directoryDownload}
+          onClose={() => setDirectoryDownload(null)}
+        />
+      )}
       <DownloadQueuePanel
         sessionId={sshSessionId ?? undefined}
         hostId={currentHost?.id}

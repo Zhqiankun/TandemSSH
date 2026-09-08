@@ -444,6 +444,11 @@ class DownloadSink {
       return this.view(r);
     });
   }
+  touch(owner, id) {
+    const r = this.owned(owner, id);
+    this.guard(r);
+    return this.view(r);
+  }
   forget(owner, id) {
     const r = this.owned(owner, id);
     if (r.pending) throw Error("DOWNLOAD_BUSY");
@@ -459,17 +464,17 @@ class DownloadSink {
   async reset(owner) {
     const records = [...this.records.values()].filter((r) => r.owner === owner);
     for (const r of records) r.cancelled = true;
-    await Promise.all(
-      records.map(async (r) => {
-        try {
+    for (const r of records) {
+      try {
+        await r.tail;
+        if (this.records.get(r.view.id) === r)
           await this.cancel(owner, r.view.id);
-        } catch {
-          /* Keep unknown files for explicit recovery; never delete another file. */
-        } finally {
-          this.records.delete(r.view.id);
-        }
-      }),
-    );
+      } catch {
+        /* Unknown or substituted files are preserved for explicit recovery. */
+      } finally {
+        this.records.delete(r.view.id);
+      }
+    }
   }
   async prune() {
     const owners = new Set(

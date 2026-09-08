@@ -63,6 +63,10 @@ export function registerDownloadTransferRoutes(
   }
   if (trees) {
     app.post(
+      prefix + "/trees/:treeId/touch",
+      route((actor, req) => trees.touch(actor, uuid.parse(req.params.treeId))),
+    );
+    app.post(
       prefix + "/trees/scan",
       route((actor, req) =>
         trees.scan(actor, scanDownloadTreeSchema.parse(req.body)),
@@ -112,6 +116,10 @@ export function registerDownloadTransferRoutes(
         .parse(req.query);
       return service.chunk(actor, uuid.parse(req.params.id), q.offset);
     }),
+  );
+  app.post(
+    prefix + "/:id/touch",
+    route((actor, req) => service.touch(actor, uuid.parse(req.params.id))),
   );
   app.post(
     prefix + "/:id/pause",

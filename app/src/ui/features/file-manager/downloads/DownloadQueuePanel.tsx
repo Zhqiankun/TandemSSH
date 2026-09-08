@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { downloadBatches } from "./download-batches";
 import { Button } from "@/components/button";
 import {
   downloadQueue,
@@ -35,9 +36,9 @@ function DownloadRow({
       <p className="select-text break-all">
         {job.hostLabel} · {job.path}
       </p>
-      {job.local && (
+      {(job.local || job.localPath) && (
         <p className="select-text break-all">
-          {t("tandem.download.target")} {job.local.path}
+          {t("tandem.download.target")} {job.local?.path ?? job.localPath}
         </p>
       )}
       <progress
@@ -51,10 +52,12 @@ function DownloadRow({
         aria-label={t("tandem.download.progress")}
       />
       <p>
-        {t("tandem.download.bytes", {
-          bytes: job.writtenBytes,
-          total: job.size ?? "—",
-        })}
+        {job.kind === "directory"
+          ? t("tandem.downloadTree.directoryStep")
+          : t("tandem.download.bytes", {
+              bytes: job.writtenBytes,
+              total: job.size ?? "—",
+            })}
         {job.speed && job.state === "downloading"
           ? " · " +
             t("tandem.upload.speed", {
@@ -129,12 +132,20 @@ function DownloadRow({
             variant="outline"
             onClick={() => action(() => queue.retry(job.id))}
           >
-            {t("tandem.download.retry")}
+            {t(
+              job.batchId
+                ? "tandem.downloadTree.retryFile"
+                : "tandem.download.retry",
+            )}
           </Button>
         )}
-        {!["completed", "unknown", "finalizing", "cancelled"].includes(
-          job.state,
-        ) && (
+        {![
+          "completed",
+          "unknown",
+          "finalizing",
+          "cancelled",
+          "skipped",
+        ].includes(job.state) && (
           <Button
             size="sm"
             variant="outline"
@@ -154,7 +165,7 @@ function DownloadRow({
         )}
       </div>
       {job.state === "unknown" && <p>{t("tandem.download.unknown")}</p>}
-      {job.state === "completed" && (
+      {job.state === "completed" && job.kind !== "directory" && (
         <details>
           <summary>{t("tandem.upload.verified")}</summary>
           <code className="select-text break-all">
@@ -180,6 +191,14 @@ export function DownloadQueuePanel({
       queue.getSnapshot,
       queue.getSnapshot,
     );
+  const batches = useSyncExternalStore(
+    downloadBatches.subscribe,
+    downloadBatches.getSnapshot,
+    downloadBatches.getSnapshot,
+  );
+  const [page, setPage] = useState(0);
+  const pages = Math.max(1, Math.ceil(jobs.length / 100)),
+    currentPage = Math.min(page, pages - 1);
   if (!jobs.length) return null;
   return (
     <section
@@ -192,13 +211,13 @@ export function DownloadQueuePanel({
         </summary>
         <div className="flex flex-wrap items-center gap-3 py-2 text-xs">
           <label className="flex items-center gap-2">
-            {t("tandem.upload.concurrency")}
+            {t("tandem.download.concurrency")}
             <input
               className="w-14 border border-border bg-background p-1"
               type="number"
               min={1}
               max={4}
-              aria-label={t("tandem.upload.concurrency")}
+              aria-label={t("tandem.download.concurrency")}
               value={queue.getConcurrency()}
               onChange={(e) => queue.setConcurrency(Number(e.target.value))}
             />
@@ -212,8 +231,71 @@ export function DownloadQueuePanel({
           </Button>
           <p>{t("tandem.download.memoryHint")}</p>
         </div>
+        {queue === downloadQueue &&
+          batches.map((batch) => (
+            <div
+              key={batch.id}
+              className="my-2 rounded border border-border p-2 text-xs"
+            >
+              <strong>{batch.name}</strong>
+              <p className="break-all">{batch.target}</p>
+              <p>
+                {t("tandem.downloadTree.batchProgress", {
+                  completed: batch.completed,
+                  total: batch.total,
+                  failed: batch.failed,
+                  unknown: batch.unknown,
+                  skipped: batch.skipped,
+                })}
+              </p>
+              {batch.error && (
+                <p role="alert" className="text-amber-500">
+                  {t("tandem.download.errors." + batch.error, {
+                    defaultValue: t("tandem.download.failed"),
+                  })}
+                </p>
+              )}
+              {(["creating", "running"].includes(batch.state) ||
+                (batch.state === "finished" && batch.failed > 0)) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    void downloadBatches
+                      .cancel(batch.id)
+                      .catch(() => toast.error(t("tandem.download.failed")))
+                  }
+                >
+                  {t("tandem.downloadTree.cancelBatch")}
+                </Button>
+              )}
+            </div>
+          ))}
+        {pages > 1 && (
+          <div className="flex items-center gap-2 my-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!currentPage}
+              onClick={() => setPage(currentPage - 1)}
+            >
+              {t("tandem.downloadTree.previous")}
+            </Button>
+            <span>
+              {currentPage + 1} / {pages}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={currentPage + 1 >= pages}
+              onClick={() => setPage(currentPage + 1)}
+            >
+              {t("tandem.downloadTree.next")}
+            </Button>
+          </div>
+        )}
         <div className="grid gap-2">
-          {jobs.map((job) => (
+          {jobs.slice(currentPage * 100, (currentPage + 1) * 100).map((job) => (
             <DownloadRow
               key={job.id}
               job={job}
@@ -234,15 +316,49 @@ export function DownloadQueueMonitor({ userId }: { userId: string | null }) {
       downloadQueue.getSnapshot,
     ),
     seen = useRef(new Map<string, string>());
+  const batches = useSyncExternalStore(
+    downloadBatches.subscribe,
+    downloadBatches.getSnapshot,
+    downloadBatches.getSnapshot,
+  );
+  const batchSeen = useRef(new Map<string, string>());
+  useEffect(() => {
+    const live = new Set(batches.map((b) => b.id));
+    for (const id of batchSeen.current.keys())
+      if (!live.has(id)) batchSeen.current.delete(id);
+    for (const b of batches) {
+      const previous = batchSeen.current.get(b.id);
+      batchSeen.current.set(b.id, b.state);
+      if (b.state === "finished" && previous !== "finished") {
+        const message = t("tandem.downloadTree.batchNotice", {
+          name: b.name,
+          completed: b.completed,
+          failed: b.failed,
+          unknown: b.unknown,
+          skipped: b.skipped,
+        });
+        if (b.failed || b.unknown) toast.warning(message);
+        else toast.success(message);
+      }
+    }
+  }, [batches, t]);
   useEffect(() => {
     downloadQueue.setOwner(userId);
+    downloadBatches.setOwner(userId);
   }, [userId]);
-  useEffect(() => () => downloadQueue.setOwner(null), []);
+  useEffect(
+    () => () => {
+      downloadBatches.setOwner(null);
+      downloadQueue.setOwner(null);
+    },
+    [],
+  );
   useEffect(() => {
     const live = new Set(jobs.map((j) => j.id));
     for (const id of seen.current.keys())
       if (!live.has(id)) seen.current.delete(id);
     for (const j of jobs) {
+      if (j.batchId) continue;
       if (seen.current.get(j.id) === j.state) continue;
       seen.current.set(j.id, j.state);
       if (j.state === "completed")

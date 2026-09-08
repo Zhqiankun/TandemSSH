@@ -5498,7 +5498,8 @@
         "completed": "已完成",
         "failed": "失败",
         "unknown": "结果待核实",
-        "cancelled": "已取消"
+        "cancelled": "已取消",
+        "skipped": "已跳过"
       },
       "errors": {
         "DOWNLOAD_DESKTOP_REQUIRED": "请在桌面客户端中选择本地下载目标。",
@@ -5528,7 +5529,8 @@
         "DOWNLOAD_TREE_DUPLICATE_TARGET": "多个来源映射到同一目标路径，请改名或跳过。",
         "DOWNLOAD_TREE_PARENT_UNAVAILABLE": "父目录尚未确认或创建，请先处理父目录。",
         "DOWNLOAD_TREE_TYPE_CONFLICT": "目标已存在且类型不同，请改名或跳过。"
-      }
+      },
+      "concurrency": "同时下载"
     },
     "updates": {
       "button": "检查更新 / 更新版本",
@@ -5568,6 +5570,44 @@
       },
       "availableNotice": "同舟 SSH 有新版本：{{version}}",
       "view": "查看更新"
+    },
+    "downloadTree": {
+      "title": "整批下载预览",
+      "description": "先检查来源、目标和冲突，再开始传输。",
+      "summary": "{{files}} 个文件 · {{directories}} 个目录 · {{bytes}} 字节 · 排除 {{skipped}} 项",
+      "choose": "选择目标文件夹",
+      "recheck": "重新检查目标",
+      "scanning": "正在扫描来源目录…",
+      "checking": "正在检查目标和同名冲突…",
+      "starting": "正在确认批次…",
+      "dirty": "目标名称已修改，请重新检查后再开始。",
+      "skipConflicts": "本批跳过冲突项",
+      "mergeDirectories": "本批合并已有目录",
+      "overwriteFiles": "本批覆盖已有文件",
+      "source": "来源",
+      "name": "目标名称",
+      "action": "处理方式",
+      "directory": "目录",
+      "existing": "目标已有 {{bytes}} 字节",
+      "rename": "修改 {{name}} 的目标名称",
+      "choice": "{{name}} 的处理方式",
+      "required": "请选择",
+      "create": "新建",
+      "merge": "合并目录",
+      "overwrite": "覆盖文件",
+      "skip": "跳过",
+      "skipped": "已排除",
+      "awaitingTarget": "等待选择目标",
+      "previous": "上一页",
+      "next": "下一页",
+      "start": "确认并开始下载",
+      "directoryStep": "目录准备步骤",
+      "retryFile": "重新尝试此项",
+      "cancelBatch": "取消本批剩余操作",
+      "batchProgress": "完成 {{completed}} / {{total}} 项 · 跳过 {{skipped}} · 失败 {{failed}} · 待核实 {{unknown}}",
+      "batchNotice": "{{name}}：完成 {{completed}} 项，跳过 {{skipped}} 项，失败 {{failed}} 项，待核实 {{unknown}} 项。",
+      "downloadDirectory": "下载目录",
+      "downloadSelection": "下载所选 {{count}} 项"
     }
   },
   "fileDocument": {

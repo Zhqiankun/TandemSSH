@@ -5498,7 +5498,8 @@
         "completed": "Completed",
         "failed": "Failed",
         "unknown": "Outcome unverified",
-        "cancelled": "Cancelled"
+        "cancelled": "Cancelled",
+        "skipped": "Skipped"
       },
       "errors": {
         "DOWNLOAD_DESKTOP_REQUIRED": "download desktop required",
@@ -5528,7 +5529,8 @@
         "DOWNLOAD_TREE_DUPLICATE_TARGET": "Multiple sources map to the same destination. Rename or skip an entry.",
         "DOWNLOAD_TREE_PARENT_UNAVAILABLE": "Resolve or create the parent directory before transferring this entry.",
         "DOWNLOAD_TREE_TYPE_CONFLICT": "The destination exists with a different type. Rename or skip this entry."
-      }
+      },
+      "concurrency": "Concurrent downloads"
     },
     "updates": {
       "button": "Check / update version",
@@ -5568,6 +5570,44 @@
       },
       "availableNotice": "TandemSSH {{version}} is available",
       "view": "View update"
+    },
+    "downloadTree": {
+      "title": "Batch download preview",
+      "description": "Review sources, destinations and conflicts before transferring.",
+      "summary": "{{files}} files · {{directories}} directories · {{bytes}} bytes · {{skipped}} excluded",
+      "choose": "Choose destination folder",
+      "recheck": "Check destinations again",
+      "scanning": "Scanning source directories…",
+      "checking": "Checking destinations and conflicts…",
+      "starting": "Confirming the batch…",
+      "dirty": "Names changed. Check destinations again before starting.",
+      "skipConflicts": "Skip conflicts in this batch",
+      "mergeDirectories": "Merge existing directories in this batch",
+      "overwriteFiles": "Overwrite existing files in this batch",
+      "source": "Source",
+      "name": "Destination name",
+      "action": "Action",
+      "directory": "Directory",
+      "existing": "Existing destination: {{bytes}} bytes",
+      "rename": "Destination name for {{name}}",
+      "choice": "Action for {{name}}",
+      "required": "Choose an action",
+      "create": "Create",
+      "merge": "Merge directory",
+      "overwrite": "Overwrite file",
+      "skip": "Skip",
+      "skipped": "Excluded",
+      "awaitingTarget": "Choose a destination first",
+      "previous": "Previous",
+      "next": "Next",
+      "start": "Confirm and start download",
+      "directoryStep": "Directory preparation",
+      "retryFile": "Retry this entry",
+      "cancelBatch": "Cancel remaining batch operations",
+      "batchProgress": "Completed {{completed}} / {{total}} · Skipped {{skipped}} · Failed {{failed}} · Uncertain {{unknown}}",
+      "batchNotice": "{{name}}: {{completed}} completed, {{skipped}} skipped, {{failed}} failed, {{unknown}} uncertain.",
+      "downloadDirectory": "Download directory",
+      "downloadSelection": "Download {{count}} selected entries"
     }
   },
   "fileDocument": {

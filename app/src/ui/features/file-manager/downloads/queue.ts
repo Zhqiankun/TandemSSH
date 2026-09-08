@@ -1,3 +1,8 @@
+import type {
+  ManagedDownloadBinding,
+  ManagedFileDownload,
+  ManagedDownloadRecord,
+} from "./download-bindings";
 import {
   downloadApi,
   downloadErrorCode,
@@ -22,7 +27,8 @@ export type DownloadJobState =
   | "completed"
   | "failed"
   | "unknown"
-  | "cancelled";
+  | "cancelled"
+  | "skipped";
 export interface DownloadJobView {
   id: string;
   name: string;
@@ -31,13 +37,28 @@ export interface DownloadJobView {
   hostId?: number;
   hostLabel: string;
   state: DownloadJobState;
+  kind?: "file" | "directory";
+  batchId?: string;
+  localPath?: string;
   size?: number;
   writtenBytes: number;
   local?: LocalDownloadView;
   error?: string;
   speed?: number;
 }
+export type DownloadInput = Pick<
+  DownloadJobView,
+  | "sessionId"
+  | "path"
+  | "name"
+  | "hostId"
+  | "hostLabel"
+  | "kind"
+  | "batchId"
+  | "localPath"
+>;
 interface Job {
+  binding?: ManagedDownloadBinding;
   view: DownloadJobView;
   source?: DownloadSource;
   requestId: string;
@@ -52,7 +73,10 @@ export class DownloadQueue {
   private readonly listeners = new Set<() => void>();
   private snapshot: DownloadJobView[] = [];
   private active = 0;
+  private reserved = 0;
+  private ownerEpoch = 0;
   private clearing = false;
+  private maintaining = false;
   private limit = 2;
   private owner?: string;
   private reset: Promise<unknown> = Promise.resolve();
@@ -70,6 +94,8 @@ export class DownloadQueue {
   };
   getSnapshot = () => this.snapshot;
   getConcurrency = () => this.limit;
+  getOwner = () => this.owner;
+  wake = () => this.drain();
   private emit() {
     this.snapshot = [...this.jobs.values()].map((j) => structuredClone(j.view));
     for (const listener of this.listeners) listener();
@@ -81,6 +107,8 @@ export class DownloadQueue {
       job.stop?.abort();
     }
     this.jobs.clear();
+    this.reserved = 0;
+    this.ownerEpoch++;
     this.owner = owner ?? undefined;
     this.reset = this.reset.then(() => this.native()?.reset()).catch(() => {});
     this.emit();
@@ -91,28 +119,80 @@ export class DownloadQueue {
     this.emit();
     this.drain();
   }
-  add(input: {
-    sessionId: string;
-    path: string;
-    name: string;
-    hostId?: number;
-    hostLabel: string;
-  }) {
+  private admit(count: number) {
     if (!this.owner) throw Error("DOWNLOAD_OWNER_REQUIRED");
     if (!this.native()) throw Error("DOWNLOAD_DESKTOP_REQUIRED");
-    if (this.jobs.size >= 256) throw Error("DOWNLOAD_LIMIT");
+    if (
+      !Number.isSafeInteger(count) ||
+      count < 1 ||
+      this.jobs.size + this.reserved + count > 4096
+    )
+      throw Error("DOWNLOAD_LIMIT");
+  }
+  private create(
+    input: DownloadInput,
+    binding?: ManagedDownloadBinding,
+    state: DownloadJobState = "queued",
+  ) {
     const id = crypto.randomUUID();
     this.jobs.set(id, {
-      view: { ...input, id, state: "queued", writtenBytes: 0 },
-      work: "prepare",
+      view: { ...input, id, state, writtenBytes: 0 },
+      binding,
+      work:
+        binding?.kind === "record" || state !== "queued"
+          ? undefined
+          : "prepare",
       requestId: crypto.randomUUID(),
-      overwrite: false,
+      overwrite: binding?.kind === "file" ? binding.overwrite : false,
       pause: false,
       cancel: false,
     });
     this.emit();
     this.drain();
     return id;
+  }
+  add(input: DownloadInput) {
+    this.admit(1);
+    return this.create(input);
+  }
+  reserve(count: number) {
+    this.admit(count);
+    this.reserved += count;
+    let remaining = count;
+    const epoch = this.ownerEpoch;
+    const take = () => {
+      if (epoch !== this.ownerEpoch || !remaining)
+        throw Error("DOWNLOAD_CANCELLED");
+      remaining--;
+      this.reserved--;
+    };
+    return {
+      file: (input: DownloadInput, binding: ManagedFileDownload) => {
+        take();
+        return this.create(input, binding);
+      },
+      record: (
+        input: DownloadInput,
+        binding: ManagedDownloadRecord,
+        state: DownloadJobState = "queued",
+      ) => {
+        take();
+        return this.create(input, binding, state);
+      },
+      close: () => {
+        if (epoch === this.ownerEpoch) this.reserved -= remaining;
+        remaining = 0;
+      },
+    };
+  }
+  updateRecord(
+    id: string,
+    change: Pick<DownloadJobView, "state" | "error" | "localPath">,
+  ) {
+    const j = this.jobs.get(id);
+    if (!j || j.binding?.kind !== "record") return;
+    Object.assign(j.view, change);
+    this.emit();
   }
   private job(id: string) {
     const j = this.jobs.get(id);
@@ -166,6 +246,10 @@ export class DownloadQueue {
   async retry(id: string) {
     const j = this.job(id);
     if (j.view.state !== "failed") return;
+    if (j.binding?.kind === "record") {
+      await j.binding.retry?.();
+      return;
+    }
     await this.cleanup(j);
     if (
       j.view.local?.temporaryPath ||
@@ -175,7 +259,7 @@ export class DownloadQueue {
       return;
     }
     try {
-      await this.forgetRecords(j);
+      await this.forgetRecords(j, false);
     } catch (error) {
       if (this.jobs.get(id) === j) j.view.error = downloadErrorCode(error);
       this.emit();
@@ -196,7 +280,8 @@ export class DownloadQueue {
   }
   async show(id: string) {
     const j = this.job(id);
-    if (j.view.local)
+    if (j.binding?.show) await j.binding.show();
+    else if (j.view.local)
       value(await this.native()!.action(j.view.local.id, "show"));
   }
   async clearFinished() {
@@ -205,7 +290,7 @@ export class DownloadQueue {
     try {
       for (const [id, j] of [...this.jobs]) {
         if (
-          !["completed", "cancelled"].includes(j.view.state) ||
+          !["completed", "cancelled", "skipped"].includes(j.view.state) ||
           j.stop ||
           j.view.local?.temporaryPath
         )
@@ -222,7 +307,7 @@ export class DownloadQueue {
       this.emit();
     }
   }
-  private async forgetRecords(j: Job) {
+  private async forgetRecords(j: Job, releaseBinding = true) {
     if (this.jobs.get(j.view.id) !== j) return;
     if (j.source) {
       try {
@@ -231,12 +316,36 @@ export class DownloadQueue {
         if (downloadErrorCode(error) !== "DOWNLOAD_NOT_FOUND") throw error;
       }
     }
-    if (this.jobs.get(j.view.id) !== j || !j.view.local) return;
-    const native = this.native();
-    if (!native) throw Error("DOWNLOAD_DESKTOP_REQUIRED");
-    const result = await native.action(j.view.local.id, "forget");
-    if (result.ok === false && result.error !== "DOWNLOAD_NOT_FOUND")
-      value(result);
+    if (this.jobs.get(j.view.id) !== j) return;
+    if (j.view.local) {
+      const native = this.native();
+      if (!native) throw Error("DOWNLOAD_DESKTOP_REQUIRED");
+      const result = await native.action(j.view.local.id, "forget");
+      if (result.ok === false && result.error !== "DOWNLOAD_NOT_FOUND")
+        value(result);
+    }
+    if (releaseBinding && this.jobs.get(j.view.id) === j)
+      await j.binding?.release();
+  }
+  async maintain() {
+    if (this.maintaining) return;
+    this.maintaining = true;
+    try {
+      for (const j of this.jobs.values()) {
+        if (!j.stop && j.view.state !== "paused") continue;
+        if (j.source)
+          await this.api
+            .action(j.view.sessionId, j.source.id, "touch")
+            .catch(() => {});
+        if (this.jobs.get(j.view.id) !== j) continue;
+        if (j.view.local && j.view.state !== "completed")
+          await this.native()
+            ?.action(j.view.local.id, "touch")
+            .catch(() => {});
+      }
+    } finally {
+      this.maintaining = false;
+    }
   }
   private guard(j: Job) {
     if (j.cancel || this.jobs.get(j.view.id) !== j)
@@ -261,7 +370,9 @@ export class DownloadQueue {
   }
   private drain() {
     while (this.active < this.limit) {
-      const j = [...this.jobs.values()].find((j) => j.work);
+      const j = [...this.jobs.values()].find(
+        (j) => j.work && (j.binding?.kind !== "file" || j.binding.ready()),
+      );
       if (!j) break;
       const work = j.work!;
       j.work = undefined;
@@ -284,14 +395,21 @@ export class DownloadQueue {
       if (work === "prepare") {
         j.view.state = "checking";
         this.emit();
-        j.source = await this.api.prepare(
-          {
-            requestId: j.requestId,
-            sessionId: j.view.sessionId,
-            path: j.view.path,
-          },
-          stop.signal,
-        );
+        j.source =
+          j.binding?.kind === "file"
+            ? await j.binding.prepare(
+                j.requestId,
+                j.view.sessionId,
+                stop.signal,
+              )
+            : await this.api.prepare(
+                {
+                  requestId: j.requestId,
+                  sessionId: j.view.sessionId,
+                  path: j.view.path,
+                },
+                stop.signal,
+              );
         this.guard(j);
         j.view.size = j.source.size;
         j.view.path = j.source.canonicalPath;
@@ -300,6 +418,7 @@ export class DownloadQueue {
         this.emit();
         const choose = this.dialogs.then(async () => {
           this.guard(j);
+          if (j.binding?.kind === "file") return j.binding.choose(j.source!);
           return value(
             await native.choose({
               name: j.view.name,
@@ -317,8 +436,10 @@ export class DownloadQueue {
         }
         j.view.local = local;
         this.guard(j);
-        j.view.state = "awaiting-review";
-        return;
+        if (j.binding?.kind !== "file") {
+          j.view.state = "awaiting-review";
+          return;
+        }
       }
       if (!j.source || !j.view.local) throw Error("DOWNLOAD_PREVIEW_REQUIRED");
       if (work === "resume") {
@@ -397,6 +518,14 @@ export class DownloadQueue {
         throw Error("DOWNLOAD_RESULT_UNVERIFIED");
       committing = false;
       j.view.state = "completed";
+      if (j.binding?.kind === "file") {
+        try {
+          await j.binding.complete(j.source, j.view.local);
+          j.source = undefined;
+        } catch {
+          j.view.error = "DOWNLOAD_CLEANUP_PENDING";
+        }
+      }
     } catch (error) {
       if (j.cancel && !committing) {
         await this.cleanup(j);

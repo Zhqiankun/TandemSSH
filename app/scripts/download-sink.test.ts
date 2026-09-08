@@ -106,6 +106,19 @@ describe("native download destination", () => {
     expect((await Promise.all(choices)).every((v) => v === null)).toBe(true);
     expect((await f.choose()).state).toBe("preview");
   });
+  it("closes and removes more paused temporary files than the operation admission limit", async () => {
+    const f = await fixture(Buffer.from("x"));
+    for (let index = 0; index < 32; index++) {
+      const chosen = await f.sink.choose(1, spec(f.bytes), async () =>
+        path.join(f.dir, "file-" + index),
+      );
+      await f.sink.start(1, chosen.id, false);
+      await f.sink.append(1, chosen.id, 0, f.bytes);
+      await f.sink.pause(1, chosen.id);
+    }
+    await f.sink.reset(1);
+    expect(await fs.readdir(f.dir)).toEqual([]);
+  });
   it("does not overwrite an existing destination until explicitly authorized", async () => {
     const f = await fixture();
     await fs.writeFile(f.target, "old");

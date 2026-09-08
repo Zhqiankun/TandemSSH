@@ -29,7 +29,7 @@ const pathSchema = z
 export const scanDownloadTreeSchema = z
   .object({
     sessionId: z.string().min(1).max(256),
-    paths: z.array(pathSchema).min(1).max(64),
+    paths: z.array(pathSchema).min(1).max(DOWNLOAD_TREE_MAX_ENTRIES),
   })
   .strict();
 interface TreeRecord {
@@ -68,6 +68,11 @@ export class DownloadTreeService {
     if (!record || record.owner !== actor.userId)
       throw Error("DOWNLOAD_NOT_FOUND");
     return record;
+  }
+  touch(actor: DownloadActor, id: string) {
+    const r = this.owned(actor, id);
+    r.view.expiresAt = Date.now() + idleMs;
+    return { id: r.view.id, expiresAt: r.view.expiresAt };
   }
   get(actor: DownloadActor, id: string) {
     return structuredClone(this.owned(actor, id).view);
@@ -129,14 +134,25 @@ export class DownloadTreeService {
       const roots = [
         ...new Set(input.paths.map((p) => posix.normalize(p))),
       ].sort((a, b) => a.length - b.length || a.localeCompare(b));
-      const selections = roots.filter(
-        (candidate, i) =>
-          !roots
-            .slice(0, i)
-            .some((parent) =>
-              candidate.startsWith(parent.replace(/\/$/, "") + "/"),
-            ),
-      );
+      const selections: string[] = [],
+        selected = new Set<string>();
+      for (const candidate of roots) {
+        let ancestor = candidate,
+          covered = false;
+        for (;;) {
+          if (selected.has(ancestor)) {
+            covered = true;
+            break;
+          }
+          const parent = posix.dirname(ancestor);
+          if (parent === ancestor) break;
+          ancestor = parent;
+        }
+        if (!covered) {
+          selections.push(candidate);
+          selected.add(candidate);
+        }
+      }
       const append = (entry: DownloadTreeEntry) => {
         metadataBytes += Buffer.byteLength(JSON.stringify(entry), "utf8");
         if (

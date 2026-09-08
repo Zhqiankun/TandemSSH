@@ -254,12 +254,14 @@ export function FileManagerContextMenu({
       });
     }
 
-    if (hasFiles && onDownload) {
+    if (isFileContext && onDownload) {
       menuItems.push({
         icon: <Download className="size-3.5" />,
         label: isMultipleFiles
-          ? t("fileManager.downloadFiles", { count: files.length })
-          : t("fileManager.downloadFile"),
+          ? t("tandem.downloadTree.downloadSelection", { count: files.length })
+          : files[0].type === "directory"
+            ? t("tandem.downloadTree.downloadDirectory")
+            : t("fileManager.downloadFile"),
         action: () => onDownload(files),
         shortcut: "Ctrl+D",
       });

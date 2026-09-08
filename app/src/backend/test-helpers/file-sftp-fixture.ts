@@ -3,7 +3,9 @@ import fs from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Client, Server, type SFTPWrapper } from "ssh2";
+import ssh2Pkg from "ssh2";
+import type { Client as SSHClient, SFTPWrapper } from "ssh2";
+const { Client, Server } = ssh2Pkg;
 import { SftpFileIO } from "../files/sftp-io.js";
 // Real loopback SSH/SFTP with a bounded workspace filesystem. POSIX ownership
 // remains a modeled attribute on Windows; tests must not call this Linux proof.
@@ -41,7 +43,7 @@ export async function fileSftpFixture() {
   let next = 0,
     writes = 0,
     renames = 0;
-  const clients = new Set<Client>();
+  const clients = new Set<SSHClient>();
   let acceptedConnections = 0;
   const server = new Server({ hostKeys: [key] }, (client) => {
     acceptedConnections++;
@@ -56,6 +58,11 @@ export async function fileSftpFixture() {
     client.on("ready", () =>
       client.on("session", (accept) => {
         const session = accept();
+        session.on("exec", (acceptExec) => {
+          const channel = acceptExec();
+          channel.exit(127);
+          channel.end();
+        });
         session.on("sftp", (acceptSftp) => {
           const stream = acceptSftp();
           const run = (id: number, fn: () => Promise<void>) => {
@@ -109,7 +116,13 @@ export async function fileSftpFixture() {
                       .split(path.sep)
                       .join("/"),
                   longname: "",
-                  attrs: {},
+                  attrs: await attrs(
+                    "/" +
+                      path
+                        .relative(directory, resolved)
+                        .split(path.sep)
+                        .join("/"),
+                  ),
                 },
               ]);
             }),
@@ -286,6 +299,12 @@ export async function fileSftpFixture() {
   return {
     client,
     peerKey: () => peerKey,
+    credentials: () => ({
+      host: "127.0.0.1",
+      port: (server.address() as { port: number }).port,
+      username: "fixture",
+      password,
+    }),
     write: (p: string, body: string | Uint8Array) =>
       fs.writeFile(target(p), body),
     mkdir: (p: string) => fs.mkdir(target(p), { recursive: true }),
