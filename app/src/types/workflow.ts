@@ -1,3 +1,4 @@
+import type { TaskPlanStep, TaskFileBindings } from "./task-plan.js";
 import type { TaskCommand } from "./collaboration-task.js";
 export type WorkflowParameter =
   | {
@@ -9,7 +10,7 @@ export type WorkflowParameter =
       description?: string;
     }
   | {
-      type: "remote-directory";
+      type: "remote-directory" | "remote-path";
       required?: boolean;
       default?: string;
       description?: string;
@@ -39,8 +40,17 @@ export type WorkflowParameter =
 export type WorkflowValue = string | { param: string };
 export type WorkflowArgument =
   WorkflowValue | { param: string; whenTrue: string[]; whenFalse: string[] };
+export type WorkflowFileAction = {
+  path: WorkflowValue;
+  localFile: string;
+  overwrite?: boolean;
+} & ({ type: "upload" } | { type: "download" });
 export interface WorkflowDefinition {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
+  files?: Record<
+    string,
+    { direction: "upload" | "download"; description?: string }
+  >;
   id: string;
   name: string;
   version: string;
@@ -62,6 +72,7 @@ export interface WorkflowDefinition {
     timeoutMs?: number;
     onFailure?: "stop" | "continue";
     action:
+      | WorkflowFileAction
       | { type: "command"; program: string; args: WorkflowArgument[] }
       | {
           type: "script";
@@ -88,6 +99,8 @@ export interface WorkflowPreview {
   policyRevision: number;
   parentTaskId?: string;
   commands: TaskCommand[];
+  plan?: TaskPlanStep[];
+  fileBindings?: TaskFileBindings;
   warnings: string[];
   expiresAt: number;
 }

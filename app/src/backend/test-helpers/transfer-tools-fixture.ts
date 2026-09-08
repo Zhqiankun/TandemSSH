@@ -1,3 +1,5 @@
+import { WorkflowLibrary } from "../collaboration/workflows/library";
+import type { CommandPolicySnapshot } from "../../types/collaboration-operations";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -45,7 +47,18 @@ export async function transferToolsFixture() {
     },
     () => {},
   );
+  const policy: CommandPolicySnapshot = { revision: 1, sets: [] };
   const runtime = new TaskRuntime({
+    validateFileBinding: (userId, taskId, action) =>
+      grants.assert(
+        runtime.fileObservationContext({ kind: "human", userId }, taskId),
+        action,
+      ),
+    releaseTransferProgress: (userId, taskId, operationId) =>
+      transfers.forget(
+        runtime.fileObservationContext({ kind: "human", userId }, taskId),
+        operationId,
+      ),
     getSession: (id) =>
       id === sessionId
         ? {
@@ -81,7 +94,7 @@ export async function transferToolsFixture() {
             },
           }
         : null,
-    policy: async () => ({ revision: 1, sets: [] }),
+    policy: async () => policy,
     audit: () => ({
       append: async (e) => {
         events.push(e);
@@ -123,7 +136,22 @@ export async function transferToolsFixture() {
   });
   runtime.connectClient(principal.connectionId);
   const automation = new TransferAutomation(runtime, grants, transfers);
+  const workflowStore = new Map<string, string>();
+  const workflows = new WorkflowLibrary({
+    read: (user) => workflowStore.get(user),
+    write: async (user, value) => {
+      workflowStore.set(user, value);
+    },
+    ownsHost: async (user, id) => user === userId && id === 7,
+    target: () => ({ hostId: 7, groups: [], control: control.snapshot() }),
+    policy: () => policy,
+    audit: async (_u, type, data) => {
+      events.push({ type, data });
+    },
+    tasks: runtime,
+  });
   const core = new McpCore({
+    workflows,
     transfers: automation,
     tasks: runtime,
     hosts: async () => [
@@ -179,6 +207,8 @@ export async function transferToolsFixture() {
   };
   return {
     remote,
+    workflows,
+    policy,
     folder,
     source,
     destination,

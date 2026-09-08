@@ -146,6 +146,24 @@ export function evaluateFilePolicy(
       action.type === "file.write" || action.type === "file.upload"
         ? "write"
         : "read";
+  return evaluateFilePathPolicy(snapshot, target, paths, access);
+}
+/** Read-only policy simulation for a plan whose local capabilities are not selected yet. */
+export function evaluateFilePathPolicy(
+  snapshot: CommandPolicySnapshot,
+  target: PolicyTarget,
+  inputPaths: string[],
+  access: "read" | "write",
+): CommandDecision {
+  if (
+    !Array.isArray(inputPaths) ||
+    !inputPaths.length ||
+    inputPaths.length > 2 ||
+    inputPaths.some((p) => !filePathSchema.safeParse(p).success) ||
+    !["read", "write"].includes(access)
+  )
+    throw Error("INVALID_FILE_ACTION");
+  const paths = [...new Set(inputPaths.map((p) => posix.normalize(p)))];
   const sets = snapshot.sets.filter(
     (set) =>
       set.scope.type === "global" ||

@@ -141,3 +141,142 @@ it.each(["automatic", "collaborative"] as const)(
   },
   30000,
 );
+it.each(["automatic", "collaborative"] as const)(
+  "built-in AI %s binds local files and waits for the saved mixed workflow",
+  async (mode) => {
+    const f = await transferToolsFixture();
+    cleanup.push(f.close);
+    const saved = await f.workflows.save("owner", {
+      allowedHostIds: [7],
+      definition: {
+        schemaVersion: 2,
+        id: "file-check",
+        name: "文件发布检查",
+        version: "1.0.0",
+        parameters: {},
+        files: {
+          input: { direction: "upload" },
+          output: { direction: "download" },
+        },
+        defaults: { cwd: "/srv" },
+        steps: [
+          {
+            id: "up",
+            name: "上传",
+            action: {
+              type: "upload",
+              localFile: "input",
+              path: "/srv/artifact.bin",
+            },
+          },
+          {
+            id: "check",
+            name: "检查",
+            action: { type: "command", program: "pwd", args: [] },
+          },
+          {
+            id: "down",
+            name: "下载",
+            action: {
+              type: "download",
+              localFile: "output",
+              path: "/srv/artifact.bin",
+            },
+          },
+        ],
+      },
+    });
+    let rounds = 0;
+    const requests: ChatRequest[] = [];
+    const ai = new AiTaskCoordinator({
+      tasks: f.runtime,
+      transfers: f.automation,
+      workflows: f.workflows,
+      validate: async () => ({ label: "测试模型" }),
+      audit: async () => {},
+      stream: async function* (_u, _p, r) {
+        requests.push({ ...r, signal: undefined });
+        if (++rounds === 1) {
+          yield { type: "text", text: "运行已保存的文件检查流程。" };
+          return;
+        }
+        const files = reply(r, "list_authorized_files"),
+          preview = reply(r, "preview_workflow"),
+          run = reply(r, "run_workflow");
+        if (!files) {
+          yield tool("list_authorized_files", {});
+          return;
+        }
+        if (!preview) {
+          const fileBindings = Object.fromEntries(
+            files.files.map(
+              (g: { direction: string; id: string; version: string }) => [
+                g.direction === "upload" ? "input" : "output",
+                { localGrantId: g.id, localVersion: g.version },
+              ],
+            ),
+          );
+          yield tool("preview_workflow", {
+            workflowId: saved.id,
+            parameters: {},
+            fileBindings,
+          });
+          return;
+        }
+        expect(preview.plan).toHaveLength(3);
+        if (!run) {
+          yield tool("run_workflow", { previewId: preview.id });
+          yield tool("run_command", { program: "pwd", args: [] });
+          return;
+        }
+        expect(run.state).toBe("completed");
+        expect(
+          run.operations.map((o: { actionType: string }) => o.actionType),
+        ).toEqual(["file.upload", "terminal.command", "file.download"]);
+        expect(reply(r, "run_command")).toMatchObject({
+          status: "not-executed",
+          reason: "WORKFLOW_RESULT_REVIEW_REQUIRED",
+        });
+        yield tool("finish_task", { summary: "已核对文件与命令的完整流程。" });
+      },
+    });
+    const created = await ai.create("owner", {
+      sessionId: f.sessionId,
+      requestId: randomUUID(),
+      goal: "运行文件流程",
+      providerId: 1,
+      model: "fixture",
+      mode,
+      maxTurns: 8,
+    });
+    cleanup.push(() => ai.stop("owner", created.run.id));
+    await vi.waitFor(() =>
+      expect(ai.get("owner", created.run.id).phase).toBe(
+        "awaiting-authorization",
+      ),
+    );
+    await f.select(created.task.id);
+    await f.authorize(created.task.id);
+    if (mode === "collaborative")
+      for (const type of ["file.upload", "terminal.command", "file.download"]) {
+        await vi.waitFor(
+          () =>
+            expect(f.runtime.get(f.human, created.task.id).state).toBe(
+              "awaiting-approval",
+            ),
+          { timeout: 10000 },
+        );
+        const op = f.runtime.get(f.human, created.task.id).operations.at(-1)!;
+        expect(op.action.type).toBe(type);
+        await f.runtime.approve(f.human, created.task.id, op.id, op.digest, 1);
+      }
+    await vi.waitFor(
+      () => expect(ai.get("owner", created.run.id).phase).toBe("completed"),
+      { timeout: 10000 },
+    );
+    expect(await fs.readFile(f.destination)).toEqual(f.bytes);
+    expect(f.writes).toEqual(["context", "pwd"]);
+    expect(JSON.stringify(requests)).not.toContain(f.folder);
+  },
+  30000,
+);

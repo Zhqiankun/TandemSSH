@@ -100,3 +100,8 @@ secret-ref 类型可以写入定义，但当前缺少不经 argv/终端回显的
 最终验证包的布局复测通过：正常窗口与 720×560 窗口均无编辑区/试算区重叠，窄窗口无横向溢出，滚动后接管按钮仍可见。证据 .cache/workflow-layout-evidence.json、.cache/workflow-layout-narrow-evidence.json，截图 .cache/workflow-policy-final.png、.cache/workflow-policy-narrow.png。新增界面及适配模块 lint 无错误/警告，静态翻译调用缺键为 0。
 
 测试桌面与 SSH 服务已核对进程身份后退出，浏览器/主进程调试端口及测试后端端口均无监听；一次性明文连接文件和诊断网络日志已清理。清理证据 .cache/workflow-cleanup-evidence.json。没有修改用户的日常 Codex 配置、使用真实服务器或调用付费模型。
+
+
+## 保存流程文件步骤的后续实现
+
+文件与命令混合步骤现已接入保存流程、中文授权及 AI/MCP 父任务；运行期本地文件绑定不进入模板导出。格式版本、使用方式、验证证据与剩余边界见[保存流程中的文件步骤](31-workflow-files.md)。此前“文件步骤尚未接入”的段落为历史状态；自动目录批次和跨重启恢复仍未完成。

@@ -47,3 +47,8 @@ fileObservationContext 只提供已核对主体的观察上下文，不恢复执
 测试准备曾因直接调用主机 API 后未失效前端缓存，导致新主机无法打开；改用正式 hosts:refresh 事件后通过。另一次 Windows 回环 ConPTY Shell 探测显示 command 首字母缺失、观察请求超时；未绕过探测或当作传输成功。之后加入测试 SSH 输入记录，确认发送/收到完整命令并完成两种模式。该次探测异常的根因尚未完全确定，保留失败目录 .cache/desktop-observation-report-86608b62-2c3b-49d8-a2ad-ef59bb1ad142，继续纳入 Windows/真实 Linux 稳定性矩阵；不以一次重测代替全面稳定性结论。
 
 完整类型、改动模块 lint 和中文键检查通过；前后端构建及本地解包验证包通过，日志 .cache/transfer-tools-types-final.log、.cache/transfer-tools-lint-final.log、.cache/transfer-tools-build.log、.cache/transfer-tools-package.log。构建保留既有大资源块提示，本地验证包复用原生模块，标准 Windows 原生编译继续由 CI 验证。
+
+
+## 保存流程文件步骤的后续实现
+
+文件与命令混合步骤现已接入保存流程、中文授权及 AI/MCP 父任务；运行期本地文件绑定不进入模板导出。格式版本、使用方式、验证证据与剩余边界见[保存流程中的文件步骤](31-workflow-files.md)。此前“文件步骤尚未接入”的段落为历史状态；自动目录批次和跨重启恢复仍未完成。

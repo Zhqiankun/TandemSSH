@@ -1,10 +1,9 @@
+import { TaskAuthorizationForm } from "./TaskAuthorizationForm";
 import type { HumanLocalFileGrant } from "@/types/local-file-grants";
 import { TaskLocalFiles } from "./TaskLocalFiles";
 import { FileTransferResult } from "./FileTransferResult";
 import { FileInspectionResult } from "./FileInspectionResult";
 import { FileOperationReview } from "./FileOperationReview";
-import { FileScopeEditor } from "./FileScopes";
-import type { FileScope } from "@/types/file-operations";
 import { useState, useEffect, lazy, Suspense } from "react";
 import { WorkflowRuns } from "./WorkflowRuns";
 import { McpSettings } from "@/features/mcp/McpSettings";
@@ -362,6 +361,9 @@ export function TaskPanel({
                   (task.planRevision ?? 0)
                 }
                 task={task}
+                localGrants={
+                  localGrants?.taskId === task.id ? localGrants.grants : []
+                }
                 disabled={
                   work.busy ||
                   !session?.connected ||
@@ -453,170 +455,6 @@ export function TaskPanel({
         <McpSettings hostId={session?.hostId} />
       </footer>
     </aside>
-  );
-}
-function TaskAuthorizationForm({
-  task,
-  disabled,
-  revision,
-  onAuthorize,
-}: {
-  task: TaskView;
-  disabled: boolean;
-  revision: number;
-  onAuthorize: (
-    scope: import("@/types/collaboration-task").TaskAuthorization,
-  ) => Promise<unknown>;
-}) {
-  const { t } = useTranslation();
-  const [ready, setReady] = useState(false);
-  const [fileScopes, setFileScopes] = useState<FileScope[]>([]);
-  const [directory, setDirectory] = useState("");
-  const [reviewed, setReviewed] = useState(false);
-  const [budget, setBudget] = useState(Math.max(task.stepCount, 10));
-  const [minutes, setMinutes] = useState(15);
-  const [allowedPrograms, setAllowedPrograms] = useState("pwd\ndf\nuptime");
-  const [reconciliation, setReconciliation] = useState<"retry" | "skip" | "">(
-    "",
-  );
-  const needsReconcile = !!task.reconciliationRequired;
-  return (
-    <form
-      className="tandem-authorization"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void onAuthorize({
-          planRevision: task.planRevision ?? 0,
-          generation: task.control.generation,
-          controlEpoch: task.control.controlEpoch,
-          policyRevision: revision,
-          shellReady: ready,
-          directory: directory.trim() || undefined,
-          maxOperations: budget,
-          durationMinutes: minutes,
-          allowReviewedPlan: reviewed,
-          matches: task.stepCount
-            ? undefined
-            : allowedPrograms
-                .split(/\r?\n/)
-                .map((program) => program.trim())
-                .filter(Boolean)
-                .map((program) => ({ kind: "program" as const, program })),
-          fileScopes: fileScopes.length ? fileScopes : undefined,
-          reconciliation: reconciliation || undefined,
-        });
-      }}
-    >
-      <h4>{t("tandem.collaboration.authorization")}</h4>
-      {task.commands.length > 0 && (
-        <ol className="tandem-plan-review">
-          {task.commands.map((cmd, i) => (
-            <li key={i}>
-              <code>{displayCommand(cmd)}</code>
-              {cmd.cwd && <small>{cmd.cwd}</small>}
-            </li>
-          ))}
-        </ol>
-      )}
-      {task.stepCount === 0 && (
-        <p className="tandem-task-help">
-          {t("tandem.collaboration.externalScope")}
-        </p>
-      )}
-      {task.stepCount === 0 && (
-        <label>
-          {t("tandem.collaboration.allowedPrograms")}
-          <textarea
-            value={allowedPrograms}
-            onChange={(e) => setAllowedPrograms(e.target.value)}
-            rows={4}
-            maxLength={4096}
-            required={!fileScopes.length}
-          />
-        </label>
-      )}
-      <FileScopeEditor
-        value={fileScopes}
-        onChange={setFileScopes}
-        disabled={disabled}
-      />
-      <label>
-        {t("tandem.collaboration.directory")}
-        <input
-          value={directory}
-          onChange={(e) => setDirectory(e.target.value)}
-          placeholder={t("tandem.collaboration.currentDirectory")}
-          pattern="/.*"
-        />
-      </label>
-      <div className="tandem-task-limits">
-        <label>
-          {t("tandem.collaboration.maxOperations")}
-          <input
-            type="number"
-            min={1}
-            max={500}
-            required
-            value={budget}
-            onChange={(e) => setBudget(e.target.valueAsNumber)}
-          />
-        </label>
-        <label>
-          {t("tandem.collaboration.duration")}
-          <input
-            type="number"
-            min={1}
-            max={480}
-            required
-            value={minutes}
-            onChange={(e) => setMinutes(e.target.valueAsNumber)}
-          />
-        </label>
-      </div>
-      <label className="tandem-task-checkbox">
-        <input
-          type="checkbox"
-          checked={ready}
-          onChange={(e) => setReady(e.target.checked)}
-        />
-        <span>{t("tandem.collaboration.shellReady")}</span>
-      </label>
-      {task.mode === "automatic" && task.commands.length > 0 && (
-        <label className="tandem-task-checkbox">
-          <input
-            type="checkbox"
-            checked={reviewed}
-            onChange={(e) => setReviewed(e.target.checked)}
-          />
-          <span>{t("tandem.collaboration.reviewedPlan")}</span>
-        </label>
-      )}
-      {needsReconcile && (
-        <label>
-          {t("tandem.collaboration.reconcile")}
-          <select
-            required
-            value={reconciliation}
-            onChange={(e) =>
-              setReconciliation(e.target.value as "retry" | "skip")
-            }
-          >
-            <option value="" disabled>
-              {t("tandem.collaboration.reconcileChoose")}
-            </option>
-            <option value="skip">{t("tandem.collaboration.skip")}</option>
-            <option value="retry">{t("tandem.collaboration.retry")}</option>
-          </select>
-        </label>
-      )}
-      <Button
-        type="submit"
-        disabled={disabled || !ready || (needsReconcile && !reconciliation)}
-      >
-        <Play size={14} />
-        {t("tandem.collaboration.authorize")}
-      </Button>
-    </form>
   );
 }
 function OperationCard({

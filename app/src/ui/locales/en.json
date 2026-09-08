@@ -4960,7 +4960,13 @@
         "FILE_LOCAL_REQUEST_FAILED": "Local file authorization failed. Select again.",
         "FILE_LOCAL_REQUEST_TIMEOUT": "Local selection or verification timed out and access was revoked.",
         "FILE_LOCAL_TRUSTED_WINDOW_REQUIRED": "Select local files from the TandemSSH main window.",
-        "FILE_LOCAL_TASK_UNAVAILABLE": "The task is not available. Reopen the collaboration panel."
+        "FILE_LOCAL_TASK_UNAVAILABLE": "The task is not available. Reopen the collaboration panel.",
+        "WORKFLOW_FILE_SCHEMA_REQUIRED": "File steps require schema version 2.",
+        "WORKFLOW_FILE_SLOT_INVALID": "File slot is missing or its direction does not match.",
+        "WORKFLOW_FILE_BINDING_REQUIRED": "Bind authorized local files for remaining steps first.",
+        "WORKFLOW_DOWNLOAD_SLOT_REUSED": "Each download step requires a distinct file slot.",
+        "WORKFLOW_DOWNLOAD_TARGET_REUSED": "Download steps cannot share a local destination grant.",
+        "WORKFLOW_FILE_CWD_UNSUPPORTED": "File steps use absolute remote paths and cannot set a command working directory."
       },
       "allowedPrograms": "Programs allowed for this task (one per line)",
       "operationProgress": "{{done}} / {{total}} commands completed",
@@ -5163,7 +5169,8 @@
         "boolean": "Boolean",
         "enum": "Enum",
         "remote-directory": "Remote directory",
-        "secret-ref": "Credential reference"
+        "secret-ref": "Credential reference",
+        "remote-path": "Remote file path"
       },
       "secretUnsupported": "Secret transport is not supported by the current executor. References may be saved, but execution requires manual handling.",
       "min": "Minimum",
@@ -5256,7 +5263,8 @@
         "RECOGNIZED_SECRET_PATTERN": "A possible secret pattern was detected. Review before exporting.",
         "PERSISTENT_ENVIRONMENT": "Environment variables persist in the current shared shell.",
         "CONTINUE_AFTER_FAILURE": "This step may continue after a known failure; the final state retains the failure.",
-        "SCRIPT_REVIEW_REQUIRED": "This step contains a script. Review the exact source."
+        "SCRIPT_REVIEW_REQUIRED": "This step contains a script. Review the exact source.",
+        "WORKFLOW_FILE_SELECTION_REQUIRED": "Choose an authorized local file before this run."
       },
       "errors": {
         "WORKFLOW_CHANGED": "WORKFLOW CHANGED",
@@ -5302,12 +5310,35 @@
         "WORKFLOW_RUN_LIMIT": "This task reached its workflow run limit.",
         "HOST_SCOPE_CHANGED": "Host groups or tags changed. Review and authorize again.",
         "WORKFLOW_EXPANSION_TOO_LARGE": "The expanded workflow is too large. Reduce its steps or parameter values.",
-        "INVALID_WORKFLOW_RUN": "The workflow run does not meet the execution constraints."
+        "INVALID_WORKFLOW_RUN": "The workflow run does not meet the execution constraints.",
+        "WORKFLOW_FILE_SCHEMA_REQUIRED": "File steps require schema version 2.",
+        "WORKFLOW_FILE_SLOT_INVALID": "File slot is missing or its direction does not match.",
+        "WORKFLOW_FILE_BINDING_REQUIRED": "Bind authorized local files for remaining steps first.",
+        "WORKFLOW_DOWNLOAD_SLOT_REUSED": "Each download step requires a distinct file slot.",
+        "WORKFLOW_DOWNLOAD_TARGET_REUSED": "Download steps cannot share a local destination grant.",
+        "WORKFLOW_FILE_CWD_UNSUPPORTED": "File steps use absolute remote paths and cannot set a command working directory."
       },
       "emptyValue": "(empty string)",
       "fromRun": "Workflow: {{name}}",
       "runRevision": "Version {{version}} · Revision {{revision}}",
-      "parentContinues": "The workflow has ended. The parent task retains control until it finishes or you take over."
+      "parentContinues": "The workflow has ended. The parent task retains control until it finishes or you take over.",
+      "fileSlots": "Local file slots",
+      "fileSlotsHint": "Templates save slot names. Select local sources and destinations for each run; computer paths are not saved.",
+      "fileSlotDescription": "File description",
+      "fileSlotName": "File slot name",
+      "fileSlotDirection": "Transfer direction",
+      "addFileSlot": "Add file slot",
+      "localFileSlot": "File slot",
+      "chooseFileSlot": "Choose a file slot",
+      "remoteFilePath": "Remote file path",
+      "fileOverwrite": "Allow overwrite (task authorization still required)",
+      "uploadStep": "Upload file",
+      "downloadStep": "Download file",
+      "fileBindings": "Local files for this run",
+      "fileBindingsHint": "Authorize local files above, then bind sources or destinations for remaining steps. Each download destination can be used once.",
+      "chooseAuthorizedFile": "Choose an authorized file",
+      "fileBindingsRequired": "Choose a valid grant for every file slot. Download slots require distinct destinations.",
+      "addPlannedFileScopes": "Add remote file scopes for remaining steps"
     },
     "fileScope": {
       "title": "File scope for this task",

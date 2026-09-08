@@ -1,3 +1,4 @@
+import { TaskPlanLine } from "@/features/collaboration/TaskPlanLine";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -30,7 +31,7 @@ import {
   type WorkflowReview,
 } from "@/api/workflow-api";
 import { collaborationApi } from "@/api/collaboration-api";
-import { displayCommand } from "@/features/collaboration/command-plan";
+import { isTaskFileStep } from "@/types/task-plan";
 import { WorkflowDefinitionEditor } from "./WorkflowDefinitionEditor";
 import { createWorkflow } from "./initial-definition";
 import { policyReason } from "@/features/collaboration/policy-presentation";
@@ -601,7 +602,7 @@ export function WorkflowLibraryBody({
                     {w("policyRevision")} {preview.policyRevision}
                   </p>
                   <ol>
-                    {preview.commands.map((command, i) => (
+                    {(preview.plan ?? preview.commands).map((command, i) => (
                       <li key={i}>
                         <div className="tandem-settings-toolbar">
                           <strong>
@@ -619,9 +620,14 @@ export function WorkflowLibraryBody({
                             )}
                           </span>
                         </div>
-                        <pre>{displayCommand(command)}</pre>
+                        <TaskPlanLine step={command} />
                         <small>
-                          {command.cwd ?? w("resolvedAtAuthorization")} ·{" "}
+                          {!isTaskFileStep(command) && (
+                            <>
+                              {command.cwd ?? w("resolvedAtAuthorization")}{" "}
+                              ·{" "}
+                            </>
+                          )}
                           {(command.timeoutMs ?? 120000) / 1000}s ·{" "}
                           {command.onFailure === "continue"
                             ? w("continue")

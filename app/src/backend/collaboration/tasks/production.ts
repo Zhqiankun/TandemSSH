@@ -1,5 +1,8 @@
 import { automatedTransfers } from "../../files/automated-transfer-production.js";
-import { bindLocalTaskContext } from "../../files/local-file-production.js";
+import {
+  bindLocalTaskContext,
+  localFileGrants,
+} from "../../files/local-file-production.js";
 import { automatedDocuments } from "../../files/production.js";
 import { hostFileFence } from "../sessions/host-file-fence.js";
 import { sessionManager } from "../../hosts/terminal/session-manager.js";
@@ -48,6 +51,16 @@ export function readPolicy(userId: string): CommandPolicySnapshot {
   };
 }
 export const taskRuntime = new TaskRuntime({
+  validateFileBinding: (userId, taskId, action) =>
+    localFileGrants.assert(
+      taskRuntime.fileObservationContext({ kind: "human", userId }, taskId),
+      action,
+    ),
+  releaseTransferProgress: (userId, taskId, operationId) =>
+    automatedTransfers.forget(
+      taskRuntime.fileObservationContext({ kind: "human", userId }, taskId),
+      operationId,
+    ),
   fileReviewValid: (...args) => automatedDocuments.validReview(...args),
   notifyTask(sessionId, taskId) {
     sessionManager.broadcast(sessionId, {

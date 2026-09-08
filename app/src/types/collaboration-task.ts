@@ -1,3 +1,4 @@
+import type { TaskPlanStep, TaskFileBindings } from "./task-plan.js";
 import type { FileScope, FileResultView } from "./file-operations.js";
 import type { ControlSnapshot } from "./collaboration.js";
 import type {
@@ -88,6 +89,8 @@ export interface TaskView {
   nextStep: number;
   stepCount: number;
   commands: TaskCommand[];
+  plan?: TaskPlanStep[];
+  fileBindings?: TaskFileBindings;
   operations: TaskOperation[];
   error?: string;
   reconciliationRequired?: boolean;
@@ -106,6 +109,7 @@ export interface TaskView {
   };
 }
 export interface TaskAuthorization {
+  fileBindings?: TaskFileBindings;
   planRevision?: number;
   generation: number;
   controlEpoch: number;

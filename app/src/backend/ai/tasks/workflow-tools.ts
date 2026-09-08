@@ -1,3 +1,4 @@
+import { fileBindingsSchema } from "../../collaboration/tasks/plan.js";
 import { z } from "zod";
 import type { ToolDefinition } from "../providers/types.js";
 export const aiWorkflowSchemas = {
@@ -9,6 +10,7 @@ export const aiWorkflowSchemas = {
     .object({
       workflowId: z.string().uuid(),
       parameters: z.record(z.string(), z.unknown()),
+      fileBindings: fileBindingsSchema.optional(),
     })
     .strict(),
   run_workflow: z.object({ previewId: z.string().uuid() }).strict(),
@@ -38,12 +40,24 @@ export const aiWorkflowTools: ToolDefinition[] = [
   {
     name: "preview_workflow",
     description:
-      "填写流程参数并预览完整步骤。预览绑定当前父任务与会话，不授予权限，不执行命令。",
+      "填写流程参数并预览完整步骤。预览绑定当前父任务与会话，不授予权限，不执行命令。含文件步骤时可把 list_authorized_files 返回的本任务 ID/版本绑定到文件槽位，不可传本地路径。",
     parameters: {
       type: "object",
       properties: {
         workflowId: { type: "string" },
         parameters: { type: "object", additionalProperties: true },
+        fileBindings: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            properties: {
+              localGrantId: { type: "string" },
+              localVersion: { type: "string" },
+            },
+            required: ["localGrantId", "localVersion"],
+            additionalProperties: false,
+          },
+        },
       },
       required: ["workflowId", "parameters"],
       additionalProperties: false,

@@ -1,3 +1,4 @@
+import { fileBindingsSchema } from "../collaboration/tasks/plan.js";
 import {
   transferRequestSchema,
   transferObservationSchema,
@@ -48,6 +49,7 @@ export const coreInputSchemas = {
       workflowId: id,
       sessionId: id,
       parentTaskId: id.optional(),
+      fileBindings: fileBindingsSchema.optional(),
       parameters: z.record(z.string(), z.unknown()),
     })
     .strict(),

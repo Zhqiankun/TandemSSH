@@ -1,3 +1,15 @@
+import {
+  isTaskFileStep,
+  type TaskPlanStep,
+  type TaskFileBindings,
+} from "../../../types/task-plan.js";
+import {
+  validateTaskPlan,
+  fileStepAction,
+  fileBindingsSchema,
+  canContinueStepFailure,
+} from "./plan.js";
+import type { FileTransferAction } from "../../../types/file-transfer.js";
 import type { FileAction } from "../../../types/file-operations.js";
 import {
   validateFileAction,
@@ -52,6 +64,16 @@ export interface TaskSession {
   executor: CommandExecutorPort & { prepareContext(): PreparedCommand };
 }
 export interface TaskRuntimePorts {
+  validateFileBinding?(
+    userId: string,
+    taskId: string,
+    action: FileTransferAction,
+  ): void;
+  releaseTransferProgress?(
+    userId: string,
+    taskId: string,
+    operationId: string,
+  ): void;
   fileReviewValid?(
     userId: string,
     taskId: string,
@@ -72,8 +94,12 @@ export interface TaskRuntimePorts {
 interface TaskWorkflowRecord {
   summary: TaskWorkflowRun;
   commands: TaskCommand[];
+  plan?: TaskPlanStep[];
+  fileBindings?: TaskFileBindings;
 }
 export interface AttachWorkflow {
+  plan?: TaskPlanStep[];
+  fileBindings?: TaskFileBindings;
   expectedGroupIds?: string[];
   requestId: string;
   name: string;
@@ -83,7 +109,7 @@ export interface AttachWorkflow {
 }
 interface RecordTask {
   view: Omit<TaskView, "control" | "operations" | "policyRevision">;
-  initialPlan: { commands: TaskCommand[]; workflow?: TaskView["workflow"] };
+  initialPlan: { steps: TaskPlanStep[]; workflow?: TaskView["workflow"] };
   workflowRuns: Map<string, TaskWorkflowRecord>;
   workflowRequests: Map<
     string,
@@ -106,7 +132,8 @@ interface RecordTask {
   deadline?: number;
   workflowCwd?: string;
   operationIds: string[];
-  steps: Array<TaskCommand & { operationId?: string }>;
+  steps: Array<TaskPlanStep & { operationId?: string }>;
+  fileBindings: TaskFileBindings;
   generation: number;
   pumping?: number;
   attempts: Set<string>;
@@ -191,12 +218,7 @@ export class TaskRuntime {
       (frozen.commands?.length ?? 0) > 100
     )
       return Promise.reject(new Error("INVALID_REQUEST"));
-    for (const command of frozen.commands ?? [])
-      validateCommandAction({
-        type: "terminal.command",
-        ...command,
-        cwd: command.cwd ?? "/",
-      });
+    validateTaskPlan(frozen.plan ?? frozen.commands ?? []);
     const key = JSON.stringify([
       actor.userId,
       actor.kind === "mcp"
@@ -210,7 +232,7 @@ export class TaskRuntime {
       frozen.sessionId,
       frozen.title,
       frozen.mode,
-      frozen.commands ?? [],
+      frozen.plan ?? frozen.commands ?? [],
       frozen.source ?? "workflow",
       frozen.workflow ?? null,
     ]);
@@ -239,6 +261,7 @@ export class TaskRuntime {
       title: string;
       mode: TaskMode;
       commands?: TaskCommand[];
+      plan?: TaskPlanStep[];
       source?: "workflow" | "assistant";
       workflow?: TaskView["workflow"];
     },
@@ -264,8 +287,8 @@ export class TaskRuntime {
         prior.view.mode !== input.mode ||
         JSON.stringify(prior.initialPlan.workflow ?? null) !==
           JSON.stringify(input.workflow ?? null) ||
-        JSON.stringify(prior.initialPlan.commands) !==
-          JSON.stringify(input.commands ?? [])
+        JSON.stringify(prior.initialPlan.steps) !==
+          JSON.stringify(input.plan ?? input.commands ?? [])
       )
         throw new Error("REQUEST_CONFLICT");
       return this.view(prior);
@@ -273,10 +296,13 @@ export class TaskRuntime {
     if (this.tasks.size >= 128) throw new Error("TASK_CAPACITY_REACHED");
     const policy = await this.ports.policy(actor.userId),
       audit = this.ports.audit(actor.userId);
-    const commands = structuredClone(input.commands ?? []);
+    const plan = validateTaskPlan(input.plan ?? input.commands ?? []);
+    const commands = plan.filter(
+      (step): step is TaskCommand => !isTaskFileStep(step),
+    );
     const task: RecordTask = {
       initialPlan: {
-        commands: structuredClone(commands),
+        steps: structuredClone(plan),
         workflow: input.workflow ? structuredClone(input.workflow) : undefined,
       },
       workflowRuns: new Map(),
@@ -290,7 +316,8 @@ export class TaskRuntime {
       policy,
       gateway: undefined as never,
       operationIds: [],
-      steps: commands.map((command) => ({ ...command })),
+      steps: structuredClone(plan),
+      fileBindings: {},
       generation: 0,
       attempts: new Set(),
       reviews: new Map(),
@@ -311,8 +338,9 @@ export class TaskRuntime {
         state: "awaiting-authorization",
         planRevision: 0,
         nextStep: 0,
-        stepCount: commands.length,
+        stepCount: plan.length,
         commands,
+        plan: plan.some(isTaskFileStep) ? structuredClone(plan) : undefined,
         createdAt: Date.now(),
         workflow: input.workflow ? structuredClone(input.workflow) : undefined,
       },
@@ -388,20 +416,20 @@ export class TaskRuntime {
       frozen.requestId.length > 128 ||
       !frozen.name ||
       frozen.name.length > 120 ||
-      !frozen.commands.length ||
-      frozen.commands.length > 100 ||
-      Buffer.byteLength(JSON.stringify(frozen.commands), "utf8") > 512000
+      !(frozen.plan ?? frozen.commands).length ||
+      (frozen.plan ?? frozen.commands).length > 100 ||
+      Buffer.byteLength(
+        JSON.stringify(frozen.plan ?? frozen.commands),
+        "utf8",
+      ) > 512000
     )
       return Promise.reject(new Error("INVALID_WORKFLOW_RUN"));
-    for (const command of frozen.commands)
-      validateCommandAction({
-        type: "terminal.command",
-        ...command,
-        cwd: command.cwd ?? "/",
-      });
+    validateTaskPlan(frozen.plan ?? frozen.commands);
+    fileBindingsSchema.parse(frozen.fileBindings ?? {});
     const fingerprint = JSON.stringify([
         frozen.workflow,
-        frozen.commands,
+        frozen.plan ?? frozen.commands,
+        frozen.fileBindings ?? {},
         frozen.name,
       ]),
       prior = task.workflowRequests.get(frozen.requestId);
@@ -422,7 +450,7 @@ export class TaskRuntime {
   ): Promise<TaskWorkflowRun> {
     this.sessionFor(actor, task.view.sessionId);
     if (
-      task.initialPlan.commands.length ||
+      task.initialPlan.steps.length ||
       task.steps.length ||
       task.activeWorkflowRunId ||
       task.attachingWorkflow ||
@@ -464,10 +492,19 @@ export class TaskRuntime {
           throw new Error("STALE_CONTROL");
       };
     check();
+    const plan = validateTaskPlan(input.plan ?? input.commands);
+    this.validateBindings(
+      task,
+      plan,
+      input.fileBindings ?? {},
+      task.view.state === "ready" ? 0 : plan.length,
+    );
     task.attachingWorkflow = true;
     try {
       const run: TaskWorkflowRecord = {
         commands: structuredClone(input.commands),
+        plan: structuredClone(plan),
+        fileBindings: structuredClone(input.fileBindings ?? {}),
         summary: {
           id: randomUUID(),
           taskId: task.view.id,
@@ -475,7 +512,7 @@ export class TaskRuntime {
           workflow: structuredClone(input.workflow),
           state: task.view.state,
           nextStep: 0,
-          stepCount: input.commands.length,
+          stepCount: plan.length,
           operationIds: [],
           createdAt: Date.now(),
         },
@@ -486,6 +523,8 @@ export class TaskRuntime {
         workflow: input.workflow,
         name: input.name,
         commands: input.commands,
+        plan,
+        fileBindings: input.fileBindings,
       });
       check();
       task.workflowRuns.set(run.summary.id, run);
@@ -493,7 +532,12 @@ export class TaskRuntime {
       task.view.planRevision = (task.view.planRevision ?? 0) + 1;
       task.view.workflow = structuredClone(input.workflow);
       task.view.commands = structuredClone(input.commands);
-      task.steps = structuredClone(input.commands);
+      task.steps = structuredClone(plan);
+      task.fileBindings = structuredClone(input.fileBindings ?? {});
+      task.view.plan = plan.some(isTaskFileStep)
+        ? structuredClone(plan)
+        : undefined;
+      task.view.fileBindings = structuredClone(task.fileBindings);
       task.view.stepCount = task.steps.length;
       task.view.nextStep = 0;
       task.workflowCwd = task.view.cwd;
@@ -526,6 +570,7 @@ export class TaskRuntime {
     return {
       ...this.workflowSummary(task, runId),
       commands: structuredClone(task.workflowRuns.get(runId)!.commands),
+      plan: structuredClone(task.workflowRuns.get(runId)!.plan),
     };
   }
 
@@ -688,6 +733,13 @@ export class TaskRuntime {
       !scope.reconciliation
     )
       throw new Error("RECONCILIATION_REQUIRED");
+    const fileBindings = scope.fileBindings ?? task.fileBindings;
+    this.validateBindings(
+      task,
+      task.steps,
+      fileBindings,
+      task.view.nextStep + (prior && scope.reconciliation === "skip" ? 1 : 0),
+    );
     await this.ports.audit(actor.userId).record("task.authorization", {
       taskId,
       scope,
@@ -742,7 +794,15 @@ export class TaskRuntime {
       task.view.cwd = posix.normalize(directory);
       if (task.view.workflow && !task.workflowCwd)
         task.workflowCwd = task.view.cwd;
-      task.scope = { ...structuredClone(scope), directory: task.view.cwd };
+      task.fileBindings = structuredClone(fileBindings);
+      task.view.fileBindings = Object.keys(fileBindings).length
+        ? structuredClone(fileBindings)
+        : undefined;
+      task.scope = {
+        ...structuredClone(scope),
+        fileBindings: structuredClone(fileBindings),
+        directory: task.view.cwd,
+      };
       task.deadline = Date.now() + scope.durationMinutes * 60000;
       task.attempts.clear();
       task.view.error = undefined;
@@ -761,11 +821,16 @@ export class TaskRuntime {
       for (let i = task.view.nextStep; i < task.steps.length; i++)
         task.steps[i].operationId = undefined;
       const matches = task.steps.length
-        ? task.steps.map((step) => ({
-            kind: "program-args" as const,
-            program: step.program,
-            args: step.args,
-          }))
+        ? task.steps
+            .filter(
+              (step): step is TaskCommand & { operationId?: string } =>
+                !isTaskFileStep(step),
+            )
+            .map((step) => ({
+              kind: "program-args" as const,
+              program: step.program,
+              args: step.args,
+            }))
         : (scope.matches ?? []);
       if (
         JSON.stringify([...task.session.groups()].sort()) !==
@@ -805,6 +870,39 @@ export class TaskRuntime {
     }
   }
 
+  checkWorkflowFileBindings(
+    actor: TaskActor,
+    taskId: string,
+    plan: TaskPlanStep[],
+    bindings: TaskFileBindings,
+  ) {
+    this.fileObservationContext(actor, taskId);
+    this.validateBindings(this.owned(actor, taskId), plan, bindings);
+  }
+  private validateBindings(
+    task: RecordTask,
+    plan: TaskPlanStep[],
+    raw: TaskFileBindings,
+    start = 0,
+  ) {
+    const bindings = fileBindingsSchema.parse(raw),
+      slots = new Set(plan.filter(isTaskFileStep).map((s) => s.localFile));
+    if (Object.keys(bindings).some((name) => !slots.has(name)))
+      throw Error("WORKFLOW_FILE_SLOT_INVALID");
+    const downloadGrants = new Set<string>();
+    for (const step of plan.slice(start))
+      if (isTaskFileStep(step)) {
+        const action = fileStepAction(step, bindings);
+        if (step.direction === "download") {
+          if (downloadGrants.has(action.localGrantId))
+            throw Error("WORKFLOW_DOWNLOAD_TARGET_REUSED");
+          downloadGrants.add(action.localGrantId);
+        }
+        if (!this.ports.validateFileBinding)
+          throw Error("FILE_LOCAL_GRANT_REQUIRED");
+        this.ports.validateFileBinding(task.userId, task.view.id, action);
+      }
+  }
   private inScope(task: RecordTask, cwd: string): boolean {
     const root = posix.normalize(task.scope?.directory || task.view.cwd || "/");
     const target = posix.normalize(cwd);
@@ -826,19 +924,28 @@ export class TaskRuntime {
         let op: OperationView;
         if (step.operationId) op = task.gateway.get(step.operationId);
         else {
+          const action = isTaskFileStep(step)
+            ? fileStepAction(step, task.fileBindings)
+            : {
+                type: "terminal.command" as const,
+                program: step.program,
+                args: step.args,
+                cwd:
+                  step.cwd ??
+                  (task.view.workflow?.shellState === "explicit-cwd"
+                    ? task.workflowCwd!
+                    : task.view.cwd!),
+                timeoutMs: step.timeoutMs,
+              };
+          if (isTaskFileStep(step))
+            this.ports.validateFileBinding?.(
+              task.userId,
+              task.view.id,
+              action as FileTransferAction,
+            );
           op = await this.propose(
             task,
-            {
-              type: "terminal.command",
-              program: step.program,
-              args: step.args,
-              cwd:
-                step.cwd ??
-                (task.view.workflow?.shellState === "explicit-cwd"
-                  ? task.workflowCwd!
-                  : task.view.cwd!),
-              timeoutMs: step.timeoutMs,
-            },
+            action,
             `${task.activeWorkflowRunId ?? "initial"}-step-${task.view.nextStep}-v${version}`,
           );
           if (version !== task.generation) break;
@@ -864,13 +971,22 @@ export class TaskRuntime {
         );
         if (version !== task.generation) break;
         if (
+          isTaskFileStep(step) &&
+          (result.status === "succeeded" || canContinueStepFailure(result))
+        ) {
+          try {
+            this.ports.releaseTransferProgress?.(
+              task.userId,
+              task.view.id,
+              result.id,
+            );
+          } catch {
+            /* Keep the verified operation result; progress may be released explicitly. */
+          }
+        }
+        if (
           result.status !== "succeeded" &&
-          !(
-            step.onFailure === "continue" &&
-            result.status === "failed" &&
-            !result.auditGap &&
-            !result.error
-          )
+          !(step.onFailure === "continue" && canContinueStepFailure(result))
         )
           break;
         if (result.status === "failed") {
@@ -906,7 +1022,10 @@ export class TaskRuntime {
           task.reviewedPlanId = undefined;
           task.workflowCwd = undefined;
           task.steps = [];
+          task.fileBindings = {};
           task.view.commands = [];
+          task.view.plan = undefined;
+          task.view.fileBindings = undefined;
           task.view.stepCount = 0;
           task.view.nextStep = 0;
           task.view.workflow = task.initialPlan.workflow;
@@ -994,9 +1113,9 @@ export class TaskRuntime {
       if (result.resultingCwd) task.view.cwd = result.resultingCwd;
       if (
         (result.status !== "succeeded" &&
-          !(continueOnFailure && result.status === "failed")) ||
+          !(continueOnFailure && canContinueStepFailure(result))) ||
         result.auditGap ||
-        result.error
+        (result.status === "succeeded" && result.error)
       )
         this.pause(task, result.error ?? "COMMAND_FAILED");
       else task.view.state = "ready";

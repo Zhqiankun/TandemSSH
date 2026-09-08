@@ -1,3 +1,4 @@
+import { fileBindingsSchema } from "../tasks/plan.js";
 import { localFileGrants } from "../../files/local-file-production.js";
 import { localFileGrantRoutes } from "../../files/local-file-routes.js";
 import { legacyCommands } from "../legacy/production.js";
@@ -66,6 +67,7 @@ const command = z
   .strict();
 const authorization = z
   .object({
+    fileBindings: fileBindingsSchema.optional(),
     planRevision: z.number().int().nonnegative().optional(),
     generation: z.number().int().positive(),
     controlEpoch: z.number().int().nonnegative(),

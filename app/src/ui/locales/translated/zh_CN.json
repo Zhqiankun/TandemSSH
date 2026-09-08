@@ -4960,7 +4960,13 @@
         "FILE_LOCAL_REQUEST_FAILED": "本地文件授权未完成，请重新选择。",
         "FILE_LOCAL_REQUEST_TIMEOUT": "本地文件选择或校验超时，原授权已撤销。",
         "FILE_LOCAL_TRUSTED_WINDOW_REQUIRED": "请从同舟 SSH 主窗口选择本地文件。",
-        "FILE_LOCAL_TASK_UNAVAILABLE": "当前任务尚不可用，请重新打开协作面板。"
+        "FILE_LOCAL_TASK_UNAVAILABLE": "当前任务尚不可用，请重新打开协作面板。",
+        "WORKFLOW_FILE_SCHEMA_REQUIRED": "含文件步骤的流程需使用格式版本 2。",
+        "WORKFLOW_FILE_SLOT_INVALID": "文件位置不存在，或传输方向不匹配。",
+        "WORKFLOW_FILE_BINDING_REQUIRED": "请先为剩余文件步骤选择本次任务授权的本地文件。",
+        "WORKFLOW_DOWNLOAD_SLOT_REUSED": "每个下载步骤需要独立的文件位置。",
+        "WORKFLOW_DOWNLOAD_TARGET_REUSED": "不同下载步骤不能使用同一个本地目标授权。",
+        "WORKFLOW_FILE_CWD_UNSUPPORTED": "文件步骤使用绝对远端路径，不能设置命令工作目录。"
       },
       "allowedPrograms": "本次允许的程序（每行一个）",
       "operationProgress": "已完成 {{done}} / {{total}} 条命令",
@@ -5163,7 +5169,8 @@
         "boolean": "开关",
         "enum": "枚举选项",
         "remote-directory": "远端目录",
-        "secret-ref": "凭据引用"
+        "secret-ref": "凭据引用",
+        "remote-path": "远端文件路径"
       },
       "secretUnsupported": "当前执行适配器暂不支持安全传递秘密参数。定义可保留引用，运行时会暂停，需人工处理。",
       "min": "最小值",
@@ -5256,7 +5263,8 @@
         "RECOGNIZED_SECRET_PATTERN": "检测到疑似秘密字段，请检查后再导出。",
         "PERSISTENT_ENVIRONMENT": "环境变量会保留在当前共享 Shell 中。",
         "CONTINUE_AFTER_FAILURE": "此步骤明确允许记录失败后继续；最终状态会保留失败。",
-        "SCRIPT_REVIEW_REQUIRED": "此步骤包含脚本，请逐字检查实际执行内容。"
+        "SCRIPT_REVIEW_REQUIRED": "此步骤包含脚本，请逐字检查实际执行内容。",
+        "WORKFLOW_FILE_SELECTION_REQUIRED": "运行前需选择本次任务授权的本地文件。"
       },
       "errors": {
         "WORKFLOW_CHANGED": "流程已被修改，请重新加载并生成预览。",
@@ -5302,12 +5310,35 @@
         "WORKFLOW_RUN_LIMIT": "本任务的流程运行数量已达到上限。",
         "HOST_SCOPE_CHANGED": "主机分组或标签已变化，请重新预览并授权。",
         "WORKFLOW_EXPANSION_TOO_LARGE": "参数展开后的流程过大，请减少步骤或参数内容。",
-        "INVALID_WORKFLOW_RUN": "流程运行内容不符合约束。"
+        "INVALID_WORKFLOW_RUN": "流程运行内容不符合约束。",
+        "WORKFLOW_FILE_SCHEMA_REQUIRED": "含文件步骤的流程需使用格式版本 2。",
+        "WORKFLOW_FILE_SLOT_INVALID": "文件位置不存在，或传输方向不匹配。",
+        "WORKFLOW_FILE_BINDING_REQUIRED": "请先为剩余文件步骤选择本次任务授权的本地文件。",
+        "WORKFLOW_DOWNLOAD_SLOT_REUSED": "每个下载步骤需要独立的文件位置。",
+        "WORKFLOW_DOWNLOAD_TARGET_REUSED": "不同下载步骤不能使用同一个本地目标授权。",
+        "WORKFLOW_FILE_CWD_UNSUPPORTED": "文件步骤使用绝对远端路径，不能设置命令工作目录。"
       },
       "emptyValue": "（空字符串）",
       "fromRun": "流程：{{name}}",
       "runRevision": "版本 {{version}} · 修订 {{revision}}",
-      "parentContinues": "流程已结束，父任务保留控制权继续处理；你仍可随时接管。"
+      "parentContinues": "流程已结束，父任务保留控制权继续处理；你仍可随时接管。",
+      "fileSlots": "本地文件位置",
+      "fileSlotsHint": "模板只保存文件位置名称；每次运行时选择本地来源和目标，不保存电脑路径。",
+      "fileSlotDescription": "文件用途说明",
+      "fileSlotName": "文件位置名称",
+      "fileSlotDirection": "传输方向",
+      "addFileSlot": "添加文件位置",
+      "localFileSlot": "文件位置",
+      "chooseFileSlot": "选择文件位置",
+      "remoteFilePath": "远端文件路径",
+      "fileOverwrite": "允许覆盖（仍需本次任务授权）",
+      "uploadStep": "上传文件",
+      "downloadStep": "下载文件",
+      "fileBindings": "本次流程的本地文件",
+      "fileBindingsHint": "先在上方授权本地文件，再为尚未完成的步骤选择对应来源或目标。每个下载目标只能使用一次。",
+      "chooseAuthorizedFile": "选择已授权文件",
+      "fileBindingsRequired": "请为每个文件位置选择有效授权；不同下载位置需要不同目标。",
+      "addPlannedFileScopes": "填入剩余步骤的远端文件范围"
     },
     "fileScope": {
       "title": "本次任务的文件范围",

@@ -1,3 +1,5 @@
+import { isTaskFileStep, type TaskPlanStep } from "../../../types/task-plan.js";
+import { filePathSchema } from "../policies/file-policy.js";
 import { z } from "zod";
 import type {
   WorkflowDefinition,
@@ -44,7 +46,7 @@ const parameter = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
-      type: z.literal("remote-directory"),
+      type: z.enum(["remote-directory", "remote-path"]),
       ...common,
       default: directory.optional(),
     })
@@ -78,7 +80,18 @@ const parameter = z.discriminatedUnion("type", [
 const timeout = z.number().int().min(1000).max(600000);
 export const workflowSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]),
+    files: z
+      .record(
+        identifier,
+        z
+          .object({
+            direction: z.enum(["upload", "download"]),
+            description: z.string().max(2000).optional(),
+          })
+          .strict(),
+      )
+      .optional(),
     id: identifier,
     name: z.string().min(1).max(120),
     version: z.string().regex(/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/),
@@ -110,6 +123,22 @@ export const workflowSchema = z
             timeoutMs: timeout.optional(),
             onFailure: z.enum(["stop", "continue"]).optional(),
             action: z.discriminatedUnion("type", [
+              z
+                .object({
+                  type: z.literal("upload"),
+                  path: value,
+                  localFile: identifier,
+                  overwrite: z.boolean().optional(),
+                })
+                .strict(),
+              z
+                .object({
+                  type: z.literal("download"),
+                  path: value,
+                  localFile: identifier,
+                  overwrite: z.boolean().optional(),
+                })
+                .strict(),
               z
                 .object({
                   type: z.literal("command"),
@@ -154,6 +183,16 @@ export function parseWorkflow(input: unknown): WorkflowDefinition {
   if (!result.success)
     fail("INVALID_WORKFLOW", result.error.issues[0]?.path.join("."));
   const definition = result.data as WorkflowDefinition;
+  if (
+    (definition.steps.some(
+      (s) => s.action.type === "upload" || s.action.type === "download",
+    ) ||
+      Object.keys(definition.files ?? {}).length) &&
+    definition.schemaVersion !== 2
+  )
+    fail("WORKFLOW_FILE_SCHEMA_REQUIRED");
+  if (Object.keys(definition.files ?? {}).length > 64)
+    fail("WORKFLOW_PARAMETER_LIMIT");
   if (Object.keys(definition.parameters).length > 64)
     fail("WORKFLOW_PARAMETER_LIMIT");
   if (
@@ -162,6 +201,7 @@ export function parseWorkflow(input: unknown): WorkflowDefinition {
     100
   )
     fail("WORKFLOW_STEP_LIMIT");
+  const downloadSlots = new Set<string>();
   const ids = new Set<string>();
   for (const step of definition.steps) {
     if (ids.has(step.id)) fail("DUPLICATE_STEP_ID", step.id);
@@ -189,7 +229,20 @@ export function parseWorkflow(input: unknown): WorkflowDefinition {
     check(atom, "env." + name);
   for (const step of definition.steps) {
     if (step.cwd) check(step.cwd, step.id + ".cwd", true);
-    for (const atom of step.action.args ?? []) check(atom, step.id + ".args");
+    if (step.action.type === "upload" || step.action.type === "download") {
+      const slot = definition.files?.[step.action.localFile];
+      if (!slot || slot.direction !== step.action.type)
+        fail("WORKFLOW_FILE_SLOT_INVALID", step.id);
+      if (step.cwd !== undefined)
+        fail("WORKFLOW_FILE_CWD_UNSUPPORTED", step.id);
+      if (step.action.type === "download") {
+        if (downloadSlots.has(step.action.localFile))
+          fail("WORKFLOW_DOWNLOAD_SLOT_REUSED", step.id);
+        downloadSlots.add(step.action.localFile);
+      }
+      check(step.action.path, step.id + ".path");
+    } else
+      for (const atom of step.action.args ?? []) check(atom, step.id + ".args");
   }
   for (const [name, spec] of Object.entries(definition.parameters)) {
     if (
@@ -246,7 +299,10 @@ function parameterValue(
     fail("INVALID_PARAMETER", name);
   if (spec.type === "enum" && !spec.values.includes(value))
     fail("INVALID_PARAMETER", name);
-  if (spec.type === "remote-directory" && !directory.safeParse(value).success)
+  if (
+    (spec.type === "remote-directory" || spec.type === "remote-path") &&
+    !directory.safeParse(value).success
+  )
     fail("INVALID_DIRECTORY", name);
   return value;
 }
@@ -256,6 +312,7 @@ export function compileWorkflow(
 ): {
   definition: WorkflowDefinition;
   commands: TaskCommand[];
+  plan: TaskPlanStep[];
   warnings: string[];
 } {
   const definition = parseWorkflow(raw);
@@ -290,11 +347,11 @@ export function compileWorkflow(
             : atom.whenFalse
         : [resolve(atom)],
     );
-  const commands: TaskCommand[] = [];
+  const plan: TaskPlanStep[] = [];
   const warnings: string[] = [];
   const defaults = definition.defaults;
   if (Object.keys(defaults.env ?? {}).length) {
-    commands.push({
+    plan.push({
       stepId: "workflow-environment",
       name: "设置流程环境变量",
       program: "export",
@@ -308,6 +365,26 @@ export function compileWorkflow(
     warnings.push("PERSISTENT_ENVIRONMENT");
   }
   for (const [index, step] of definition.steps.entries()) {
+    if (step.action.type === "upload" || step.action.type === "download") {
+      const path = resolve(step.action.path);
+      if (!filePathSchema.safeParse(path).success || path === "/")
+        fail("INVALID_FILE_PATH", step.id);
+      plan.push({
+        kind: "file-transfer",
+        stepId: step.id,
+        name: step.name,
+        direction: step.action.type,
+        path,
+        localFile: step.action.localFile,
+        overwrite: step.action.overwrite ?? false,
+        timeoutMs: step.timeoutMs ?? defaults.timeoutMs ?? 120000,
+        onFailure: step.onFailure ?? defaults.onFailure ?? "stop",
+      });
+      warnings.push(
+        "WORKFLOW_FILE_SELECTION_REQUIRED:" + step.action.localFile,
+      );
+      continue;
+    }
     const cwd = step.cwd
       ? resolve(step.cwd)
       : definition.shellState === "stateful-shell" && index > 0
@@ -344,13 +421,18 @@ export function compileWorkflow(
       cwd: command.cwd ?? "/",
       timeoutMs: command.timeoutMs,
     });
-    commands.push(command);
+    plan.push(command);
     if (command.onFailure === "continue")
       warnings.push("CONTINUE_AFTER_FAILURE:" + step.id);
     if (step.action.type === "script")
       warnings.push("SCRIPT_REVIEW_REQUIRED:" + step.id);
   }
-  if (Buffer.byteLength(JSON.stringify(commands), "utf8") > 512000)
+  if (Buffer.byteLength(JSON.stringify(plan), "utf8") > 512000)
     fail("WORKFLOW_EXPANSION_TOO_LARGE");
-  return { definition, commands, warnings };
+  return {
+    definition,
+    commands: plan.filter((step): step is TaskCommand => !isTaskFileStep(step)),
+    plan,
+    warnings,
+  };
 }

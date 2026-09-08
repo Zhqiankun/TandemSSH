@@ -1,3 +1,10 @@
+import {
+  isTaskFileStep,
+  type TaskPlanStep,
+  type TaskFileBindings,
+} from "../../../types/task-plan.js";
+import { fileBindingsSchema } from "../tasks/plan.js";
+import { evaluateFilePathPolicy } from "../policies/file-policy.js";
 import { randomUUID } from "node:crypto";
 import type { TaskActor, TaskRuntime } from "../tasks/runtime.js";
 import type { CommandPolicySnapshot } from "../../../types/collaboration-operations.js";
@@ -35,6 +42,8 @@ interface PreviewRecord {
   groupIds: string[];
   control: ControlSnapshot;
   commands: ReturnType<typeof compileWorkflow>["commands"];
+  plan: TaskPlanStep[];
+  fileBindings: TaskFileBindings;
   start?: { requestId: string; mode: TaskMode; promise: Promise<TaskView> };
   run?: {
     taskId: string;
@@ -181,6 +190,7 @@ export class WorkflowLibrary {
       sessionId: string;
       parameters: Record<string, unknown>;
       parentTaskId?: string;
+      fileBindings?: TaskFileBindings;
     },
   ): WorkflowPreview & {
     decisions: ReturnType<typeof evaluateCommandPolicy>[];
@@ -198,8 +208,18 @@ export class WorkflowLibrary {
         input.sessionId
     )
       throw new Error("WORKFLOW_PARENT_MISMATCH");
+    if (input.fileBindings && !input.parentTaskId)
+      throw Error("WORKFLOW_PARENT_MISMATCH");
+    const bindings = fileBindingsSchema.parse(input.fileBindings ?? {});
     const compiled = compileWorkflow(stored.definition, input.parameters),
       policy = this.ports.policy(actor.userId);
+    if (input.parentTaskId && input.fileBindings)
+      this.ports.tasks.checkWorkflowFileBindings(
+        actor,
+        input.parentTaskId,
+        compiled.plan,
+        bindings,
+      );
     for (const [id, record] of this.previews)
       if (!record.start && !record.run && record.view.expiresAt < Date.now())
         this.previews.delete(id);
@@ -214,25 +234,17 @@ export class WorkflowLibrary {
       policyRevision: policy.revision,
       parentTaskId: input.parentTaskId,
       commands: compiled.commands,
+      plan: compiled.plan.some(isTaskFileStep) ? compiled.plan : undefined,
+      fileBindings: input.parentTaskId ? bindings : undefined,
       warnings: compiled.warnings,
       expiresAt: Date.now() + 5 * 60_000,
     };
-    const decisions = compiled.commands.map((command) =>
-      evaluateCommandPolicy(
-        policy,
-        {
-          hostId: String(target.hostId),
-          groupIds: target.groups,
-          taskId: input.parentTaskId ?? "workflow-preview",
-        },
-        {
-          type: "terminal.command",
-          program: command.program,
-          args: command.args,
-          cwd: command.cwd ?? "/",
-          timeoutMs: command.timeoutMs,
-        },
-      ),
+    const decisions = compiled.plan.map((step) =>
+      this.decision(step, policy, {
+        hostId: String(target.hostId),
+        groupIds: target.groups,
+        taskId: input.parentTaskId ?? "workflow-preview",
+      }),
     );
     this.previews.set(view.id, {
       view: structuredClone(view),
@@ -240,6 +252,8 @@ export class WorkflowLibrary {
       groupIds: [...target.groups].sort(),
       control: target.control,
       commands: structuredClone(compiled.commands),
+      plan: structuredClone(compiled.plan),
+      fileBindings: bindings,
     });
     return { ...structuredClone(view), decisions };
   }
@@ -283,6 +297,7 @@ export class WorkflowLibrary {
       title: stored.definition.name,
       mode,
       commands: structuredClone(record.commands),
+      plan: structuredClone(record.plan),
       source: "workflow",
       workflow: {
         id: stored.id,
@@ -293,6 +308,26 @@ export class WorkflowLibrary {
     });
     record.start = { requestId, mode, promise };
     return promise;
+  }
+  private decision(
+    step: TaskPlanStep,
+    policy: CommandPolicySnapshot,
+    target: { hostId: string; groupIds: string[]; taskId: string },
+  ) {
+    return isTaskFileStep(step)
+      ? evaluateFilePathPolicy(
+          policy,
+          target,
+          [step.path],
+          step.direction === "upload" ? "write" : "read",
+        )
+      : evaluateCommandPolicy(policy, target, {
+          type: "terminal.command",
+          program: step.program,
+          args: step.args,
+          cwd: step.cwd ?? "/",
+          timeoutMs: step.timeoutMs,
+        });
   }
   private target(actor: TaskActor, sessionId: string): Target {
     const target = this.ports.target(actor, sessionId);
@@ -313,19 +348,13 @@ export class WorkflowLibrary {
       throw new Error("HOST_SCOPE_CHANGED");
     const policy = this.ports.policy(actor.userId);
     if (
-      record.commands.some(
-        (command) =>
-          evaluateCommandPolicy(
-            policy,
-            { hostId: String(target.hostId), groupIds: target.groups, taskId },
-            {
-              type: "terminal.command",
-              program: command.program,
-              args: command.args,
-              cwd: command.cwd ?? "/",
-              timeoutMs: command.timeoutMs,
-            },
-          ).outcome === "deny",
+      record.plan.some(
+        (step) =>
+          this.decision(step, policy, {
+            hostId: String(target.hostId),
+            groupIds: target.groups,
+            taskId,
+          }).outcome === "deny",
       )
     )
       throw new Error("POLICY_DENIED");
@@ -383,6 +412,7 @@ export class WorkflowLibrary {
       category: row.definition.category,
       shellState: row.definition.shellState ?? "explicit-cwd",
       parameters: row.definition.parameters,
+      files: row.definition.files ?? {},
       steps: row.definition.steps.map((step) => ({
         id: step.id,
         name: step.name,
@@ -390,7 +420,9 @@ export class WorkflowLibrary {
         program:
           step.action.type === "command"
             ? step.action.program
-            : step.action.shell,
+            : step.action.type === "script"
+              ? step.action.shell
+              : undefined,
       })),
       requiresPreview: true,
       secretTransportSupported: false,
@@ -440,6 +472,8 @@ export class WorkflowLibrary {
         shellState: row.definition.shellState ?? "explicit-cwd",
       },
       commands: structuredClone(record.commands),
+      fileBindings: structuredClone(record.fileBindings),
+      plan: structuredClone(record.plan),
       expectedControl: record.control,
       expectedGroupIds: record.groupIds,
     });

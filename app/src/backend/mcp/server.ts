@@ -278,7 +278,7 @@ export function createTandemMcpServer(bridge: CoreBridgePort): McpServer {
       "preview_workflow",
       "workflows.preview",
       "预览保存的流程",
-      "填写参数生成不可变预览；在已有任务中运行时必须传该任务的 parentTaskId。",
+      "填写参数生成完整步骤预览；已有任务必须传 parentTaskId。文件步骤可用 fileBindings 把文件位置名称绑定到 list_authorized_files 返回的本任务 localGrantId/localVersion，不能传本地路径。独立流程先创建任务，再在桌面选择并绑定本地文件。",
       true,
     ],
     [

@@ -1,3 +1,4 @@
+import { WorkflowFileSlots } from "./WorkflowFileSlots";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
@@ -143,12 +144,65 @@ export function WorkflowDefinitionEditor({
   }
   function argument(index: number, n: number, value: WorkflowArgument) {
     const step = definition.steps[index];
+    if (step.action.type === "upload" || step.action.type === "download")
+      return;
     updateStep(index, {
       action: {
         ...step.action,
         args: (step.action.args ?? []).map((arg, i) => (i === n ? value : arg)),
       },
     });
+  }
+  function commandArgs(
+    action: WorkflowDefinition["steps"][number]["action"],
+  ): WorkflowArgument[] {
+    return action.type === "command" || action.type === "script"
+      ? (action.args ?? [])
+      : [];
+  }
+  function setArguments(index: number, args: WorkflowArgument[]) {
+    const action = definition.steps[index].action;
+    if (action.type === "command" || action.type === "script")
+      updateStep(index, { action: { ...action, args } });
+  }
+  function changeAction(
+    index: number,
+    type: WorkflowDefinition["steps"][number]["action"]["type"],
+  ) {
+    if (type === "upload" || type === "download") {
+      const localFile =
+        Object.entries(definition.files ?? {}).find(
+          ([, s]) => s.direction === type,
+        )?.[0] ?? type + "_" + definition.steps[index].id;
+      onChange({
+        ...definition,
+        schemaVersion: 2,
+        files: {
+          ...definition.files,
+          [localFile]: definition.files?.[localFile] ?? { direction: type },
+        },
+        steps: definition.steps.map((s, i) =>
+          i === index
+            ? {
+                ...s,
+                cwd: undefined,
+                action: {
+                  type,
+                  path: "/srv/file",
+                  localFile,
+                  overwrite: false,
+                },
+              }
+            : s,
+        ),
+      });
+    } else
+      updateStep(index, {
+        action:
+          type === "command"
+            ? { type, program: "", args: [] }
+            : { type, shell: "bash", source: "", args: [] },
+      });
   }
   return (
     <div className="tandem-workflow-definition">
@@ -223,6 +277,7 @@ export function WorkflowDefinitionEditor({
                     "boolean",
                     "enum",
                     "remote-directory",
+                    "remote-path",
                     "secret-ref",
                   ].map((type) => (
                     <option key={type} value={type}>
@@ -393,6 +448,7 @@ export function WorkflowDefinitionEditor({
                 "boolean",
                 "enum",
                 "remote-directory",
+                "remote-path",
                 "secret-ref",
               ].map((type) => (
                 <option key={type} value={type}>
@@ -538,6 +594,7 @@ export function WorkflowDefinitionEditor({
           </div>
         </details>
       </section>
+      <WorkflowFileSlots definition={definition} onChange={onChange} />
       <section>
         <h3>{w("steps")}</h3>
         {definition.steps.map((step, index) => (
@@ -585,21 +642,17 @@ export function WorkflowDefinitionEditor({
                 <select
                   value={step.action.type}
                   onChange={(e) =>
-                    updateStep(index, {
-                      action:
-                        e.target.value === "command"
-                          ? { type: "command", program: "", args: [] }
-                          : {
-                              type: "script",
-                              shell: "bash",
-                              source: "",
-                              args: [],
-                            },
-                    })
+                    changeAction(
+                      index,
+                      e.target
+                        .value as WorkflowDefinition["steps"][number]["action"]["type"],
+                    )
                   }
                 >
                   <option value="command">{w("command")}</option>
                   <option value="script">{w("script")}</option>
+                  <option value="upload">{w("uploadStep")}</option>
+                  <option value="download">{w("downloadStep")}</option>
                 </select>
               </label>
               {step.action.type === "command" ? (
@@ -610,16 +663,15 @@ export function WorkflowDefinitionEditor({
                     onChange={(e) =>
                       updateStep(index, {
                         action: {
-                          ...step.action,
                           type: "command",
                           program: e.target.value,
-                          args: step.action.args ?? [],
+                          args: commandArgs(step.action),
                         },
                       })
                     }
                   />
                 </label>
-              ) : (
+              ) : step.action.type === "script" ? (
                 <label>
                   {w("shell")}
                   <select
@@ -638,7 +690,7 @@ export function WorkflowDefinitionEditor({
                     <option value="sh">POSIX sh</option>
                   </select>
                 </label>
-              )}
+              ) : null}
             </div>
             {step.action.type === "script" && (
               <>
@@ -659,7 +711,75 @@ export function WorkflowDefinitionEditor({
                 </label>
               </>
             )}
-            {(step.action.args ?? []).map((arg, n) => (
+            {(step.action.type === "upload" ||
+              step.action.type === "download") && (
+              <>
+                <WorkflowValueEditor
+                  label={w("remoteFilePath")}
+                  parameters={Object.fromEntries(
+                    Object.entries(definition.parameters).filter(
+                      ([, p]) =>
+                        p.type !== "boolean" && p.type !== "secret-ref",
+                    ),
+                  )}
+                  value={step.action.path}
+                  onChange={(value) => {
+                    if (
+                      (step.action.type === "upload" ||
+                        step.action.type === "download") &&
+                      !(typeof value === "object" && "whenTrue" in value)
+                    )
+                      updateStep(index, {
+                        action: { ...step.action, path: value },
+                      });
+                  }}
+                />
+                <label>
+                  {w("localFileSlot")}
+                  <select
+                    value={step.action.localFile}
+                    onChange={(e) => {
+                      if (
+                        step.action.type === "upload" ||
+                        step.action.type === "download"
+                      )
+                        updateStep(index, {
+                          action: { ...step.action, localFile: e.target.value },
+                        });
+                    }}
+                  >
+                    <option value="">{w("chooseFileSlot")}</option>
+                    {Object.entries(definition.files ?? {})
+                      .filter(([, slot]) => slot.direction === step.action.type)
+                      .map(([name]) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label className="tandem-task-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={step.action.overwrite ?? false}
+                    onChange={(e) => {
+                      if (
+                        step.action.type === "upload" ||
+                        step.action.type === "download"
+                      )
+                        updateStep(index, {
+                          action: {
+                            ...step.action,
+                            overwrite: e.target.checked,
+                          },
+                        });
+                    }}
+                  />
+                  <span>{w("fileOverwrite")}</span>
+                </label>
+              </>
+            )}
+            {commandArgs(step.action).map((arg, n) => (
               <div className="tandem-settings-row" key={n}>
                 <WorkflowValueEditor
                   label={w("argument") + " " + (n + 1)}
@@ -671,47 +791,44 @@ export function WorkflowDefinitionEditor({
                   variant="ghost"
                   aria-label={w("removeArgument")}
                   onClick={() =>
-                    updateStep(index, {
-                      action: {
-                        ...step.action,
-                        args: (step.action.args ?? []).filter(
-                          (_, i) => i !== n,
-                        ),
-                      },
-                    })
+                    setArguments(
+                      index,
+                      commandArgs(step.action).filter((_, i) => i !== n),
+                    )
                   }
                 >
                   <Trash2 size={14} />
                 </Button>
               </div>
             ))}
-            <Button
-              variant="outline"
-              disabled={(step.action.args?.length ?? 0) >= 256}
-              onClick={() =>
-                updateStep(index, {
-                  action: {
-                    ...step.action,
-                    args: [...(step.action.args ?? []), ""],
-                  },
-                })
-              }
-            >
-              {w("addArgument")}
-            </Button>
+            {(step.action.type === "command" ||
+              step.action.type === "script") && (
+              <Button
+                variant="outline"
+                disabled={commandArgs(step.action).length >= 256}
+                onClick={() =>
+                  setArguments(index, [...commandArgs(step.action), ""])
+                }
+              >
+                {w("addArgument")}
+              </Button>
+            )}
             <details>
               <summary>{w("stepOptions")}</summary>
-              <WorkflowValueEditor
-                directory
-                label={w("stepDirectory")}
-                parameters={definition.parameters}
-                value={step.cwd}
-                onChange={(value) =>
-                  updateStep(index, {
-                    cwd: value === "" ? undefined : (value as WorkflowValue),
-                  })
-                }
-              />
+              {(step.action.type === "command" ||
+                step.action.type === "script") && (
+                <WorkflowValueEditor
+                  directory
+                  label={w("stepDirectory")}
+                  parameters={definition.parameters}
+                  value={step.cwd}
+                  onChange={(value) =>
+                    updateStep(index, {
+                      cwd: value === "" ? undefined : (value as WorkflowValue),
+                    })
+                  }
+                />
+              )}
               <div className="tandem-settings-row">
                 <label>
                   {w("timeout")}

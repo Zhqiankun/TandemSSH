@@ -281,7 +281,9 @@ describe("enum input fidelity", () => {
       values: ["", "release"],
       default: "release",
     };
-    definition.steps[0].action.args!.push({ param: "choice" });
+    const firstAction = definition.steps[0].action;
+    if (firstAction.type !== "command") throw Error("Expected command fixture");
+    firstAction.args.push({ param: "choice" });
     await library.save("owner", {
       id: saved.id,
       expectedRevision: saved.revision,
