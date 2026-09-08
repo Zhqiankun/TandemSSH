@@ -66,3 +66,5 @@ Windows 构建保留 Spectre 检查与标准原生重编译，成功生成 Tande
 scripts/verify-installed-desktop.cjs 只负责启动本次安装的可执行文件，核对 PID、程序路径、数据路径与版本；通过实际桌面检查简体中文、数据库就绪、更新按钮和 installed 状态，并验证正常退出释放后端端口。原生依赖验证复用 verify-native-package.cjs。应用业务模块不依赖这些验收脚本。
 
 CI 和 Release 均增加实际安装/启动/卸载门槛，报告与中文窗口截图保存在 TandemSSH-installation-evidence 产物中。PowerShell/Node 语法、非 CI 环境拒绝执行与工作流解析已在本机核对；实际 runner 结果待运行。此检查不代替跨版本在线升级、全部文件功能或自动/协同最终验收。
+
+安装验收首次 CI 为 [34188486997](https://github.com/Zhqiankun/TandemSSH/actions/runs/34188486997)。构建与原生探针通过，安装前读取注册表空条目触发严格模式错误；尚未调用安装程序，因此没有安装报告或截图，失败证据保留在 job 日志。现改为判空并按名称索引属性，实际只读枚举与 scripts/windows-installation.test.ts 的 2 项回归通过。后续复测不得沿用前一轮构建通过来宣称安装升级已通过。

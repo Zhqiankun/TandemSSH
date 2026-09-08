@@ -33,7 +33,7 @@ function Get-TandemUninstallEntries {
     if (Test-Path -LiteralPath $registry) {
       Get-ChildItem -LiteralPath $registry | ForEach-Object {
         $item = Get-ItemProperty -LiteralPath $_.PSPath
-        if ($item.PSObject.Properties.Name -contains 'DisplayName' -and $item.DisplayName -eq 'TandemSSH') { $item }
+        if ($null -ne $item -and $null -ne $item.PSObject.Properties['DisplayName'] -and $item.DisplayName -eq 'TandemSSH') { $item }
       }
     }
   }
