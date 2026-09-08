@@ -1,3 +1,7 @@
+import {
+  UploadTreeDialog,
+  type DirectoryUploadRequest,
+} from "./uploads/UploadTreeDialog";
 import { downloadQueue } from "./downloads/queue";
 import {
   DownloadTreeDialog,
@@ -147,6 +151,8 @@ function FileManagerContent({
   ]);
   const [navIndex, setNavIndex] = useState(0);
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [directoryUpload, setDirectoryUpload] =
+    useState<DirectoryUploadRequest | null>(null);
   const [directoryDownload, setDirectoryDownload] =
     useState<DirectoryDownloadRequest | null>(null);
   const filesRef = useRef(files);
@@ -986,157 +992,36 @@ function FileManagerContent({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [currentPath]);
 
-  async function handleItemsDropped(entries: FileSystemEntry[]) {
-    if (!sshSessionId) {
-      toast.error(t("fileManager.noSSHConnection"));
-      return;
-    }
-
-    const files: { file: File; relativePath: string }[] = [];
-    const emptyDirs: string[] = [];
-
-    async function readEntry(
-      entry: FileSystemEntry,
-      path: string,
-    ): Promise<void> {
-      if (entry.isFile) {
-        const file = await new Promise<File>((resolve, reject) =>
-          (entry as FileSystemFileEntry).file(resolve, reject),
-        );
-        files.push({ file, relativePath: path });
-        return;
-      }
-
-      if (!entry.isDirectory) return;
-
-      // readEntries only hands back a page at a time and signals the end with an
-      // empty batch, so drain it fully before walking into the children.
-      const reader = (entry as FileSystemDirectoryEntry).createReader();
-      const children: FileSystemEntry[] = [];
-      for (;;) {
-        const batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
-          reader.readEntries(resolve, reject),
-        );
-        if (batch.length === 0) break;
-        children.push(...batch);
-      }
-
-      if (children.length === 0) {
-        emptyDirs.push(path);
-        return;
-      }
-
-      for (const child of children) {
-        await readEntry(child, `${path}/${child.name}`);
-      }
-    }
-
-    try {
-      for (const entry of entries) {
-        await readEntry(entry, entry.name);
-      }
-    } catch (error) {
-      toast.error(t("fileManager.failedToUploadFile"));
-      console.error("Failed to read dropped folder:", error);
-      return;
-    }
-
-    if (files.length === 0 && emptyDirs.length === 0) return;
-
-    const progressToast = toast.loading(
-      t("fileManager.uploadingFolderFiles", { count: files.length }),
-      { duration: Infinity },
-    );
-
-    const failed: string[] = [];
-
-    try {
-      await ensureSSHConnection();
-
-      const base = currentPath.endsWith("/") ? currentPath : currentPath + "/";
-
-      const dirs = new Set<string>();
-      for (const relativePath of [
-        ...files.map((f) => f.relativePath),
-        ...emptyDirs.map((d) => `${d}/`),
-      ]) {
-        const parts = relativePath.split("/");
-        for (let i = 1; i < parts.length; i++) {
-          dirs.add(parts.slice(0, i).join("/"));
-        }
-      }
-
-      // Shallowest first so each parent exists before its children.
-      const sortedDirs = Array.from(dirs).sort(
-        (a, b) =>
-          a.split("/").length - b.split("/").length || a.localeCompare(b),
-      );
-      for (const dir of sortedDirs) {
-        const parentDir = dir.split("/").slice(0, -1).join("/");
-        const targetPath = parentDir ? `${base}${parentDir}/` : base;
-        const folderName = dir.split("/").pop()!;
-        try {
-          await createSSHFolder(
-            sshSessionId,
-            targetPath,
-            folderName,
-            currentHost?.id,
-          );
-        } catch {
-          // directory may already exist
-        }
-      }
-
-      for (const { file, relativePath } of files) {
-        const dirPart = relativePath.includes("/")
-          ? relativePath.substring(0, relativePath.lastIndexOf("/"))
-          : "";
-        const uploadPath = dirPart ? `${base}${dirPart}/` : currentPath;
-
-        try {
-          uploadQueue.add({
-            file,
-            sessionId: sshSessionId,
-            path: uploadPath.replace(/\/?$/, "/") + file.name,
-            hostId: currentHost?.id,
-            hostLabel: currentHost?.name ?? currentHost?.ip ?? "SSH",
-          });
-        } catch (error) {
-          failed.push(relativePath);
-          console.error(`Failed to upload ${relativePath}:`, error);
-        }
-      }
-
-      toast.dismiss(progressToast);
-      if (failed.length === 0) {
-        toast.info(t("tandem.upload.added", { count: files.length }));
-      } else if (failed.length === files.length) {
-        toast.error(t("fileManager.failedToUploadFile"));
-      } else {
-        toast.warning(
-          t("tandem.upload.addedPartial", {
-            uploaded: files.length - failed.length,
-            failed: failed.length,
-          }),
-        );
-      }
-      handleRefreshDirectory();
-    } catch (error) {
-      toast.dismiss(progressToast);
-      toast.error(t("fileManager.failedToUploadFile"));
-      console.error("Folder upload failed:", error);
-    }
+  function handleUploadDirectory() {
+    if (!sshSessionId) return;
+    setDirectoryUpload({
+      sessionId: sshSessionId,
+      path: currentPath,
+      hostId: currentHost?.id,
+      hostLabel: currentHost?.name ?? currentHost?.ip ?? "SSH",
+    });
   }
-
+  function handleItemsDropped(_entries: FileSystemEntry[], fileList: FileList) {
+    // Capture the real File objects synchronously before the browser clears the drop payload.
+    if (!sshSessionId) return;
+    setDirectoryUpload({
+      sessionId: sshSessionId,
+      path: currentPath,
+      hostId: currentHost?.id,
+      hostLabel: currentHost?.name ?? currentHost?.ip ?? "SSH",
+      files: Array.from(fileList),
+    });
+  }
   function handleFilesDropped(fileList: FileList) {
     if (!sshSessionId) {
       toast.error(t("fileManager.noSSHConnection"));
       return;
     }
-
-    Array.from(fileList).forEach((file) => {
-      handleUploadFile(file);
-    });
+    if (fileList.length > 1 && window.electronAPI?.uploadSources) {
+      handleItemsDropped([], fileList);
+      return;
+    }
+    Array.from(fileList).forEach(handleUploadFile);
   }
 
   function handleUploadFile(file: File) {
@@ -3155,6 +3040,7 @@ function FileManagerContent({
           handleDeleteFiles={handleDeleteFiles}
           handleCopyFiles={handleCopyFiles}
           handleFilesDropped={handleFilesDropped}
+          handleUploadDirectory={handleUploadDirectory}
           handleCreateNewFolder={handleCreateNewFolder}
           handleCreateNewFile={handleCreateNewFile}
         />
@@ -3327,6 +3213,12 @@ function FileManagerContent({
         />
       )}
 
+      {directoryUpload && (
+        <UploadTreeDialog
+          request={directoryUpload}
+          onClose={() => setDirectoryUpload(null)}
+        />
+      )}
       {directoryDownload && (
         <DownloadTreeDialog
           request={directoryDownload}

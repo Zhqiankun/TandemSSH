@@ -1,3 +1,4 @@
+import { uploadBatches } from "./upload-batches";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/button";
@@ -46,7 +47,9 @@ function UploadRow({
         {transfer?.hostIdentity ?? job.hostLabel} ·{" "}
         {transfer?.canonicalPath ?? job.path}
       </p>
-      {job.state === "checking" ? (
+      {job.kind === "directory" ? (
+        <p>{t("tandem.uploadTree.directory")}</p>
+      ) : job.state === "checking" ? (
         <p>
           {t("tandem.upload.sourceProgress", {
             bytes: job.sourceCheckedBytes,
@@ -186,11 +189,20 @@ function UploadRow({
             variant="outline"
             onClick={() =>
               void queue
-                .repreview(job.id, undefined, sessionId)
+                .repreview(
+                  job.id,
+                  undefined,
+                  sessionId,
+                  job.error === "FILE_AUTOMATION_ACTIVE",
+                )
                 .catch(() => toast.error(t("tandem.upload.failed")))
             }
           >
-            {t("tandem.upload.repreview")}
+            {t(
+              job.error === "FILE_AUTOMATION_ACTIVE"
+                ? "tandem.upload.takeoverStart"
+                : "tandem.upload.repreview",
+            )}
           </Button>
         )}
         {[
@@ -200,18 +212,19 @@ function UploadRow({
           "pausing",
           "paused",
           "failed",
-        ].includes(job.state) && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => void queue.cancel(job.id)}
-          >
-            {t("tandem.upload.cancel")}
-          </Button>
-        )}
+        ].includes(job.state) &&
+          job.kind !== "directory" && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void queue.cancel(job.id)}
+            >
+              {t("tandem.upload.cancel")}
+            </Button>
+          )}
       </div>
       {job.state === "unknown" && <p>{t("tandem.upload.unknownHint")}</p>}
-      {job.state === "completed" && (
+      {job.state === "completed" && job.kind !== "directory" && (
         <details>
           <summary>{t("tandem.upload.verified")}</summary>
           <code className="select-text break-all">
@@ -240,6 +253,14 @@ export function UploadQueuePanel({
       queue.getSnapshot,
     ),
     seen = useRef(new Set<string>());
+  const batches = useSyncExternalStore(
+    uploadBatches.subscribe,
+    uploadBatches.getSnapshot,
+    uploadBatches.getSnapshot,
+  );
+  const [page, setPage] = useState(0),
+    pages = Math.max(1, Math.ceil(jobs.length / 100)),
+    currentPage = Math.min(page, pages - 1);
   useEffect(() => {
     for (const j of jobs)
       if (j.state === "completed" && !seen.current.has(j.id)) {
@@ -273,14 +294,77 @@ export function UploadQueuePanel({
           <Button
             size="sm"
             variant="outline"
-            onClick={() => queue.removeFinished()}
+            onClick={() => void queue.removeFinished()}
           >
             {t("tandem.upload.clearFinished")}
           </Button>
           <p>{t("tandem.upload.memoryHint")}</p>
         </div>
+        {queue === uploadQueue &&
+          batches.map((batch) => (
+            <div
+              key={batch.id}
+              className="my-2 rounded border border-border p-2 text-xs"
+            >
+              <strong>{batch.name}</strong>
+              <p className="break-all">{batch.target}</p>
+              <p>
+                {t("tandem.uploadTree.batchProgress", {
+                  completed: batch.completed,
+                  total: batch.total,
+                  failed: batch.failed,
+                  unknown: batch.unknown,
+                  skipped: batch.skipped,
+                })}
+              </p>
+              {batch.error && (
+                <p role="alert" className="text-amber-500">
+                  {t("tandem.upload.errors." + batch.error, {
+                    defaultValue: t("tandem.upload.failed"),
+                  })}
+                </p>
+              )}
+              {(["creating", "running"].includes(batch.state) ||
+                (batch.state === "finished" && batch.failed > 0)) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    void uploadBatches
+                      .cancel(batch.id)
+                      .catch(() => toast.error(t("tandem.upload.failed")))
+                  }
+                >
+                  {t("tandem.uploadTree.cancelBatch")}
+                </Button>
+              )}
+            </div>
+          ))}
+        {pages > 1 && (
+          <div className="flex items-center gap-2 my-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!currentPage}
+              onClick={() => setPage(currentPage - 1)}
+            >
+              {t("tandem.uploadTree.previous")}
+            </Button>
+            <span>
+              {currentPage + 1} / {pages}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={currentPage + 1 >= pages}
+              onClick={() => setPage(currentPage + 1)}
+            >
+              {t("tandem.uploadTree.next")}
+            </Button>
+          </div>
+        )}
         <div className="grid gap-2">
-          {jobs.map((job) => (
+          {jobs.slice(currentPage * 100, (currentPage + 1) * 100).map((job) => (
             <UploadRow
               key={job.id}
               queue={queue}

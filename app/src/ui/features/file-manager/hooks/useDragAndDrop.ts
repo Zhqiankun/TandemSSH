@@ -8,7 +8,7 @@ interface DragAndDropState {
 
 interface UseDragAndDropProps {
   onFilesDropped: (files: FileList) => void;
-  onItemsDropped?: (entries: FileSystemEntry[]) => void;
+  onItemsDropped?: (entries: FileSystemEntry[], files: FileList) => void;
   onError?: (error: string) => void;
   maxFileSize?: number;
   allowedTypes?: string[];
@@ -138,7 +138,7 @@ export function useDragAndDrop({
       });
 
       if (onItemsDropped && entries.some((entry) => entry.isDirectory)) {
-        onItemsDropped(entries);
+        onItemsDropped(entries, files);
         return;
       }
 

@@ -34,7 +34,7 @@ describe("useDragAndDrop", () => {
     const dir = makeEntry("myfolder", true);
     act(() => result.current.dragHandlers.onDrop(makeDropEvent([dir])));
 
-    expect(onItemsDropped).toHaveBeenCalledWith([dir]);
+    expect(onItemsDropped).toHaveBeenCalledWith([dir], expect.anything());
     expect(onFilesDropped).not.toHaveBeenCalled();
   });
 
@@ -53,7 +53,7 @@ describe("useDragAndDrop", () => {
       (event.dataTransfer as unknown as { items: unknown[] }).items = [];
     });
 
-    expect(onItemsDropped).toHaveBeenCalledWith([dir]);
+    expect(onItemsDropped).toHaveBeenCalledWith([dir], expect.anything());
   });
 
   it("falls back to plain file upload when no directory is dropped", () => {

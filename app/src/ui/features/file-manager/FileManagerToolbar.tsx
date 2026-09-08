@@ -59,6 +59,7 @@ type FileManagerToolbarProps = {
   handleDeleteFiles: (files: FileItem[]) => void;
   handleCopyFiles: (files: FileItem[]) => void;
   handleFilesDropped: (fileList: FileList) => void;
+  handleUploadDirectory?: () => void;
   handleCreateNewFolder: () => void;
   handleCreateNewFile: () => void;
 };
@@ -210,6 +211,7 @@ export function FileManagerToolbar({
   handleDeleteFiles,
   handleCopyFiles,
   handleFilesDropped,
+  handleUploadDirectory,
   handleCreateNewFolder,
   handleCreateNewFile,
 }: FileManagerToolbarProps) {
@@ -341,6 +343,17 @@ export function FileManagerToolbar({
             </div>
           </label>
 
+          {handleUploadDirectory && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!sshSessionId || isLoading}
+              onClick={handleUploadDirectory}
+            >
+              <Folder className="size-3.5" />{" "}
+              {t("tandem.uploadTree.uploadDirectory")}
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button

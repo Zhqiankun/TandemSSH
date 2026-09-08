@@ -154,7 +154,7 @@ describe("actual upload queue controls", () => {
     await vi.waitFor(() =>
       expect(f.queue.getSnapshot()[0].state).toBe("completed"),
     );
-    expect(f.calls).toEqual(["start", "chunk", "finish"]);
+    expect(f.calls).toEqual(["start", "chunk", "finish", "forget"]);
     expect(verify).toHaveBeenCalledTimes(3);
   });
   it("rechecks a zero-byte source before commit and refuses a source changed after review", async () => {
@@ -221,7 +221,7 @@ describe("actual upload queue controls", () => {
     );
     expect(screen.getByText("内容校验通过")).toBeTruthy();
     expect(refresh).toHaveBeenCalledTimes(1);
-    expect(f.calls).toEqual(["start", "chunk", "finish"]);
+    expect(f.calls).toEqual(["start", "chunk", "finish", "forget"]);
     expect(f.queue.getSnapshot()[0].id).toBe(id);
   });
   it("pauses at a confirmed chunk boundary, rechecks the source and resumes the remaining bytes", async () => {
@@ -253,6 +253,7 @@ describe("actual upload queue controls", () => {
       "resume",
       "chunk",
       "finish",
+      "forget",
     ]);
     expect(Buffer.concat([...f.rows.values()][0].chunks).equals(bytes)).toBe(
       true,

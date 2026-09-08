@@ -1,3 +1,8 @@
+import type {
+  ManagedUploadBinding,
+  ManagedFileUpload,
+  ManagedUploadRecord,
+} from "./upload-bindings";
 import type { UploadSource } from "@/types/upload-source";
 import {
   uploadApi,
@@ -36,8 +41,25 @@ export interface UploadJobView {
   transfer?: UploadView;
   error?: string;
   speed?: number;
+  kind?: "file" | "directory";
+  batchId?: string;
+  localPath?: string;
+}
+export interface UploadInput {
+  file?: UploadSource;
+  name?: string;
+  size?: number;
+  sessionId: string;
+  path: string;
+  hostId?: number;
+  hostLabel: string;
+  kind?: "file" | "directory";
+  batchId?: string;
+  localPath?: string;
 }
 interface Job {
+  binding?: ManagedUploadBinding;
+  released?: boolean;
   view: UploadJobView;
   file?: UploadSource;
   manifest?: UploadManifest;
@@ -57,6 +79,10 @@ export class UploadQueue {
   private snapshot: UploadJobView[] = [];
   private owner: string | undefined;
   private active = 0;
+  private reserved = 0;
+  private epoch = 0;
+  private clearing = false;
+  private maintaining = false;
   private limit = 2;
   constructor(private readonly api: UploadApiPort = uploadApi) {}
   subscribe = (listener: () => void) => {
@@ -65,6 +91,8 @@ export class UploadQueue {
   };
   getSnapshot = () => this.snapshot;
   getConcurrency = () => this.limit;
+  getOwner = () => this.owner;
+  wake = () => this.drain();
   setOwner(owner: string) {
     if (this.owner && this.owner !== owner) this.resetForSignOut();
     this.owner = owner;
@@ -72,6 +100,8 @@ export class UploadQueue {
   resetForSignOut() {
     const jobs = [...this.jobs.values()];
     this.jobs.clear();
+    this.reserved = 0;
+    this.epoch++;
     this.owner = undefined;
     for (const j of jobs) {
       j.cancel = true;
@@ -98,40 +128,104 @@ export class UploadQueue {
     this.snapshot = [...this.jobs.values()].map((j) => structuredClone(j.view));
     for (const listener of this.listeners) listener();
   }
-  add(input: {
-    file: UploadSource;
-    sessionId: string;
-    path: string;
-    hostId?: number;
-    hostLabel: string;
-  }) {
-    if (this.jobs.size >= 256) throw Error("UPLOAD_LIMIT");
+  private admit(count: number) {
+    if (
+      !Number.isInteger(count) ||
+      count < 1 ||
+      this.jobs.size + this.reserved + count > 4096
+    )
+      throw Error("UPLOAD_LIMIT");
+  }
+  add(input: UploadInput & { file: UploadSource }) {
+    this.admit(1);
+    return this.create(input);
+  }
+  private create(
+    input: UploadInput,
+    binding?: ManagedUploadBinding,
+    state: UploadQueueState = "queued",
+    notify = true,
+  ) {
     const id = crypto.randomUUID();
     this.jobs.set(id, {
       view: {
         id,
-        name: input.file.name,
-        size: input.file.size,
+        name: input.name ?? input.file?.name ?? "",
+        size: input.size ?? input.file?.size ?? 0,
         path: input.path,
         sessionId: input.sessionId,
         hostId: input.hostId,
         hostLabel: input.hostLabel,
-        state: "queued",
+        kind: input.kind,
+        batchId: input.batchId,
+        localPath: input.localPath,
+        state,
         sourceCheckedBytes: 0,
       },
       file: input.file,
-      work: "prepare",
+      binding,
+      work:
+        binding?.kind === "record" || state !== "queued"
+          ? undefined
+          : "prepare",
       requestId: crypto.randomUUID(),
-      overwrite: false,
-      takeover: false,
+      overwrite: binding?.kind === "file" ? binding.overwrite : false,
+      takeover: binding?.kind === "file" ? binding.takeover : false,
       pause: false,
       cancel: false,
       startedAt: 0,
       startBytes: 0,
     });
-    this.emit();
-    this.drain();
+    if (notify) {
+      this.emit();
+      this.drain();
+    }
     return id;
+  }
+  reserve(count: number) {
+    if (!this.owner) throw Error("UPLOAD_OWNER_REQUIRED");
+    this.admit(count);
+    this.reserved += count;
+    let remaining = count;
+    const epoch = this.epoch;
+    const take = () => {
+      if (epoch !== this.epoch || !remaining) throw Error("UPLOAD_CANCELLED");
+      remaining--;
+      this.reserved--;
+    };
+    return {
+      file: (
+        input: UploadInput & { file: UploadSource },
+        binding: ManagedFileUpload,
+      ) => {
+        take();
+        return this.create(input, binding, "queued", false);
+      },
+      record: (
+        input: UploadInput,
+        binding: ManagedUploadRecord,
+        state: UploadQueueState = "queued",
+      ) => {
+        take();
+        return this.create(input, binding, state, false);
+      },
+      close: () => {
+        if (epoch === this.epoch) this.reserved -= remaining;
+        remaining = 0;
+        this.emit();
+        this.drain();
+      },
+    };
+  }
+  updateRecord(
+    id: string,
+    change: Pick<UploadJobView, "state" | "error">,
+    notify = true,
+  ) {
+    const j = this.jobs.get(id);
+    if (!j || j.binding?.kind !== "record") return;
+    Object.assign(j.view, change);
+    if (notify) this.emit();
   }
   private job(id: string) {
     const job = this.jobs.get(id);
@@ -141,7 +235,7 @@ export class UploadQueue {
   start(id: string, overwrite: boolean, takeover = false) {
     const j = this.job(id);
     if (j.view.state !== "awaiting-review") return;
-    j.overwrite = overwrite;
+    j.overwrite = j.binding?.kind === "file" ? j.binding.overwrite : overwrite;
     j.takeover = takeover;
     j.work = "upload";
     j.view.state = "queued";
@@ -174,8 +268,18 @@ export class UploadQueue {
     this.emit();
     this.drain();
   }
-  async repreview(id: string, name?: string, sessionId?: string) {
+  async repreview(
+    id: string,
+    name?: string,
+    sessionId?: string,
+    takeover = false,
+  ) {
     const j = this.job(id);
+    if (j.binding?.kind === "record") {
+      if (j.view.state === "failed") await j.binding.retry?.(takeover);
+      return;
+    }
+    if (j.binding && name) throw Error("UPLOAD_TREE_REVIEW_REQUIRED");
     if (
       !j.file ||
       ["checking", "uploading", "pausing", "finalizing"].includes(j.view.state)
@@ -213,6 +317,9 @@ export class UploadQueue {
         return;
       }
     }
+    await this.forgetTransfer(j);
+    if (this.jobs.get(id) !== j) return;
+    if (j.binding) j.takeover = takeover;
     if (name) {
       if (
         !name.trim() ||
@@ -227,6 +334,7 @@ export class UploadQueue {
     }
     if (sessionId) j.view.sessionId = sessionId;
     j.view.transfer = undefined;
+    j.released = false;
     j.view.error = undefined;
     j.cancel = false;
     j.pause = false;
@@ -280,15 +388,70 @@ export class UploadQueue {
       j.view.state = skip ? "skipped" : "cancelled";
     this.emit();
   }
-  removeFinished() {
-    for (const [id, j] of this.jobs)
-      if (
-        ["completed", "cancelled", "skipped"].includes(j.view.state) &&
-        !j.controller &&
-        !j.view.transfer?.temporaryPath
-      )
-        this.jobs.delete(id);
-    this.emit();
+  private async forgetTransfer(j: Job) {
+    if (!j.view.transfer || j.released) return;
+    if (
+      !["completed", "cancelled"].includes(j.view.transfer.state) ||
+      j.view.transfer.temporaryPath
+    )
+      throw Error("UPLOAD_CLEANUP_PENDING");
+    try {
+      await this.api.action(j.view.sessionId, j.view.transfer.id, "forget");
+    } catch (error) {
+      if (uploadErrorCode(error) !== "UPLOAD_NOT_FOUND") throw error;
+    }
+    j.released = true;
+  }
+  async removeFinished() {
+    if (this.clearing) return;
+    this.clearing = true;
+    try {
+      for (const [id, j] of this.jobs) {
+        if (
+          !["completed", "cancelled", "skipped"].includes(j.view.state) ||
+          j.controller ||
+          j.view.transfer?.temporaryPath
+        )
+          continue;
+        try {
+          await this.forgetTransfer(j);
+          if (this.jobs.get(id) !== j) continue;
+          await j.binding?.release();
+          if (this.jobs.get(id) === j) this.jobs.delete(id);
+        } catch (error) {
+          if (this.jobs.get(id) === j) j.view.error = uploadErrorCode(error);
+        }
+      }
+    } finally {
+      this.clearing = false;
+      this.emit();
+    }
+  }
+  async maintain() {
+    if (this.maintaining) return;
+    this.maintaining = true;
+    try {
+      for (const j of this.jobs.values()) {
+        if (
+          !j.view.transfer ||
+          j.released ||
+          j.controller ||
+          ["completed", "cancelled", "skipped", "unknown"].includes(
+            j.view.state,
+          )
+        )
+          continue;
+        try {
+          await this.api.action(j.view.sessionId, j.view.transfer.id, "touch");
+        } catch (error) {
+          if (this.jobs.get(j.view.id) === j)
+            j.view.error = uploadErrorCode(error);
+        }
+      }
+    } finally {
+      this.maintaining = false;
+      this.emit();
+    }
   }
   private check(view: UploadView, state: UploadView["state"]) {
     if (view.state !== state)
@@ -296,7 +459,9 @@ export class UploadQueue {
   }
   private drain() {
     while (this.active < this.limit) {
-      const j = [...this.jobs.values()].find((j) => j.work);
+      const j = [...this.jobs.values()].find(
+        (j) => j.work && (j.binding?.kind !== "file" || j.binding.ready()),
+      );
       if (!j) break;
       const work = j.work!;
       j.work = undefined;
@@ -329,18 +494,29 @@ export class UploadQueue {
       }
       if (j.cancel) throw Error("UPLOAD_CANCELLED");
       if (work === "prepare") {
-        j.view.transfer = await this.api.prepare(
-          {
-            sessionId: j.view.sessionId,
-            path: j.view.path,
-            manifest: j.manifest!,
-            requestId: j.requestId,
-          },
-          stop.signal,
-        );
+        j.view.transfer =
+          j.binding?.kind === "file"
+            ? await j.binding.prepare(
+                j.requestId,
+                j.view.sessionId,
+                j.manifest!,
+                stop.signal,
+              )
+            : await this.api.prepare(
+                {
+                  sessionId: j.view.sessionId,
+                  path: j.view.path,
+                  manifest: j.manifest!,
+                  requestId: j.requestId,
+                },
+                stop.signal,
+              );
         this.check(j.view.transfer, "preview");
-        j.view.state = "awaiting-review";
-        return;
+        if (j.binding?.kind !== "file") {
+          j.view.state = "awaiting-review";
+          return;
+        }
+        if (j.cancel) throw Error("UPLOAD_CANCELLED");
       }
       if (!j.view.transfer || !j.manifest)
         throw Error("UPLOAD_PREVIEW_REQUIRED");
@@ -425,6 +601,11 @@ export class UploadQueue {
       j.view.state = "completed";
       j.file = undefined;
       j.manifest = undefined;
+      try {
+        await this.forgetTransfer(j);
+      } catch (error) {
+        j.view.error = uploadErrorCode(error);
+      }
     } catch (error) {
       if (j.cancel) {
         if (j.view.transfer) {
@@ -449,7 +630,7 @@ export class UploadQueue {
         j.view.state =
           j.view.transfer?.state === "unknown" || waitingForCommit
             ? "unknown"
-            : j.view.transfer?.state === "preview"
+            : j.view.transfer?.state === "preview" && !j.binding
               ? "awaiting-review"
               : "failed";
       }

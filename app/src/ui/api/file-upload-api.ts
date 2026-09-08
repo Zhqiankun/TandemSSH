@@ -22,7 +22,7 @@ export interface UploadApiPort {
   action(
     sessionId: string,
     id: string,
-    action: "pause" | "resume" | "finish" | "cancel",
+    action: "pause" | "resume" | "finish" | "cancel" | "touch" | "forget",
     input?: Record<string, unknown>,
     signal?: AbortSignal,
   ): Promise<UploadView>;
