@@ -1,0 +1,9 @@
+# Local evaluation checkouts are independent upstream Git repositories.
+/upstream/
+# Task-local runtimes, downloads, logs and test data.
+/.tools/
+/.cache/
+.env
+.env.*
+!.env.example
+*.log

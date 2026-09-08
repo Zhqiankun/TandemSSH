@@ -1,0 +1,302 @@
+.tandem-task-panel {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 390px;
+  max-width: 85%;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  color: var(--foreground);
+  border-left: 1px solid var(--border);
+  font-size: 12px;
+  box-shadow: -8px 0 24px #0002;
+}
+.tandem-task-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.tandem-task-eyebrow {
+  font:
+    10px/1.8 ui-monospace,
+    monospace;
+  letter-spacing: 0.16em;
+  color: var(--muted-foreground);
+}
+.tandem-task-heading h2 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 15px;
+  font-weight: 650;
+}
+.tandem-control-strip {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 16px;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.tandem-control-strip > span:nth-child(2) {
+  flex: 1;
+}
+.tandem-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 100%;
+  background: #34b484;
+}
+.tandem-status-dot.active {
+  background: #f2a34b;
+  box-shadow: 0 0 0 3px #f2a34b20;
+}
+.tandem-task-scroll {
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+  padding: 14px 16px;
+}
+.tandem-task-help {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.75;
+  margin-bottom: 12px;
+}
+.tandem-task-error {
+  color: var(--destructive);
+  font-size: 11px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  padding: 6px 0;
+}
+.tandem-task-panel > p[role="alert"] {
+  padding: 8px 16px;
+}
+.tandem-task-panel input:not([type="checkbox"]):not([type="radio"]),
+.tandem-task-panel textarea,
+.tandem-task-panel select {
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+  border-radius: 5px;
+  padding: 8px;
+  width: 100%;
+  outline: none;
+}
+.tandem-task-panel :is(input, textarea, select):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.tandem-task-panel input[type="checkbox"],
+.tandem-task-panel input[type="radio"] {
+  accent-color: var(--primary);
+}
+.tandem-task-form,
+.tandem-task-details,
+.tandem-authorization {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.tandem-task-panel label:not(.tandem-task-checkbox) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tandem-task-form textarea,
+.tandem-operation-command,
+.tandem-plan-review code {
+  font:
+    12px/1.85 ui-monospace,
+    "Cascadia Code",
+    Consolas,
+    monospace;
+}
+.tandem-task-form textarea {
+  resize: vertical;
+  min-height: 135px;
+}
+.tandem-mode-select {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.tandem-mode-select legend {
+  margin-bottom: 6px;
+}
+.tandem-mode-select label {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 9px 10px 28px;
+  cursor: pointer;
+}
+.tandem-mode-select label.selected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, var(--background));
+}
+.tandem-mode-select input {
+  position: absolute;
+  left: 9px;
+  top: 13px;
+}
+.tandem-mode-select small {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.tandem-task-picker {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0;
+}
+.tandem-task-picker label {
+  min-width: 0;
+  flex: 1;
+}
+.tandem-task-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.tandem-task-title h3 {
+  font-size: 14px;
+  font-weight: 650;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.tandem-task-state {
+  font-size: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+.tandem-task-state.running,
+.tandem-task-state.awaiting-approval {
+  color: #e6a14f;
+  border-color: #e6a14f66;
+}
+.tandem-task-state.completed {
+  color: #34b484;
+}
+.tandem-task-meta {
+  display: flex;
+  gap: 10px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.tandem-task-directory {
+  font:
+    10px/1.7 ui-monospace,
+    monospace;
+  overflow-wrap: anywhere;
+  color: var(--muted-foreground);
+}
+.tandem-authorization {
+  border-top: 2px solid var(--primary);
+  padding: 12px;
+  background: var(--muted);
+  border-radius: 0 0 6px 6px;
+}
+.tandem-authorization h4 {
+  font-weight: 650;
+}
+.tandem-plan-review {
+  padding-left: 24px;
+  list-style: decimal;
+  max-height: 180px;
+  overflow: auto;
+}
+.tandem-plan-review li {
+  padding: 2px 0;
+  overflow-wrap: anywhere;
+}
+.tandem-plan-review small {
+  display: block;
+  color: var(--muted-foreground);
+}
+.tandem-task-limits {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.tandem-task-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.75;
+}
+.tandem-task-checkbox input {
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.tandem-operation {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+.tandem-operation.awaiting-approval {
+  border-left-color: #e6a14f;
+}
+.tandem-operation.succeeded {
+  border-left-color: #34b484;
+}
+.tandem-operation.unknown,
+.tandem-operation.failed {
+  border-left-color: var(--destructive);
+}
+.tandem-operation-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+}
+.tandem-operation-heading > span {
+  font-family: ui-monospace, monospace;
+  color: var(--muted-foreground);
+}
+.tandem-operation-heading > small {
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+.tandem-operation-command {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tandem-operation summary {
+  cursor: pointer;
+  color: var(--muted-foreground);
+}
+.tandem-operation pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  background: var(--muted);
+  font:
+    11px/1.6 ui-monospace,
+    monospace;
+  margin-top: 6px;
+}
+.tandem-task-panel footer {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.tandem-agent-transcript{display:flex;flex-direction:column;gap:9px;border-top:1px solid var(--border);padding-top:12px}.tandem-agent-messages{display:flex;flex-direction:column;gap:10px;max-height:260px;overflow:auto}.tandem-agent-message{font-size:11px;line-height:1.85;white-space:pre-wrap;overflow-wrap:anywhere}.tandem-agent-message small{color:var(--muted-foreground);font-size:10px}
+
+.tandem-workflow-runs{display:flex;flex-direction:column;gap:8px}.tandem-parent-workflow{border-left:2px solid var(--primary);padding:8px 10px;background:var(--muted)}.tandem-parent-workflow small{color:var(--muted-foreground);font-size:10px}.tandem-parent-workflow .tandem-task-help{margin:6px 0 0}
+
+.tandem-parent-workflow h4{font-size:12px;font-weight:600;overflow-wrap:anywhere;flex:1;min-width:0}

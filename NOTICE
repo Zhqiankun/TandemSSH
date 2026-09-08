@@ -1,0 +1,17 @@
+TandemSSH / 同舟 SSH
+https://github.com/Zhqiankun/TandemSSH
+
+Derived from Termix, Copyright 2025 Luke Gustafson.
+Upstream repository: https://github.com/Termix-SSH/Termix
+Upstream commit: 76fd9eedbf0f7e853d5ffe40717cac126ffe6a98
+Upstream license and attribution remain in app/LICENSE and app/UPSTREAM.md.
+
+TandemSSH modifications include independent branding and release channels,
+Chinese defaults, human/AI shared-session control, scoped command and file
+policies, task workflows, MCP pairing and tools, file editing and transfers,
+and SSH host trust. Actual implementation and remaining scope are tracked
+in docs/12-implementation.md and the feature documents.
+
+The user's codexBackground/codexStyle project (Zhqiankun/codexDream) was
+consulted for update and release behavior. TandemSSH has its own update
+service and does not use the CodexStyle update feed.

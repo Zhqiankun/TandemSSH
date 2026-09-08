@@ -1,0 +1,52 @@
+name: CI
+on:
+  push:
+    branches: [main, "codex/**"]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: app
+        shell: pwsh
+    env:
+      VITE_CONFIG_NATIVE_IGNORE_WARNING: "true"
+      TANDEM_TEST_BASH: C:\Program Files\Git\bin\bash.exe
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.20.0
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Check types and schema
+        run: |
+          npm run type-check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run schema:check
+      - name: Check lint and Chinese translation keys
+        run: |
+          npm run lint
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/check-localization.cjs
+      - name: Run all tests
+        run: npm test
+      - name: Build application
+        run: npm run build
+      - name: Preserve build output
+        uses: actions/upload-artifact@v7
+        with:
+          name: TandemSSH-source-build-${{ github.sha }}
+          path: app/dist
+          retention-days: 7
+          if-no-files-found: error

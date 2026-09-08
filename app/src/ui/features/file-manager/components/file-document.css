@@ -1,0 +1,145 @@
+.td-file-document {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--foreground);
+  background: var(--background);
+  font-size: 13px;
+  user-select: text;
+}
+.td-document-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+  max-height: 35%;
+  overflow: auto;
+}
+.td-document-bar button,
+.td-document-review button,
+.td-document-close button {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.td-document-bar button:hover,
+.td-document-review button:hover,
+.td-document-close button:hover {
+  background: var(--muted);
+}
+.td-document-review button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.td-document-review {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: 12px;
+  gap: 12px;
+}
+.td-document-review h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.td-document-review header,
+.td-document-review footer {
+  flex: none;
+  overflow-wrap: anywhere;
+}
+.td-document-review footer p {
+  margin-bottom: 8px;
+  color: var(--muted-foreground);
+}
+.td-document-review footer button {
+  margin: 0 8px 6px 0;
+}
+.td-document-review .td-document-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.td-document-panes {
+  display: flex;
+  gap: 10px;
+  min-height: 180px;
+  flex: 1 0 180px;
+  overflow: auto;
+}
+.td-document-panes label {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 140px;
+}
+.td-document-panes textarea {
+  flex: 1;
+  min-height: 150px;
+  width: 100%;
+  resize: vertical;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  font:
+    12px/1.5 Consolas,
+    monospace;
+  white-space: pre;
+}
+.td-document-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  flex: none;
+}
+.td-document-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.td-document-options input:not([type="checkbox"]),
+.td-document-options select,
+.td-document-bar select {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px;
+  min-width: 0;
+}
+.td-document-options .td-document-save-as {
+  width: 100%;
+  flex-wrap: wrap;
+}
+.td-document-save-as input {
+  flex: 1;
+  min-width: 160px;
+}
+.td-document-error {
+  padding: 10px 12px;
+  background: color-mix(in srgb, #d97706 12%, transparent);
+  border: 1px solid color-mix(in srgb, #d97706 45%, transparent);
+  overflow-wrap: anywhere;
+  flex: none;
+}
+.td-document-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.td-document-close {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.td-document-close h2 {
+  font-size: 16px;
+  font-weight: 600;
+}

@@ -1,0 +1,88 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable version tag (vX.Y.Z)
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: tandemssh-stable-release
+  cancel-in-progress: false
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: app
+    env:
+      RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+      VITE_CONFIG_NATIVE_IGNORE_WARNING: "true"
+      TANDEM_TEST_BASH: C:\Program Files\Git\bin\bash.exe
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_REF }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.20.0
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Validate tag and package version
+        id: release
+        run: |
+          $tag = Split-Path -Leaf $env:RELEASE_REF
+          if ($tag -notmatch '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') { throw 'Stable vX.Y.Z tag required' }
+          $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
+          if ($tag -ne "v$version") { throw 'Tag and package version differ' }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Validate source
+        run: |
+          npm run type-check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run lint
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/check-localization.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test
+      - name: Build Windows installer and portable archive
+        run: npm run build:win-installer
+      - name: Generate and validate version-pinned update manifest
+        run: npm run release:manifest
+      - name: Preserve release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: TandemSSH-${{ steps.release.outputs.tag }}-windows-x64
+          path: |
+            app/release/TandemSSH-*-x64.exe
+            app/release/TandemSSH-*-x64.exe.blockmap
+            app/release/TandemSSH-*-x64.zip
+            app/release/latest.yml
+            app/release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish immutable release and update channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          $latestTag = gh release view --json tagName --jq .tagName 2>$null
+          if ($LASTEXITCODE -eq 0 -and $latestTag -match '^v\d+\.\d+\.\d+$' -and [version]$version -le [version]$latestTag.Substring(1)) { throw 'Refusing to replace a newer or identical stable release' }
+          $isDraft = gh release view $env:RELEASE_TAG --json isDraft --jq .isDraft 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:RELEASE_TAG --draft --verify-tag --title "TandemSSH $env:RELEASE_TAG" --generate-notes
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } elseif ($isDraft -ne 'true') { throw 'Published releases are immutable; use a new version' }
+          gh release upload $env:RELEASE_TAG "release/TandemSSH-$version-x64.exe" "release/TandemSSH-$version-x64.exe.blockmap" "release/TandemSSH-$version-x64.zip" release/SHA256SUMS.txt --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gh release upload $env:RELEASE_TAG release/latest.yml --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gh release edit $env:RELEASE_TAG --draft=false --latest

@@ -1,0 +1,500 @@
+.tandem-settings-dialog[data-slot="dialog-content"] {
+  width: min(1100px, 96vw);
+  max-width: min(1100px, 96vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  padding: 22px;
+  gap: 16px;
+  overflow: hidden;
+}
+.tandem-settings-body {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.tandem-settings-columns {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 20px;
+  min-height: 0;
+}
+.tandem-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-right: 1px solid var(--border);
+  padding-right: 12px;
+  max-height: 58vh;
+  overflow: auto;
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+.tandem-settings-list button {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  padding: 11px;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.tandem-settings-list button.selected {
+  border-left-color: var(--primary);
+  background: var(--muted);
+}
+.tandem-settings-list button:hover {
+  background: var(--muted);
+}
+.tandem-settings-list small {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.tandem-settings-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.tandem-settings-editor > fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.tandem-settings-toolbar,
+.tandem-settings-actions,
+.tandem-settings-tabs,
+.tandem-settings-save {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.tandem-settings-toolbar {
+  justify-content: space-between;
+}
+.tandem-settings-tabs {
+  position: sticky;
+  top: 0;
+  background: var(--background);
+  z-index: 1;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.tandem-settings-tabs > span {
+  margin-left: auto;
+  color: #c58b3c;
+  font-size: 10px;
+}
+.tandem-settings-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+.tandem-settings-row > label,
+.tandem-settings-row > .tandem-workflow-value {
+  flex: 1;
+  min-width: 0;
+}
+.tandem-settings-body label:not(.tandem-settings-check) {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.tandem-settings-body
+  :is(input, select, textarea):not([type="checkbox"]):not([type="file"]) {
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 100%;
+  padding: 7px 9px;
+  min-height: 32px;
+  font: inherit;
+}
+.tandem-settings-body textarea {
+  resize: vertical;
+}
+.tandem-settings-body :is(input, select, textarea, button):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.tandem-settings-body input[type="checkbox"] {
+  accent-color: var(--primary);
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.tandem-settings-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.tandem-settings-check small {
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+.tandem-settings-help {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  line-height: 1.8;
+}
+.tandem-settings-error {
+  padding: 10px 12px;
+  border-left: 3px solid var(--destructive);
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 6%, transparent);
+  overflow-wrap: anywhere;
+}
+.tandem-settings-body h3 {
+  font-size: 13px;
+  font-weight: 650;
+  margin-bottom: 10px;
+}
+.tandem-settings-body section {
+  min-width: 0;
+}
+.tandem-settings-body details {
+  padding: 8px 0;
+}
+.tandem-settings-body summary {
+  cursor: pointer;
+  color: var(--muted-foreground);
+  margin-bottom: 8px;
+}
+.tandem-policy-rule {
+  border: 1px solid var(--border);
+  border-left: 3px solid #ad7c36;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tandem-policy-rule.deny {
+  border-left-color: var(--destructive);
+}
+.tandem-policy-rule.allow {
+  border-left-color: #34b484;
+}
+.tandem-settings-trial {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tandem-policy-result {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  background: var(--muted);
+  border-left: 3px solid #b98841;
+  overflow-wrap: anywhere;
+}
+.tandem-policy-result.deny {
+  border-left-color: var(--destructive);
+}
+.tandem-policy-result.allow {
+  border-left-color: #34b484;
+}
+.tandem-policy-result code,
+.tandem-settings-code,
+.tandem-workflow-preview pre,
+.tandem-workflow-export {
+  font:
+    11px/1.8 "Cascadia Code",
+    Consolas,
+    monospace !important;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tandem-settings-save {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.tandem-settings-save > .tandem-settings-check {
+  flex: 1;
+  min-width: 230px;
+}
+.tandem-settings-save > span {
+  color: #34b484;
+  font-size: 11px;
+}
+.tandem-settings-confirm {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: var(--muted);
+  padding: 12px;
+  border-left: 3px solid #c58b3c;
+}
+.tandem-settings-kicker {
+  color: var(--muted-foreground);
+  font:
+    10px/1.7 "Cascadia Code",
+    monospace;
+}
+.tandem-workflow-definition {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tandem-workflow-definition > section {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.tandem-workflow-parameter {
+  background: var(--muted);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.tandem-workflow-parameter strong {
+  font-family: "Cascadia Code", monospace;
+  align-self: center;
+  min-width: 100px;
+}
+.tandem-workflow-step {
+  border: 1px solid var(--border);
+  padding: 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.tandem-workflow-step > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tandem-workflow-step > header > label {
+  flex: 1;
+  min-width: 0;
+}
+.tandem-workflow-step > header > b {
+  font:
+    22px/1 "Cascadia Code",
+    monospace;
+  color: var(--muted-foreground);
+  align-self: flex-end;
+  margin-bottom: 6px;
+}
+.tandem-workflow-value {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  min-width: 0;
+}
+.tandem-workflow-value > label {
+  flex: 1;
+  min-width: 0;
+}
+.tandem-workflow-value > div {
+  flex: 2;
+  min-width: 0;
+}
+.tandem-workflow-ref {
+  font:
+    11px "Cascadia Code",
+    monospace;
+  background: var(--muted);
+  padding: 8px;
+  border-radius: 4px;
+  max-width: 50%;
+  overflow-wrap: anywhere;
+}
+.tandem-workflow-bindings {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tandem-workflow-preview {
+  border-top: 2px solid var(--primary);
+  padding-top: 14px;
+}
+.tandem-workflow-preview ol {
+  list-style: none;
+  padding: 0;
+}
+.tandem-workflow-preview li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.tandem-workflow-preview pre {
+  padding: 8px;
+  background: var(--muted);
+  margin: 8px 0;
+}
+.tandem-workflow-preview small {
+  color: var(--muted-foreground);
+}
+.tandem-policy-badge {
+  font-size: 10px;
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  color: #b98841;
+}
+.tandem-policy-badge.deny {
+  color: var(--destructive);
+}
+.tandem-policy-badge.allow {
+  color: #34b484;
+}
+.tandem-workflow-export {
+  padding: 12px;
+  max-height: 320px;
+  overflow: auto;
+  background: var(--muted);
+  border: 1px solid var(--border);
+}
+.tandem-task-state.completed-with-errors {
+  color: #c58b3c;
+}
+@media (max-width: 760px) {
+  .tandem-settings-columns {
+    grid-template-columns: 1fr;
+  }
+  .tandem-settings-list {
+    position: static;
+    flex-direction: row;
+    max-height: 120px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+  }
+  .tandem-settings-list button {
+    min-width: 130px;
+  }
+  .tandem-settings-row {
+    flex-wrap: wrap;
+  }
+  .tandem-settings-row > label {
+    min-width: 140px;
+  }
+  .tandem-settings-dialog[data-slot="dialog-content"] {
+    padding: 16px;
+  }
+  .tandem-workflow-value {
+    flex-wrap: wrap;
+  }
+  .tandem-settings-save {
+    align-items: stretch;
+  }
+  .tandem-settings-trial > .tandem-settings-row {
+    flex-wrap: wrap;
+  }
+}
+
+/* The body owns scrolling. Keep its sections at content height so the trial
+   area cannot overlap the policy editor when the dialog is height-limited. */
+.tandem-settings-body > * {
+  flex-shrink: 0;
+}
+.tandem-settings-body > .tandem-settings-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  padding: 4px 0;
+  background: var(--background);
+}
+.tandem-settings-tabs {
+  position: static;
+}
+
+.tandem-file-scopes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  min-width: 0;
+  flex-shrink: 0;
+}
+.tandem-file-scopes > legend,
+.tandem-file-scopes > h3 {
+  font-weight: 600;
+}
+.tandem-file-scopes > p {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.tandem-file-scopes button {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  align-self: flex-start;
+}
+.tandem-file-scopes section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.tandem-file-scope-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.tandem-file-scope-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 120px;
+  flex: 1;
+}
+.tandem-file-scope-fields input,
+.tandem-file-scope-fields select {
+  padding: 6px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  min-width: 0;
+  width: 100%;
+}
+
+.tandem-file-review {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  min-width: 0;
+}
+.tandem-file-review-panes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tandem-file-review-panes label {
+  display: flex;
+  flex: 1;
+  min-width: 220px;
+  flex-direction: column;
+  gap: 4px;
+}
+.tandem-file-review-panes textarea {
+  width: 100%;
+  height: 220px;
+  resize: vertical;
+  background: var(--background);
+  border: 1px solid var(--border);
+  padding: 8px;
+  font:
+    12px/1.5 Consolas,
+    monospace;
+  white-space: pre;
+}
