@@ -191,7 +191,9 @@ describe("actual upload queue controls", () => {
       "chunk",
       "finish",
     ]);
-    expect(Buffer.concat([...f.rows.values()][0].chunks)).toEqual(bytes);
+    expect(Buffer.concat([...f.rows.values()][0].chunks).equals(bytes)).toBe(
+      true,
+    );
   }, 15000);
   it("keeps a lost commit response unknown and never automatically repeats start or finish", async () => {
     const f = fixture({ unknown: true }),

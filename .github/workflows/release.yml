@@ -35,12 +35,7 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - name: Validate tag and package version
         id: release
-        run: |
-          $tag = Split-Path -Leaf $env:RELEASE_REF
-          if ($tag -notmatch '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') { throw 'Stable vX.Y.Z tag required' }
-          $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
-          if ($tag -ne "v$version") { throw 'Tag and package version differ' }
-          "tag=$tag" >> $env:GITHUB_OUTPUT
+        run: node scripts/validate-release-ref.cjs
       - name: Install locked dependencies
         run: npm ci
       - name: Validate source

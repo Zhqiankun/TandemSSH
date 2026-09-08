@@ -33,7 +33,7 @@
     "preview": "vite preview",
     "electron:dev": "concurrently \"npm run dev\" \"powershell -c \\\"Start-Sleep -Seconds 5\\\" && electron .\"",
     "electron:patch-builder": "node scripts/patch-app-builder-lib.cjs",
-    "electron:rebuild": "electron-rebuild -f -o better-sqlite3,@serialport/bindings-cpp,node-pty",
+    "electron:rebuild": "electron-rebuild -f -o better-sqlite3,@serialport/bindings-cpp,node-pty && node scripts/prepare-conpty-runtime.cjs",
     "build:win-portable": "npm run build && npm run electron:rebuild && npm run electron:patch-builder && electron-builder --win --dir",
     "build:win-installer": "npm run build && npm run electron:rebuild && npm run electron:patch-builder && electron-builder --win --publish=never",
     "build:linux-portable": "npm run build && npm run electron:rebuild && npm run electron:patch-builder && electron-builder --linux --dir",

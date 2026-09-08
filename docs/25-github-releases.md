@@ -33,3 +33,5 @@
 官方 npm audit 报告的 xmldom、browserslist、fast-uri 与 qs 问题已更新至对应修复版本，复查报告为 0 项。普通推送的 CI 增加 Windows 安装包预览产物，使用带 MSVC Spectre 库的 windows-2022 镜像并保留检查；不禁用缓解配置、不把本地跳过重编译的包作为正式结果。[镜像组件清单](https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Readme.md) 是选择依据，实际原生编译仍以 Actions 运行结果为准。
 
 真实隔离桌面再次通过原生更新 IPC 等待完整检查，568 ms 返回 UPDATE_NOT_PUBLISHED；按钮恢复可用后的截图为 .cache/release-preview-update-ready.png，结果记录 .cache/release-preview-live-check.json。启动检测到新版本后现在会显示可点击提示，下载与安装仍由人工触发。
+
+第二次 CI 34180739288 已通过依赖、类型、模式、lint 和中文键，完整测试暴露系统 ConPTY 对 OSC 与长行回显的重排差异，以及上传测试的大块逐元素断言超时。没有修改命令结果断言或跳过自动/协作用例。Windows 本地终端和对应夹具改用 node-pty 随包锁定的 ConPTY 运行库，并补齐原生重编译后的 DLL 复制；长路径下本机全部 10 项真实 PTY 测试通过，云端复测继续。上传断言改为完整 Buffer.equals 字节比较。发布另增加标签、包版本与实际提交三者一致校验，3 项测试通过。

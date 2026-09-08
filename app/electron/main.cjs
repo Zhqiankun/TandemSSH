@@ -623,7 +623,7 @@ const externalEditorSessions = new Map();
 
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
 const appRoot = isDev ? process.cwd() : path.join(__dirname, "..");
-const windowsAppUserModelId = "com.karmaa.termix";
+const windowsAppUserModelId = "app.tandemssh.desktop";
 const electronCacheBuildPath = path.join(
   app.getPath("userData"),
   "client-cache-build.json",
@@ -2843,6 +2843,7 @@ ipcMain.handle("local-terminal-start", (event, dimensions = {}) => {
   const shellConfig = resolveLocalShell(process.platform, dimensions.shell);
   const child = pty.spawn(shellConfig.file, shellConfig.args, {
     name: "xterm-256color",
+    useConptyDll: process.platform === "win32",
     cols,
     rows,
     cwd: os.homedir(),

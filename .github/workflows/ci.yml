@@ -18,6 +18,8 @@ jobs:
         working-directory: app
         shell: pwsh
     env:
+      TANDEM_PTY_LONG_ROOT: "1"
+      TANDEM_PTY_TRACE: "1"
       VITE_CONFIG_NATIVE_IGNORE_WARNING: "true"
       TANDEM_TEST_BASH: C:\Program Files\Git\bin\bash.exe
     steps:
@@ -62,6 +64,14 @@ jobs:
             app/release/TandemSSH-*-x64.zip
           retention-days: 14
           if-no-files-found: error
+      - name: Preserve failed terminal fixture traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: TandemSSH-terminal-fixture-traces
+          path: .cache/pty-tests/*.trace.json
+          retention-days: 3
+          if-no-files-found: ignore
       - name: Preserve build output
         uses: actions/upload-artifact@v7
         with:

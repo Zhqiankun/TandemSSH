@@ -47,13 +47,21 @@ async function withTerminal(
   );
   const base = path.join(workspace, ".cache", "pty-tests");
   fs.mkdirSync(base, { recursive: true });
-  const folder = fs.mkdtempSync(path.join(base, "session-"));
+  const folder = fs.mkdtempSync(
+    path.join(
+      base,
+      process.env.TANDEM_PTY_LONG_ROOT === "1"
+        ? "session-with-a-deliberately-long-folder-name-for-terminal-line-wrapping-"
+        : "session-",
+    ),
+  );
   const childFolder = path.join(folder, "子目录 ' quoted");
   fs.mkdirSync(childFolder);
   const output = new EventEmitter();
   let closed = false;
   const terminal = pty.spawn(shell, ["--noprofile", "--norc", "-i"], {
     name: "xterm-256color",
+    useConptyDll: process.platform === "win32",
     cols: 160,
     rows: 32,
     cwd: folder,
