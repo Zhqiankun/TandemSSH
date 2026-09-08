@@ -49,6 +49,8 @@ jobs:
           npm test
       - name: Build Windows installer and portable archive
         run: npm run build:win-installer
+      - name: Verify packaged native modules
+        run: node scripts/verify-native-package.cjs
       - name: Generate and validate version-pinned update manifest
         run: npm run release:manifest
       - name: Preserve release artifacts

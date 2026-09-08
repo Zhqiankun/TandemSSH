@@ -23,6 +23,8 @@ import type { CommandAction } from "../../../types/collaboration-operations.js";
 const shell =
   process.env.TANDEM_TEST_BASH ??
   (process.platform === "win32" ? "" : "/bin/bash");
+const fixtureCommandDeadlineMs = 10000;
+const fixtureObservationSlackMs = 2000;
 const windowsToPosix = (value: string) =>
   process.platform === "win32"
     ? value
@@ -59,6 +61,9 @@ async function withTerminal(
   fs.mkdirSync(childFolder);
   const output = new EventEmitter();
   let closed = false;
+  const traceStarted = Date.now(),
+    frameTimes: Array<Record<string, unknown>> = [],
+    timedFrames = new Set<string>();
   const terminal = pty.spawn(shell, ["--noprofile", "--norc", "-i"], {
     name: "xterm-256color",
     useConptyDll: process.platform === "win32",
@@ -83,8 +88,23 @@ async function withTerminal(
   let startup = "";
   let trace = "";
   const data = terminal.onData((text) => {
-    if (process.env.TANDEM_PTY_TRACE === "1")
+    if (process.env.TANDEM_PTY_TRACE === "1") {
       trace = (trace + text).slice(-128000);
+      for (const frame of trace.matchAll(
+        /\x1b\]633;Tandem;([a-f0-9]{32});(begin|end;[^\x07]*)\x07/g,
+      )) {
+        const kind = frame[2].split(";")[0],
+          key = frame[1] + ":" + kind;
+        if (!timedFrames.has(key)) {
+          timedFrames.add(key);
+          frameTimes.push({
+            kind,
+            token: frame[1],
+            elapsedMs: Date.now() - traceStarted,
+          });
+        }
+      }
+    }
     startup = (startup + text).slice(-4096);
     if (startup.includes("TANDEM_READY>")) readyResolve();
     output.emit("data", Buffer.from(text));
@@ -102,7 +122,16 @@ async function withTerminal(
     sessionId,
     {
       isReady: () => !closed,
-      write: (bytes) => terminal.write(Buffer.from(bytes).toString("utf8")),
+      write: (bytes) => {
+        const text = Buffer.from(bytes).toString("utf8");
+        if (process.env.TANDEM_PTY_TRACE === "1")
+          frameTimes.push({
+            kind: "write",
+            token: text.match(/Tandem;([a-f0-9]{32});begin/)?.[1],
+            elapsedMs: Date.now() - traceStarted,
+          });
+        terminal.write(text);
+      },
     },
     () => {},
   );
@@ -124,11 +153,19 @@ async function withTerminal(
     }
     await test({
       control,
-      executor: new PtyCommandExecutor(() => (closed ? null : output), 10000),
+      executor: new PtyCommandExecutor(
+        () => (closed ? null : output),
+        fixtureCommandDeadlineMs,
+      ),
       root: windowsToPosix(folder),
       child: windowsToPosix(childFolder),
     });
   } catch (error) {
+    if (process.env.TANDEM_PTY_TRACE === "1")
+      frameTimes.push({
+        kind: "test-failed",
+        elapsedMs: Date.now() - traceStarted,
+      });
     failures.push(error);
   }
   try {
@@ -163,6 +200,11 @@ async function withTerminal(
       fs.writeFileSync(
         path.join(base, path.basename(folder) + ".trace.json"),
         JSON.stringify(trace),
+      );
+    if (process.env.TANDEM_PTY_TRACE === "1")
+      fs.writeFileSync(
+        path.join(base, path.basename(folder) + ".timing.trace.json"),
+        JSON.stringify(frameTimes),
       );
     fs.rmSync(resolved, { recursive: true, force: true });
   } catch (error) {
@@ -806,16 +848,21 @@ describe.runIf(!!shell)("legacy command tasks on a real PTY", () => {
                 expect(tasks.get(human, task.id).state).toBe(
                   "awaiting-approval",
                 ),
-              { timeout: 5000 },
+              { timeout: fixtureCommandDeadlineMs + fixtureObservationSlackMs },
             );
             const op = tasks.get(human, task.id).operations.at(-1)!;
             await tasks.approve(human, task.id, op.id, op.digest, 1);
           }
         await vi.waitFor(
           () => expect(tasks.get(human, task.id).state).toBe("completed"),
-          { timeout: 5000 },
+          { timeout: 3 * fixtureCommandDeadlineMs + fixtureObservationSlackMs },
         );
         const result = tasks.get(human, task.id);
+        expect(result.operations.map((operation) => operation.status)).toEqual([
+          "succeeded",
+          "succeeded",
+          "succeeded",
+        ]);
         expect(result.cwd).toBe(child);
         expect(result.operations[1].output?.replace(/\r/g, "")).toBe(value);
         const native =
@@ -828,7 +875,7 @@ describe.runIf(!!shell)("legacy command tasks on a real PTY", () => {
         expect(fs.existsSync(native)).toBe(false);
       });
     },
-    15000,
+    6 * fixtureCommandDeadlineMs,
   );
   it("human takeover prevents the rest of a converted macro from being sent", async () => {
     await withTerminal(async ({ control, executor, root }) => {

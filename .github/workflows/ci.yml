@@ -54,6 +54,9 @@ jobs:
       - name: Build Windows preview installers
         if: github.event_name != 'pull_request'
         run: npm run build:win-installer
+      - name: Verify packaged native modules
+        if: github.event_name != 'pull_request'
+        run: node scripts/verify-native-package.cjs
       - name: Preserve Windows preview installers
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
@@ -64,8 +67,8 @@ jobs:
             app/release/TandemSSH-*-x64.zip
           retention-days: 14
           if-no-files-found: error
-      - name: Preserve failed terminal fixture traces
-        if: failure()
+      - name: Preserve terminal fixture traces
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: TandemSSH-terminal-fixture-traces
