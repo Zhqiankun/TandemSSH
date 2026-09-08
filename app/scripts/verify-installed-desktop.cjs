@@ -171,10 +171,10 @@ async function main() {
       });
     return {
       call,
-      async evaluate(expression) {
+      async evaluate(expression, awaitPromise = false) {
         const result = await call("Runtime.evaluate", {
           expression,
-          awaitPromise: true,
+          awaitPromise,
           returnByValue: true,
         });
         if (result.exceptionDetails)
@@ -191,12 +191,16 @@ async function main() {
     renderer,
     identityVerified = false,
     succeeded = false;
+  let stage = "main-identity",
+    failure;
   try {
     mainClient = await connect(mainPort, (target) => target.type === "node");
     const electron =
       "process.getBuiltinModule('module').createRequire(process.cwd()+'/verification.cjs')('electron')";
-    const identity = await mainClient.evaluate(
-      `(()=>{const e=${electron};return {pid:process.pid,executable:process.execPath,profile:e.app.getPath('userData'),version:e.app.getVersion()};})()`,
+    const identity = await until(() =>
+      mainClient.evaluate(
+        `(()=>{const e=${electron};if(!e.app.isReady())return null;return {pid:process.pid,executable:process.execPath,profile:e.app.getPath('userData'),version:e.app.getVersion()};})()`,
+      ),
     );
     if (
       identity.pid !== child.pid ||
@@ -208,6 +212,7 @@ async function main() {
         "Installed desktop process, data directory or version mismatch",
       );
     identityVerified = true;
+    stage = "renderer-ready";
     renderer = await connect(
       rendererPort,
       (target) =>
@@ -219,9 +224,37 @@ async function main() {
       });
       return response.ok && (await response.json()).status === "ok";
     });
+    stage = "first-run-guide";
+    await until(
+      () =>
+        renderer.evaluate(
+          `(()=>{const d=[...document.querySelectorAll('[role="dialog"]')].find(e=>e.innerText.replace(/\\s+/g,'').includes('欢迎使用同舟SSH'));return !!d;})()`,
+        ),
+      30000,
+    );
+    await renderer.call("Page.enable");
+    const welcome = await renderer.call("Page.captureScreenshot", {
+      format: "png",
+    });
+    fs.writeFileSync(
+      path.join(reportRoot, "installed-welcome.png"),
+      Buffer.from(welcome.data, "base64"),
+    );
+    await renderer.evaluate(
+      `(()=>{const d=[...document.querySelectorAll('[role="dialog"]')].find(e=>e.innerText.replace(/\\s+/g,'').includes('欢迎使用同舟SSH'));const b=[...d.querySelectorAll('button')].find(e=>e.textContent.trim()==='跳过设置');if(!b||b.disabled)throw Error('Welcome skip button unavailable');b.click();})()`,
+    );
+    await until(
+      () =>
+        renderer.evaluate(
+          `![...document.querySelectorAll('[role="dialog"]')].some(e=>e.innerText.replace(/\\s+/g,'').includes('欢迎使用同舟SSH'))`,
+        ),
+      15000,
+    );
+    stage = "chinese-home-and-updates";
     const state = await until(async () => {
       const value = await renderer.evaluate(
         `(async()=>({title:document.title,lang:document.documentElement.lang,text:document.body.innerText,updates:await window.electronAPI?.updates.action('status')}))()`,
+        true,
       );
       return value.lang === "zh-CN" &&
         value.text.includes("检查更新") &&
@@ -246,6 +279,7 @@ async function main() {
       path.join(reportRoot, "installed-desktop.png"),
       Buffer.from(screenshot.data, "base64"),
     );
+    stage = "update-dialog";
     await renderer.evaluate(
       `(()=>{const button=[...document.querySelectorAll('button')].find(b=>b.textContent.includes('检查更新'));if(!button)throw Error('Chinese update button missing');button.click();})()`,
     );
@@ -279,6 +313,7 @@ async function main() {
         2,
       ),
     );
+    stage = "normal-exit";
     await mainClient.evaluate(
       `setTimeout(()=>{const e=${electron};e.BrowserWindow.getAllWindows().forEach(w=>w.destroy());e.app.quit();},100);true`,
     );
@@ -313,6 +348,22 @@ async function main() {
         cleanExit: true,
       }),
     );
+  } catch (error) {
+    failure = error.message;
+    if (renderer) {
+      try {
+        const state = await renderer.evaluate(
+          "({text:document.body.innerText.slice(0,12000),dialogs:[...document.querySelectorAll('[role=\"dialog\"]')].map(e=>e.innerText)})",
+        );
+        fs.writeFileSync(
+          path.join(reportRoot, "desktop-failure-state.json"),
+          JSON.stringify(state),
+        );
+      } catch {
+        /* The process may already have closed its debugger. */
+      }
+    }
+    throw error;
   } finally {
     renderer?.close();
     mainClient?.close();
@@ -328,7 +379,13 @@ async function main() {
     if (!succeeded)
       fs.writeFileSync(
         path.join(reportRoot, "desktop-failure.json"),
-        JSON.stringify({ identityVerified, exited, pid: child.pid ?? null }),
+        JSON.stringify({
+          stage,
+          failure,
+          identityVerified,
+          exited,
+          pid: child.pid ?? null,
+        }),
       );
   }
 }

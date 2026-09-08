@@ -68,3 +68,7 @@ scripts/verify-installed-desktop.cjs 只负责启动本次安装的可执行文�
 CI 和 Release 均增加实际安装/启动/卸载门槛，报告与中文窗口截图保存在 TandemSSH-installation-evidence 产物中。PowerShell/Node 语法、非 CI 环境拒绝执行与工作流解析已在本机核对；实际 runner 结果待运行。此检查不代替跨版本在线升级、全部文件功能或自动/协同最终验收。
 
 安装验收首次 CI 为 [34188486997](https://github.com/Zhqiankun/TandemSSH/actions/runs/34188486997)。构建与原生探针通过，安装前读取注册表空条目触发严格模式错误；尚未调用安装程序，因此没有安装报告或截图，失败证据保留在 job 日志。现改为判空并按名称索引属性，实际只读枚举与 scripts/windows-installation.test.ts 的 2 项回归通过。后续复测不得沿用前一轮构建通过来宣称安装升级已通过。
+
+第三次安装链路推进：CI [34189826861](https://github.com/Zhqiankun/TandemSSH/actions/runs/34189826861) 已实际通过安装、版本/快捷方式/标记核对、已安装程序的原生模块检查及卸载。安装证据 ZIP（artifact 10042130324）的 SHA-256 已核对为 af472a8083b84c8a3a3648f08c07496c4a861cfbd6aa949aadc3316b8d15a990。桌面探针在身份读取前遇到 Inspector 的 Promise was collected，未完成桌面与用户数据保留验收；报告中的 dataPreserved=false 表示未验证，不能解释为已证明数据被删除。
+
+探针现在等待 app.isReady() 后读取身份，同步表达式不启用 Promise 等待。另一次真实本机启动暴露首次使用向导挡住更新面板的观察问题，现按实际界面点击“跳过设置”再检查更新；失败报告补充具体阶段和窗口状态。隔离开发包已完成首次向导、中文首页、版本/更新源面板及正常退出和端口释放（.cache/local-startup-observer.log 与当前 local-startup-observer-run.json 所指报告目录）。开发包 installed=false 与预期一致；此观察验证仍不替代 CI 安装版的数据保留与真实跨版本升级。
