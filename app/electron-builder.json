@@ -15,7 +15,11 @@
     "dist/backend/**/*",
     "node_modules/**/*",
     "public/icons/**/*",
-    "public/icon.*"
+    "public/icon.*",
+    "electron/task-local-files.cjs",
+    "electron/upload-sources.cjs",
+    "electron/download-sink.cjs",
+    "electron/download-directory-targets.cjs"
   ],
   "files": [
     "dist/**/*",

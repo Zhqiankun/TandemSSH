@@ -1026,6 +1026,18 @@ export class TaskRuntime {
       requestId,
     );
   }
+  localFileContext(actor: TaskActor, taskId: string) {
+    if (actor.kind !== "human") throw Error("HUMAN_APPROVAL_REQUIRED");
+    const context = this.fileContext(actor, taskId),
+      task = this.owned(actor, taskId);
+    return {
+      ...context,
+      hostId: task.view.hostId,
+      hostName: task.view.hostName,
+      state: task.view.state,
+      title: task.view.title,
+    };
+  }
   fileContext(actor: TaskActor, taskId: string) {
     const task = this.owned(actor, taskId);
     this.sessionFor(actor, task.view.sessionId);

@@ -96,6 +96,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     forget: (id) =>
       ipcRenderer.invoke("tandem-download-directory", "forget", id),
   },
+  localFiles: {
+    identity: () => ipcRenderer.invoke("tandem-task-local-files", "identity"),
+    choose: (ticketId) =>
+      ipcRenderer.invoke("tandem-task-local-files", "choose", ticketId),
+    reset: () => ipcRenderer.invoke("tandem-task-local-files", "reset"),
+  },
   uploadSources: {
     chooseDirectory: () =>
       ipcRenderer.invoke("tandem-upload-source", "choose-directory"),
@@ -170,7 +176,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // Selection paths must originate in the isolated preload's File conversion or a native picker.
     if (
       typeof channel !== "string" ||
-      channel.startsWith("tandem-upload-source")
+      channel.startsWith("tandem-upload-source") ||
+      channel.startsWith("tandem-task-local-files")
     )
       throw Error("UPLOAD_SOURCE_CHANNEL_PRIVATE");
     return ipcRenderer.invoke(channel, ...args);

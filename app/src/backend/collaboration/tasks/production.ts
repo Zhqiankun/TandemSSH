@@ -1,3 +1,5 @@
+import { automatedTransfers } from "../../files/automated-transfer-production.js";
+import { bindLocalTaskContext } from "../../files/local-file-production.js";
 import { automatedDocuments } from "../../files/production.js";
 import { hostFileFence } from "../sessions/host-file-fence.js";
 import { sessionManager } from "../../hosts/terminal/session-manager.js";
@@ -82,7 +84,11 @@ export const taskRuntime = new TaskRuntime({
         ];
       },
       control: session.control,
-      files: automatedDocuments.executor(session.userId, session.id),
+      files: automatedTransfers.executor(
+        session.userId,
+        session.id,
+        automatedDocuments.executor(session.userId, session.id),
+      ),
       executor: new PtyCommandExecutor(
         () => sessionManager.getSession(id)?.sshStream ?? null,
       ),
@@ -94,6 +100,9 @@ export const taskRuntime = new TaskRuntime({
   },
   audit: journalFor,
 });
+bindLocalTaskContext((userId, taskId) =>
+  taskRuntime.localFileContext({ kind: "human", userId }, taskId),
+);
 export function listSessions(actor: TaskActor) {
   return sessionManager
     .getUserSessions(actor.userId)

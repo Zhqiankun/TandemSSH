@@ -4939,7 +4939,28 @@
         "FILE_TRANSFER_LIMIT": "传输记录已达上限，请先处理并清理已有记录。",
         "FILE_TRANSFER_NOT_FOUND": "当前任务没有此传输记录。",
         "FILE_TRANSFER_ALREADY_STARTED": "此操作已经开始，不会重复传输。",
-        "FILE_TRANSFER_CLEANUP_PENDING": "此传输仍在进行或存在待核实结果，暂不能清除。"
+        "FILE_TRANSFER_CLEANUP_PENDING": "此传输仍在进行或存在待核实结果，暂不能清除。",
+        "FILE_LOCAL_DESKTOP_REQUIRED": "本地文件授权需要已连接的桌面后台。",
+        "FILE_LOCAL_WINDOW_CLOSED": "原窗口或登录状态已变化，请重新选择文件。",
+        "FILE_LOCAL_GRANT_LIMIT": "本地文件授权数量已达上限，请先清理旧记录。",
+        "FILE_LOCAL_GRANT_BUSY": "本地文件仍在使用或选择中，请稍后再试。",
+        "FILE_LOCAL_SELECTION_INVALID": "所选文件或目标路径无效，请重新选择。",
+        "FILE_LOCAL_SOURCE_UNSUPPORTED": "上传来源必须是普通文件；不跟随链接或特殊文件。",
+        "FILE_LOCAL_GRANT_REVOKED": "本地文件授权已撤销，请重新选择。",
+        "FILE_LOCAL_GRANT_EXPIRED": "本地文件授权已过期，请重新选择。",
+        "FILE_LOCAL_TASK_ENDED": "任务已结束，本地文件授权已失效。",
+        "FILE_LOCAL_CONNECTION_CHANGED": "SSH 连接或服务器身份已变化，请重新授权本地文件。",
+        "FILE_LOCAL_TICKET_INVALID": "本次文件选择已失效，请重新开始选择。",
+        "FILE_LOCAL_TICKET_EXPIRED": "本次文件选择已超时或任务已变化，请重新选择。",
+        "FILE_LOCAL_TICKET_USED": "此文件选择已使用，不能重复兑换授权。",
+        "FILE_LOCAL_OVERWRITE_REQUIRED": "本地授权未允许覆盖目标文件，请重新选择并明确允许覆盖。",
+        "FILE_LOCAL_GRANT_CONSUMED": "下载目标授权已使用，请为下一次下载重新选择。",
+        "FILE_LOCAL_GRANT_NOT_FOUND": "没有属于本任务的此项本地授权。",
+        "FILE_LOCAL_REQUEST_INVALID": "本地文件授权请求无效。",
+        "FILE_LOCAL_REQUEST_FAILED": "本地文件授权未完成，请重新选择。",
+        "FILE_LOCAL_REQUEST_TIMEOUT": "本地文件选择或校验超时，原授权已撤销。",
+        "FILE_LOCAL_TRUSTED_WINDOW_REQUIRED": "请从同舟 SSH 主窗口选择本地文件。",
+        "FILE_LOCAL_TASK_UNAVAILABLE": "当前任务尚不可用，请重新打开协作面板。"
       },
       "allowedPrograms": "本次允许的程序（每行一个）",
       "operationProgress": "已完成 {{done}} / {{total}} 条命令",
@@ -5678,6 +5699,27 @@
       "verified": "内容校验通过",
       "unverified": "尚未完成整体内容校验",
       "cleanup": "仍有临时文件或清理事项，请先核对结果。"
+    },
+    "localFiles": {
+      "title": "本任务的本地文件授权",
+      "description": "只授权你选定的来源或目标；远端路径仍受任务规则限制。授权随任务、窗口或登录状态失效，最长 8 小时。下载目标使用完成后需重新选择。",
+      "overwrite": "允许本次选择的授权覆盖目标文件",
+      "upload": "选择上传来源",
+      "download": "选择下载目标",
+      "desktop": "本地文件授权需要桌面客户端。",
+      "busy": "正在处理本地文件选择与授权…",
+      "empty": "尚未授权本地来源或目标。",
+      "failed": "本地文件授权未完成，请重试或重新选择。",
+      "revoke": "撤销授权",
+      "forget": "清理并移除记录",
+      "mayOverwrite": "允许覆盖",
+      "noOverwrite": "不允许覆盖",
+      "existing": "目标原有 {{size}} 字节",
+      "states": {
+        "active": "可用",
+        "revoked": "已撤销",
+        "consumed": "已使用"
+      }
     }
   },
   "fileDocument": {

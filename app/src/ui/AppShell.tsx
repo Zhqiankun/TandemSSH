@@ -1,3 +1,4 @@
+import { LocalFileGrantMonitor } from "@/features/collaboration/TaskLocalFiles";
 import { UpdateCenter } from "@/updates/UpdateCenter";
 import { DownloadQueueMonitor } from "@/features/file-manager/downloads/DownloadQueuePanel";
 import { HostTrustMonitor } from "@/ssh/HostTrustMonitor";
@@ -2998,6 +2999,7 @@ export function AppShell({
       <UpdateCenter />
       <DownloadQueueMonitor userId={userId} />
       <UploadQueueMonitor userId={userId} />
+      <LocalFileGrantMonitor userId={userId} />
       <Suspense fallback={null}>
         <AlertManager userId={userId} loggedIn={!!username} />
       </Suspense>

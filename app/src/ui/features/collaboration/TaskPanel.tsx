@@ -1,3 +1,4 @@
+import { TaskLocalFiles } from "./TaskLocalFiles";
 import { FileTransferResult } from "./FileTransferResult";
 import { FileInspectionResult } from "./FileInspectionResult";
 import { FileOperationReview } from "./FileOperationReview";
@@ -336,6 +337,11 @@ export function TaskPanel({
                 <AiTaskTranscript run={agent} />
               </Suspense>
             )}
+            <TaskLocalFiles
+              key={task.id}
+              taskId={task.id}
+              disabled={finished(task) || !session?.connected}
+            />
             {resumable(task) && (
               <TaskAuthorizationForm
                 key={

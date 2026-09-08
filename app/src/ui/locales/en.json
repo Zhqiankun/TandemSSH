@@ -4939,7 +4939,28 @@
         "FILE_TRANSFER_LIMIT": "Transfer record limit reached. Resolve and clear existing records.",
         "FILE_TRANSFER_NOT_FOUND": "No such transfer belongs to this task.",
         "FILE_TRANSFER_ALREADY_STARTED": "This operation has already started and will not be repeated.",
-        "FILE_TRANSFER_CLEANUP_PENDING": "This transfer is active or needs reconciliation and cannot be cleared."
+        "FILE_TRANSFER_CLEANUP_PENDING": "This transfer is active or needs reconciliation and cannot be cleared.",
+        "FILE_LOCAL_DESKTOP_REQUIRED": "A connected desktop backend is required.",
+        "FILE_LOCAL_WINDOW_CLOSED": "The window or login changed. Select the file again.",
+        "FILE_LOCAL_GRANT_LIMIT": "Local file grant limit reached. Clear old records first.",
+        "FILE_LOCAL_GRANT_BUSY": "The local file is being used or selected. Try again shortly.",
+        "FILE_LOCAL_SELECTION_INVALID": "The selected file or target is invalid. Select again.",
+        "FILE_LOCAL_SOURCE_UNSUPPORTED": "Upload sources must be regular files; links and special files are not followed.",
+        "FILE_LOCAL_GRANT_REVOKED": "Local file access was revoked. Select again.",
+        "FILE_LOCAL_GRANT_EXPIRED": "Local file access expired. Select again.",
+        "FILE_LOCAL_TASK_ENDED": "The task ended and local file access expired.",
+        "FILE_LOCAL_CONNECTION_CHANGED": "The SSH connection or host identity changed. Authorize local files again.",
+        "FILE_LOCAL_TICKET_INVALID": "This file selection is no longer valid. Start again.",
+        "FILE_LOCAL_TICKET_EXPIRED": "File selection expired or the task changed. Select again.",
+        "FILE_LOCAL_TICKET_USED": "This selection was already used and cannot be redeemed again.",
+        "FILE_LOCAL_OVERWRITE_REQUIRED": "This grant does not allow overwriting the destination. Select again and explicitly allow overwrite.",
+        "FILE_LOCAL_GRANT_CONSUMED": "This download target was used. Select a target for the next download.",
+        "FILE_LOCAL_GRANT_NOT_FOUND": "No such local grant belongs to this task.",
+        "FILE_LOCAL_REQUEST_INVALID": "Invalid local file authorization request.",
+        "FILE_LOCAL_REQUEST_FAILED": "Local file authorization failed. Select again.",
+        "FILE_LOCAL_REQUEST_TIMEOUT": "Local selection or verification timed out and access was revoked.",
+        "FILE_LOCAL_TRUSTED_WINDOW_REQUIRED": "Select local files from the TandemSSH main window.",
+        "FILE_LOCAL_TASK_UNAVAILABLE": "The task is not available. Reopen the collaboration panel."
       },
       "allowedPrograms": "Programs allowed for this task (one per line)",
       "operationProgress": "{{done}} / {{total}} commands completed",
@@ -5678,6 +5699,27 @@
       "verified": "Content verification passed",
       "unverified": "Full content verification has not completed",
       "cleanup": "Temporary files or cleanup work remain. Review the result first."
+    },
+    "localFiles": {
+      "title": "Local files authorized for this task",
+      "description": "Authorize only selected sources or destinations; remote paths remain subject to task rules. Grants expire with the task, window or login, after at most 8 hours. Select a new download target after use.",
+      "overwrite": "Allow these grants to overwrite destination files",
+      "upload": "Select upload sources",
+      "download": "Select download target",
+      "desktop": "Local file authorization requires the desktop client.",
+      "busy": "Selecting and authorizing local files…",
+      "empty": "No local source or destination is authorized.",
+      "failed": "Local file authorization did not complete. Retry or select again.",
+      "revoke": "Revoke access",
+      "forget": "Clean up and remove record",
+      "mayOverwrite": "Overwrite allowed",
+      "noOverwrite": "Overwrite disabled",
+      "existing": "The destination contained {{size}} bytes",
+      "states": {
+        "active": "Available",
+        "revoked": "Revoked",
+        "consumed": "Used"
+      }
     }
   },
   "fileDocument": {

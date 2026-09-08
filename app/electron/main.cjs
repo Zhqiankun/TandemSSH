@@ -2922,6 +2922,15 @@ ipcMain.handle("local-terminal-close", (event, sessionId) => {
   return true;
 });
 
+const taskLocalFilesIpc =
+  require("./task-local-files-ipc.cjs").registerTaskLocalFilesIpc({
+    ipcMain,
+    dialog,
+    getWindow: () => mainWindow,
+    getBackend: () => backendProcess,
+    appRoot,
+    isDev,
+  });
 const uploadSourceIpc =
   require("./upload-source-ipc.cjs").registerUploadSourceIpc({
     ipcMain,
@@ -3258,6 +3267,7 @@ app.on("before-quit", () => {
 });
 
 app.on("will-quit", () => {
+  taskLocalFilesIpc.dispose();
   uploadSourceIpc.dispose();
   void downloadIpc.dispose();
   console.log("App will quit...");

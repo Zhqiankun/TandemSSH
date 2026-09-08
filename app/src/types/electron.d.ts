@@ -1,3 +1,4 @@
+import type { DesktopLocalFilesApi } from "./local-file-grants";
 import type { DesktopUpdateApi } from "./app-update";
 import type { DesktopUploadSourceApi } from "./upload-source";
 import type { DesktopDownloadApi } from "./file-download";
@@ -34,6 +35,7 @@ export interface ElectronAPI {
   updates?: DesktopUpdateApi;
   downloads?: DesktopDownloadApi;
   uploadSources?: DesktopUploadSourceApi;
+  localFiles?: DesktopLocalFilesApi;
   downloadDirectories?: DesktopDownloadDirectoryApi;
   getAppVersion: () => Promise<string>;
   getPlatform: () => Promise<string>;

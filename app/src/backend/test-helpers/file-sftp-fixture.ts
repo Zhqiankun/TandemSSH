@@ -4,12 +4,21 @@ import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ssh2Pkg from "ssh2";
-import type { Client as SSHClient, SFTPWrapper } from "ssh2";
+import type {
+  Client as SSHClient,
+  SFTPWrapper,
+  Session as ServerSession,
+} from "ssh2";
 const { Client, Server } = ssh2Pkg;
 import { SftpFileIO } from "../files/sftp-io.js";
 // Real loopback SSH/SFTP with a bounded workspace filesystem. POSIX ownership
 // remains a modeled attribute on Windows; tests must not call this Linux proof.
-export async function fileSftpFixture() {
+export async function fileSftpFixture(
+  options: {
+    attachShell?: (session: ServerSession) => void | (() => void);
+  } = {},
+) {
+  const shellClosers = new Set<() => void>();
   const workspace = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
       "../../../..",
@@ -58,6 +67,8 @@ export async function fileSftpFixture() {
     client.on("ready", () =>
       client.on("session", (accept) => {
         const session = accept();
+        const closeShell = options.attachShell?.(session);
+        if (closeShell) shellClosers.add(closeShell);
         session.on("exec", (acceptExec) => {
           const channel = acceptExec();
           channel.exit(127);
@@ -355,6 +366,8 @@ export async function fileSftpFixture() {
     writes: () => writes,
     renames: () => renames,
     close: async () => {
+      for (const close of shellClosers) close();
+      shellClosers.clear();
       sftp.end();
       for (const c of clients) c.destroy();
       await new Promise<void>((r) => server.close(() => r()));

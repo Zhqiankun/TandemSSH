@@ -107,6 +107,7 @@ export async function openAutomatedFileTarget(
   };
   signal.addEventListener("abort", close, { once: true });
   const access: FileDocumentTarget = {
+    acceptedHostKey: acceptedHostKeyFor(client),
     key: JSON.stringify([actor.userId, session.hostName]),
     connection,
     hostScope: {

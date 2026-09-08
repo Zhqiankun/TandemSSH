@@ -1,3 +1,8 @@
+import { registerLocalFileBridge } from "./files/local-file-bridge.js";
+import {
+  localFileGrants,
+  localFilesAvailable,
+} from "./files/local-file-production.js";
 import { getErrorMessage } from "./utils/error-message.js";
 import { runtimePolicy } from "./runtime/policy.js";
 import dotenv from "dotenv";
@@ -342,10 +347,21 @@ async function provisionLocalDesktopUserIfNeeded(): Promise<void> {
     }
 
     if (runtimePolicy.desktop) {
-      const { startMcpBridge, stopMcpBridge } = await import("./mcp/production.js");
-      try { await startMcpBridge(); } catch { systemLogger.warn("本机 MCP 暂不可用；可在桌面重新检查配对。", { operation: "mcp_start_failed" }); }
-      process.once("SIGTERM", () => { void stopMcpBridge(); });
-      process.once("SIGINT", () => { void stopMcpBridge(); });
+      const { startMcpBridge, stopMcpBridge } =
+        await import("./mcp/production.js");
+      try {
+        await startMcpBridge();
+      } catch {
+        systemLogger.warn("本机 MCP 暂不可用；可在桌面重新检查配对。", {
+          operation: "mcp_start_failed",
+        });
+      }
+      process.once("SIGTERM", () => {
+        void stopMcpBridge();
+      });
+      process.once("SIGINT", () => {
+        void stopMcpBridge();
+      });
     }
 
     // After metrics, which the automation triggers and headless polling hook into.
@@ -388,6 +404,13 @@ async function provisionLocalDesktopUserIfNeeded(): Promise<void> {
     process.on("SIGINT", () => gracefulShutdown("SIGINT"));
     process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
+    if (localFilesAvailable())
+      registerLocalFileBridge(localFileGrants, {
+        on: (event, listener) => process.on(event, listener),
+        removeListener: (event, listener) =>
+          process.removeListener(event, listener),
+        send: (message, callback) => process.send!(message as object, callback),
+      });
     process.on("message", (msg: { type?: string }) => {
       if (msg?.type === "shutdown") {
         gracefulShutdown("IPC shutdown");

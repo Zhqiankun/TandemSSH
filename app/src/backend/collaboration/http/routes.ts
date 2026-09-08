@@ -1,3 +1,5 @@
+import { localFileGrants } from "../../files/local-file-production.js";
+import { localFileGrantRoutes } from "../../files/local-file-routes.js";
 import { legacyCommands } from "../legacy/production.js";
 import { parseLegacySource } from "../legacy/compile.js";
 import { fileAutomation } from "../files/production.js";
@@ -43,6 +45,12 @@ router.use((req, res, next) => {
   }
   next();
 });
+router.use(
+  "/local-files",
+  localFileGrantRoutes(localFileGrants, (userId, taskId) => {
+    taskRuntime.state({ kind: "human", userId }, taskId, false);
+  }),
+);
 router.use("/mcp", mcpRoutes);
 router.use("/ai-tasks", aiTaskRoutes);
 router.use("/workflows", workflowRoutes);

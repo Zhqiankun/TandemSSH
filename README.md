@@ -61,6 +61,7 @@
 | [目录批量传输](docs/26-directory-transfers.md) | 来源集合、目标预览、目录创建与批次队列接入进度 |
 | [目录上传批次](docs/27-directory-uploads.md) | 目录上传中文预览、原生来源、批次队列及验证 |
 | [AI/MCP 文件传输](docs/28-automated-transfers.md) | 二进制执行核心、本地授权边界与文件流程接入计划 |
+| [任务本地文件授权](docs/29-local-file-grants.md) | 中文来源/目标选择、私有进程通道、任务授权与撤销验证 |
 
 ## 产品主线
 
