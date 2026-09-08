@@ -2922,6 +2922,14 @@ ipcMain.handle("local-terminal-close", (event, sessionId) => {
   return true;
 });
 
+const uploadSourceIpc =
+  require("./upload-source-ipc.cjs").registerUploadSourceIpc({
+    ipcMain,
+    dialog,
+    getWindow: () => mainWindow,
+    appRoot,
+    isDev,
+  });
 const downloadIpc = require("./download-ipc.cjs").registerDownloadIpc({
   ipcMain,
   dialog,
@@ -3250,6 +3258,7 @@ app.on("before-quit", () => {
 });
 
 app.on("will-quit", () => {
+  uploadSourceIpc.dispose();
   void downloadIpc.dispose();
   console.log("App will quit...");
   for (const editId of externalEditorSessions.keys()) {

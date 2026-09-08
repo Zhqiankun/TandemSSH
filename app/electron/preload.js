@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
   updates: { action: (action) => ipcRenderer.invoke("tandem-update", action) },
@@ -96,6 +96,34 @@ contextBridge.exposeInMainWorld("electronAPI", {
     forget: (id) =>
       ipcRenderer.invoke("tandem-download-directory", "forget", id),
   },
+  uploadSources: {
+    chooseDirectory: () =>
+      ipcRenderer.invoke("tandem-upload-source", "choose-directory"),
+    fromFiles: (files) => {
+      if (!Array.isArray(files) || !files.length || files.length > 4096)
+        throw Error("UPLOAD_SOURCE_INVALID");
+      const paths = files.map((file) => webUtils.getPathForFile(file));
+      if (paths.some((path) => !path)) throw Error("UPLOAD_SOURCE_INVALID");
+      return ipcRenderer.invoke(
+        "tandem-upload-source",
+        "selected-files",
+        paths,
+      );
+    },
+    check: (id, entry) =>
+      ipcRenderer.invoke("tandem-upload-source", "check", id, entry),
+    chunk: (id, entry, offset, length) =>
+      ipcRenderer.invoke(
+        "tandem-upload-source",
+        "chunk",
+        id,
+        entry,
+        offset,
+        length,
+      ),
+    forget: (id) => ipcRenderer.invoke("tandem-upload-source", "forget", id),
+    reset: () => ipcRenderer.invoke("tandem-upload-source", "reset"),
+  },
   downloads: {
     choose: (spec) => ipcRenderer.invoke("tandem-download", "choose", spec),
     start: (id, overwrite) =>
@@ -138,7 +166,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener(channel, listener);
   },
 
-  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+  invoke: (channel, ...args) => {
+    // Selection paths must originate in the isolated preload's File conversion or a native picker.
+    if (
+      typeof channel !== "string" ||
+      channel.startsWith("tandem-upload-source")
+    )
+      throw Error("UPLOAD_SOURCE_CHANNEL_PRIVATE");
+    return ipcRenderer.invoke(channel, ...args);
+  },
 });
 
 contextBridge.exposeInMainWorld("electronClipboard", {

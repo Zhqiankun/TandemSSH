@@ -64,11 +64,23 @@ export const prepareUploadSchema = z
     manifest: uploadManifestSchema,
   })
   .strict();
+export const uploadDirectoryAttributes = (s: RemoteFileStat) =>
+  JSON.stringify([s.kind, s.mode, s.uid, s.gid]);
+export interface UploadConstraint {
+  targetKey: string;
+  acceptedHostKey?: string;
+  canonicalPath: string;
+  baseline?: { stat: RemoteFileStat; sha256: string };
+  parents: Array<{ path: string; signature: string }>;
+}
 interface Baseline {
   stat: RemoteFileStat;
   sha256: string;
 }
 interface RecordState {
+  constraint?: UploadConstraint;
+  requestKey: string;
+  pending: number;
   acceptedHostKey?: string;
   stageCreated: boolean;
   creationAttempted: boolean;
@@ -167,6 +179,7 @@ export class UploadService {
         !r.view.commitMayHaveOccurred
       )
         throw new DocumentError("UPLOAD_PAUSED");
+      r.view.expiresAt = Date.now() + idleTime;
       target.check("write", r.view.path, r.view.canonicalPath);
     };
   }
@@ -179,6 +192,7 @@ export class UploadService {
     this.alive(actor, r);
     const t = await this.ports.target(actor.userId, sessionId);
     this.verifyTarget(r, t, reconnect);
+    if (r.constraint) await this.constrainedParents(actor, t, r.constraint);
     return t;
   }
   private verifyTarget(r: RecordState, t: UploadTarget, reconnect: boolean) {
@@ -192,6 +206,48 @@ export class UploadService {
       (!r.acceptedHostKey || !t.acceptedHostKey)
     )
       throw new DocumentError("UPLOAD_HOST_IDENTITY_UNVERIFIED");
+  }
+  private async constrainedParents(
+    actor: UploadActor,
+    t: UploadTarget,
+    c: UploadConstraint,
+  ) {
+    this.alive(actor);
+    if (t.key !== c.targetKey || t.acceptedHostKey !== c.acceptedHostKey)
+      throw new DocumentError("UPLOAD_HOST_IDENTITY_CHANGED");
+    for (const parent of c.parents) {
+      t.check("write", parent.path, parent.path);
+      this.alive(actor);
+      const actual = await t.io.stat(parent.path);
+      if (
+        actual.kind !== "directory" ||
+        uploadDirectoryAttributes(actual) !== parent.signature ||
+        (await t.io.resolve(parent.path)) !== parent.path
+      )
+        throw new DocumentError("FILE_TARGET_CHANGED");
+    }
+  }
+  touch(actor: UploadActor, id: string) {
+    const r = this.owned(actor, id);
+    this.alive(actor, r);
+    if (r.view.expiresAt < Date.now())
+      throw new DocumentError("UPLOAD_EXPIRED");
+    r.view.expiresAt = Date.now() + idleTime;
+    return structuredClone(r.view);
+  }
+  forget(actor: UploadActor, id: string) {
+    const r = this.owned(actor, id);
+    if (
+      r.busy ||
+      r.pending ||
+      r.view.temporaryPath ||
+      r.release ||
+      !["completed", "cancelled"].includes(r.view.state)
+    )
+      throw new DocumentError("UPLOAD_CLEANUP_PENDING");
+    this.records.delete(id);
+    this.requests.delete(r.requestKey);
+    return structuredClone(r.view);
   }
   private hold(
     actor: UploadActor,
@@ -246,11 +302,15 @@ export class UploadService {
     )
       throw new DocumentError("FILE_CONFLICT");
   }
-  prepare(actor: UploadActor, input: PrepareUpload): Promise<UploadView> {
+  prepare(
+    actor: UploadActor,
+    input: PrepareUpload,
+    constraint?: UploadConstraint,
+  ): Promise<UploadView> {
     const p = prepareUploadSchema.parse(input),
       key = JSON.stringify([actor.userId, p.requestId]),
       fingerprint = createHash("sha256")
-        .update(JSON.stringify(p))
+        .update(JSON.stringify({ p, constraint }))
         .digest("hex"),
       old = this.requests.get(key);
     if (old) {
@@ -284,7 +344,7 @@ export class UploadService {
       createdAt: Date.now(),
       pending: true,
     };
-    const promise = this.preview(actor, p).finally(() => {
+    const promise = this.preview(actor, p, constraint).finally(() => {
       this.reservations.delete(token);
       entry.pending = false;
     });
@@ -292,7 +352,11 @@ export class UploadService {
     this.requests.set(key, entry);
     return promise.then((v) => structuredClone(v));
   }
-  private async preview(actor: UploadActor, p: PrepareUpload) {
+  private async preview(
+    actor: UploadActor,
+    p: PrepareUpload,
+    constraint?: UploadConstraint,
+  ) {
     this.alive(actor);
     if (
       [...this.records.values()].filter(
@@ -312,6 +376,7 @@ export class UploadService {
     const target = await this.ports.target(actor.userId, p.sessionId),
       release = target.retain?.();
     try {
+      if (constraint) await this.constrainedParents(actor, target, constraint);
       const requested = posix.normalize(p.path),
         parent = await target.io.resolve(posix.dirname(requested));
       let canonical = posix.join(parent, posix.basename(requested)),
@@ -328,6 +393,8 @@ export class UploadService {
         if (code(error) !== "FILE_NOT_FOUND") throw error;
       }
       if (existing) {
+        if (constraint && existing.kind === "symlink")
+          throw new DocumentError("FILE_TARGET_CHANGED");
         if (existing.kind === "symlink") {
           canonical = await target.io.resolve(requested);
           guard();
@@ -336,6 +403,18 @@ export class UploadService {
         baseline = { stat: checked.stat, sha256: checked.sha256 };
       }
       guard();
+      if (constraint) {
+        await this.constrainedParents(actor, target, constraint);
+        if (
+          canonical !== constraint.canonicalPath ||
+          Boolean(baseline) !== Boolean(constraint.baseline) ||
+          (baseline &&
+            (baseline.sha256 !== constraint.baseline!.sha256 ||
+              attributes(baseline.stat) !==
+                attributes(constraint.baseline!.stat)))
+        )
+          throw new DocumentError("FILE_CONFLICT");
+      }
       const now = Date.now(),
         view: UploadView = {
           id: randomUUID(),
@@ -360,6 +439,9 @@ export class UploadService {
         };
       this.records.set(view.id, {
         acceptedHostKey: target.acceptedHostKey,
+        constraint: constraint ? structuredClone(constraint) : undefined,
+        requestKey: JSON.stringify([actor.userId, p.requestId]),
+        pending: 0,
         stageCreated: false,
         creationAttempted: false,
         owner: actor.userId,
@@ -426,7 +508,8 @@ export class UploadService {
       }
       return structuredClone(r.view);
     };
-    const pending = r.tail.then(run, run);
+    r.pending++;
+    const pending = r.tail.then(run, run).finally(() => r.pending--);
     r.tail = pending.then(
       () => {},
       () => {},

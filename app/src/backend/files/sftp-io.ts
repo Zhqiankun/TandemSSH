@@ -361,6 +361,13 @@ export class SftpFileIO implements RemoteFileIO {
     }
     if (failure) throw failure;
   }
+  async mkdir(path: string, mode: number, guard: () => void) {
+    guard();
+    await this.call<void>((done) =>
+      this.sftp.mkdir(path, { mode }, (error) => done(error, undefined)),
+    );
+    guard();
+  }
   async remove(path: string, guard: () => void) {
     guard();
     await this.call<void>((done) =>

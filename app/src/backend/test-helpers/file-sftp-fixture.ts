@@ -91,7 +91,7 @@ export async function fileSftpFixture() {
               mode: s.isSymbolicLink()
                 ? 0o120777
                 : s.isDirectory()
-                  ? 0o40755
+                  ? 0o40000 | ((modes.get(remote) ?? 0o755) & 0o7777)
                   : mode,
               uid: 1000,
               gid: 1000,
@@ -239,6 +239,18 @@ export async function fileSftpFixture() {
               handles.delete(h.readUInt32BE(0));
               stream.status(id, 0);
             }),
+          );
+          stream.on(
+            "MKDIR",
+            (id: number, remote: string, attributes: { mode?: number }) =>
+              run(id, async () => {
+                await fs.mkdir(target(remote));
+                modes.set(
+                  remote,
+                  0o40000 | ((attributes.mode ?? 0o755) & 0o7777),
+                );
+                stream.status(id, 0);
+              }),
           );
           stream.on("REMOVE", (id: number, remote: string) =>
             run(id, async () => {

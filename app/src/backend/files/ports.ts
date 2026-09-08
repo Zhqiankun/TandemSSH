@@ -52,6 +52,7 @@ export interface FileDocumentTarget {
 }
 
 export interface RemoteTransferIO extends RemoteFileIO {
+  mkdir?(path: string, mode: number, guard: () => void): Promise<void>;
   readAt(
     path: string,
     offset: number,

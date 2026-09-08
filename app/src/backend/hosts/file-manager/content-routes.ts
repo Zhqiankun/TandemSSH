@@ -1,5 +1,5 @@
 import { registerUploadRoutes } from "./upload-routes.js";
-import { uploadTransfers } from "../../files/production.js";
+import { uploadTransfers, uploadTrees } from "../../files/production.js";
 import { registerDocumentRoutes } from "./document-routes.js";
 import type { Express } from "express";
 import type { AuthenticatedRequest } from "../../../types/index.js";
@@ -16,7 +16,7 @@ export function registerFileContentRoutes(
   { sshSessions, verifySessionOwnership }: FileContentRoutesDeps,
 ): void {
   registerDocumentRoutes(app, sshSessions);
-  registerUploadRoutes(app, uploadTransfers);
+  registerUploadRoutes(app, uploadTransfers, uploadTrees);
   /**
    * @openapi
    * /ssh/file_manager/ssh/identifySymlink:

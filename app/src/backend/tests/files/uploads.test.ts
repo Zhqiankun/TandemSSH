@@ -105,6 +105,18 @@ async function fixture() {
   };
 }
 describe("verified staged uploads over actual SFTP", () => {
+  it("reclaims explicitly cleared previews beyond the record and request cache limits", async () => {
+    const f = await fixture();
+    for (let i = 0; i < 513; i++) {
+      const preview = await f.prepare(Buffer.from("x"));
+      await f.service.cancel(actor, preview.id, true);
+      expect(f.service.forget(actor, preview.id).state).toBe("cancelled");
+    }
+    const next = await f.prepare(Buffer.from("new"));
+    expect(next.state).toBe("preview");
+    await f.service.cancel(actor, next.id, true);
+    f.service.forget(actor, next.id);
+  }, 30000);
   it("uploads multiple binary chunks, deduplicates a repeated chunk and verifies the actual committed target", async () => {
     const f = await fixture(),
       bytes = Buffer.alloc(UPLOAD_CHUNK_BYTES + 513, 0xa5),

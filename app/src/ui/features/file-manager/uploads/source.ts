@@ -3,6 +3,7 @@ import {
   UPLOAD_MAX_CHUNKS,
   type UploadManifest,
 } from "@/types/file-upload";
+import type { UploadSource } from "@/types/upload-source";
 export function blobBytes(blob: Blob): Promise<ArrayBuffer> {
   if (typeof blob.arrayBuffer === "function") return blob.arrayBuffer();
   return new Promise((resolve, reject) => {
@@ -20,7 +21,7 @@ export async function chunkHash(blob: Blob) {
   ).join("");
 }
 export async function uploadManifest(
-  file: File,
+  file: UploadSource,
   signal: AbortSignal,
   progress: (bytes: number) => void,
   expected?: UploadManifest,
@@ -38,17 +39,19 @@ export async function uploadManifest(
       file.lastModified !== expected.lastModified)
   )
     throw Error("UPLOAD_SOURCE_CHANGED");
+  await file.verify?.();
   const hashes: string[] = [];
   for (let offset = 0; offset < file.size; offset += UPLOAD_CHUNK_BYTES) {
     if (signal.aborted) throw Error("UPLOAD_CANCELLED");
     const end = Math.min(offset + UPLOAD_CHUNK_BYTES, file.size),
-      hash = await chunkHash(file.slice(offset, end));
+      hash = await chunkHash(await file.slice(offset, end));
     if (expected && hash !== expected.hashes[hashes.length])
       throw Error("UPLOAD_SOURCE_CHANGED");
     hashes.push(hash);
     progress(end);
   }
   if (signal.aborted) throw Error("UPLOAD_CANCELLED");
+  await file.verify?.();
   return {
     name: file.name,
     size: file.size,

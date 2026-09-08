@@ -1,12 +1,21 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
+import {
+  uploadTreeSchema,
+  type UploadTreeService,
+} from "../../files/upload-tree-service.js";
+import { uploadManifestSchema } from "../../files/upload-service.js";
 import type { AuthenticatedRequest } from "../../../types/index.js";
 import {
   prepareUploadSchema,
   type UploadService,
   type UploadActor,
 } from "../../files/upload-service.js";
-export function registerUploadRoutes(app: Express, uploads: UploadService) {
+export function registerUploadRoutes(
+  app: Express,
+  uploads: UploadService,
+  trees?: UploadTreeService,
+) {
   const prefix = "/ssh/file_manager/ssh/uploads",
     id = z.string().uuid();
   function route(
@@ -57,6 +66,100 @@ export function registerUploadRoutes(app: Express, uploads: UploadService) {
         });
     };
   }
+  if (trees) {
+    app.post(
+      prefix + "/trees/preview",
+      route((actor, req) =>
+        trees.preview(actor, uploadTreeSchema.parse(req.body)),
+      ),
+    );
+    app.get(
+      prefix + "/trees/:treeId",
+      route((actor, req) => trees.get(actor, id.parse(req.params.treeId))),
+    );
+    app.post(
+      prefix + "/trees/:treeId/touch",
+      route((actor, req) => trees.touch(actor, id.parse(req.params.treeId))),
+    );
+    app.post(
+      prefix + "/trees/:treeId/confirm",
+      route((actor, req) => {
+        const p = z
+          .object({
+            revision: id,
+            decisions: z
+              .array(
+                z
+                  .object({
+                    id: z.string(),
+                    action: z.enum(["create", "merge", "overwrite", "skip"]),
+                  })
+                  .strict(),
+              )
+              .max(4096),
+          })
+          .strict()
+          .parse(req.body);
+        return trees.confirm(
+          actor,
+          id.parse(req.params.treeId),
+          p.revision,
+          p.decisions,
+        );
+      }),
+    );
+    app.post(
+      prefix + "/trees/:treeId/directories",
+      route((actor, req) => {
+        const p = z
+          .object({ takeover: z.boolean().default(false) })
+          .strict()
+          .parse(req.body);
+        return trees.directories(
+          actor,
+          id.parse(req.params.treeId),
+          p.takeover,
+        );
+      }),
+    );
+    app.post(
+      prefix + "/trees/:treeId/entries/:entryId/prepare",
+      route((actor, req) => {
+        const p = z
+          .object({
+            sessionId: z.string().min(1).max(256),
+            requestId: z.string().min(1).max(128),
+            manifest: uploadManifestSchema,
+          })
+          .strict()
+          .parse(req.body);
+        return trees.prepareEntry(
+          actor,
+          id.parse(req.params.treeId),
+          z.string().min(1).max(128).parse(req.params.entryId),
+          p.sessionId,
+          p.requestId,
+          p.manifest,
+        );
+      }),
+    );
+    app.post(
+      prefix + "/trees/:treeId/cancel",
+      route((actor, req) => trees.cancel(actor, id.parse(req.params.treeId))),
+    );
+    app.post(
+      prefix + "/trees/:treeId/forget",
+      route((actor, req) => trees.forget(actor, id.parse(req.params.treeId))),
+    );
+  }
+  app.post(
+    prefix + "/:id/touch",
+    route((actor, req) => uploads.touch(actor, id.parse(req.params.id))),
+  );
+  app.post(
+    prefix + "/:id/forget",
+    route((actor, req) => uploads.forget(actor, id.parse(req.params.id))),
+  );
   app.post(
     prefix + "/prepare",
     route((actor, req) =>

@@ -5425,7 +5425,20 @@
         "UPLOAD_TEMPORARY_UNVERIFIED": "upload temporary unverified",
         "UPLOAD_INCOMPLETE": "upload incomplete",
         "UPLOAD_HOST_IDENTITY_CHANGED": "The server host key changed. Start with a new target preview.",
-        "UPLOAD_HOST_IDENTITY_UNVERIFIED": "The original connection has no captured host key; its upload cannot resume on another connection."
+        "UPLOAD_HOST_IDENTITY_UNVERIFIED": "The original connection has no captured host key; its upload cannot resume on another connection.",
+        "UPLOAD_TREE_LIMIT": "The upload preview reached its count, depth or size limit. Select a smaller batch.",
+        "UPLOAD_TREE_PARENT_UNAVAILABLE": "Resolve the parent directory before uploading this entry.",
+        "UPLOAD_TREE_ENTRY_UNAVAILABLE": "This entry is not an approved upload file or its source metadata changed.",
+        "UPLOAD_TREE_DUPLICATE_TARGET": "Multiple sources map to the same remote path. Rename or skip an entry.",
+        "UPLOAD_TREE_TYPE_CONFLICT": "The remote destination has a different type or is a link. Rename or skip it.",
+        "UPLOAD_SOURCE_NOT_FOUND": "The local source selection expired. Select it again.",
+        "UPLOAD_SOURCE_INVALID": "Use files selected by the system picker or actually dropped into the app.",
+        "UPLOAD_SOURCE_LINK_OR_SPECIAL": "Links and special files are excluded and are not followed.",
+        "UPLOAD_SOURCE_TOO_LARGE": "The source file exceeds the transfer size limit.",
+        "UPLOAD_LOCAL_PERMISSION": "The local source cannot be read with current permissions.",
+        "UPLOAD_TRUSTED_WINDOW_REQUIRED": "Upload sources are available only to the current trusted desktop window.",
+        "UPLOAD_SOURCE_CHANNEL_PRIVATE": "Use the restricted native upload source interface.",
+        "FILE_DIRECTORY_WRITE_UNAVAILABLE": "This connection does not support controlled directory creation."
       },
       "completedNotice": "{{name}} uploaded and content verified",
       "attentionNotice": "{{name}} needs attention; check the upload queue in the file manager"

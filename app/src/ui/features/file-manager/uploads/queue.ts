@@ -1,3 +1,4 @@
+import type { UploadSource } from "@/types/upload-source";
 import {
   uploadApi,
   uploadErrorCode,
@@ -38,7 +39,7 @@ export interface UploadJobView {
 }
 interface Job {
   view: UploadJobView;
-  file?: File;
+  file?: UploadSource;
   manifest?: UploadManifest;
   controller?: AbortController;
   work?: "prepare" | "upload" | "resume";
@@ -98,7 +99,7 @@ export class UploadQueue {
     for (const listener of this.listeners) listener();
   }
   add(input: {
-    file: File;
+    file: UploadSource;
     sessionId: string;
     path: string;
     hostId?: number;
@@ -368,7 +369,7 @@ export class UploadQueue {
         if (j.pause) break;
         const offset = j.view.transfer.receivedBytes,
           end = Math.min(offset + UPLOAD_CHUNK_BYTES, j.manifest.size),
-          blob = j.file.slice(offset, end);
+          blob = await j.file.slice(offset, end);
         if (
           (await chunkHash(blob)) !==
           j.manifest.hashes[offset / UPLOAD_CHUNK_BYTES]
@@ -402,6 +403,8 @@ export class UploadQueue {
         j.view.state = "paused";
         return;
       }
+      await j.file.verify?.();
+      if (j.cancel) throw Error("UPLOAD_CANCELLED");
       j.view.state = "finalizing";
       this.emit();
       waitingForCommit = true;

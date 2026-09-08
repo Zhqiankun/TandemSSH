@@ -1,4 +1,5 @@
 import type { DesktopUpdateApi } from "./app-update";
+import type { DesktopUploadSourceApi } from "./upload-source";
 import type { DesktopDownloadApi } from "./file-download";
 import type { DesktopDownloadDirectoryApi } from "./download-tree";
 interface ServerConfig {
@@ -32,6 +33,7 @@ interface DialogResult {
 export interface ElectronAPI {
   updates?: DesktopUpdateApi;
   downloads?: DesktopDownloadApi;
+  uploadSources?: DesktopUploadSourceApi;
   downloadDirectories?: DesktopDownloadDirectoryApi;
   getAppVersion: () => Promise<string>;
   getPlatform: () => Promise<string>;

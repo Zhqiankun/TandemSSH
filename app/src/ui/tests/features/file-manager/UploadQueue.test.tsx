@@ -1,3 +1,4 @@
+import type { UploadSource } from "@/types/upload-source";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash, webcrypto } from "node:crypto";
 import { File as NativeFile } from "node:buffer";
@@ -128,6 +129,68 @@ const add = (q: UploadQueue, bytes = Buffer.from("payload")) =>
     hostLabel: "所选主机",
   });
 describe("actual upload queue controls", () => {
+  it("accepts asynchronously read native sources without changing the transfer state machine", async () => {
+    const f = fixture(),
+      original = file(Buffer.from("native bytes")),
+      verify = vi.fn(async () => {});
+    const source: UploadSource = {
+      name: original.name,
+      size: original.size,
+      lastModified: original.lastModified,
+      verify,
+      slice: async (start, end) => original.slice(start, end),
+    };
+    const id = f.queue.add({
+      file: source,
+      sessionId: "session",
+      path: "/srv/native.bin",
+      hostLabel: "fixture",
+    });
+    await vi.waitFor(() =>
+      expect(f.queue.getSnapshot()[0].state).toBe("awaiting-review"),
+    );
+    expect(f.calls).toEqual([]);
+    f.queue.start(id, false);
+    await vi.waitFor(() =>
+      expect(f.queue.getSnapshot()[0].state).toBe("completed"),
+    );
+    expect(f.calls).toEqual(["start", "chunk", "finish"]);
+    expect(verify).toHaveBeenCalledTimes(3);
+  });
+  it("rechecks a zero-byte source before commit and refuses a source changed after review", async () => {
+    const f = fixture(),
+      verify = vi
+        .fn(async () => {})
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(Error("UPLOAD_SOURCE_CHANGED"));
+    const source: UploadSource = {
+      name: "empty",
+      size: 0,
+      lastModified: 100,
+      verify,
+      slice: async () => new Blob([]),
+    };
+    const id = f.queue.add({
+      file: source,
+      sessionId: "session",
+      path: "/srv/empty",
+      hostLabel: "fixture",
+    });
+    await vi.waitFor(() =>
+      expect(f.queue.getSnapshot()[0].state).toBe("awaiting-review"),
+    );
+    f.queue.start(id, false);
+    await vi.waitFor(() =>
+      expect(f.queue.getSnapshot()[0]).toMatchObject({
+        state: "failed",
+        error: "UPLOAD_SOURCE_CHANGED",
+      }),
+    );
+    expect(f.calls).not.toContain("finish");
+    await f.queue.cancel(id);
+  });
+
   it("shows Chinese target review and requires explicit overwrite before completing", async () => {
     const f = fixture({ existing: true }),
       id = add(f.queue),

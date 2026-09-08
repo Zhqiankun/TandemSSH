@@ -59,6 +59,7 @@
 | [下载与原生落盘](docs/24-download-transfers.md) | 来源版本、分块传输、本地临时文件、暂停恢复与校验 |
 | [GitHub 与在线更新](docs/25-github-releases.md) | 更新按钮、固定发行源、Actions 与版本发布 |
 | [目录批量传输](docs/26-directory-transfers.md) | 来源集合、目标预览、目录创建与批次队列接入进度 |
+| [目录上传批次](docs/27-directory-uploads.md) | 远端目录预览、写入边界与原生来源能力 |
 
 ## 产品主线
 

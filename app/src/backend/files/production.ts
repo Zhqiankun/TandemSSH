@@ -1,7 +1,8 @@
 import { DownloadService, type DownloadPorts } from "./download-service.js";
 import { DownloadTreeService } from "./download-tree-service.js";
 import { acceptedHostKeyFor } from "../hosts/accepted-host-key.js";
-import { UploadService } from "./upload-service.js";
+import { UploadService, type UploadPorts } from "./upload-service.js";
+import { UploadTreeService } from "./upload-tree-service.js";
 import { fileCommitLocks } from "./path-locks.js";
 import { randomUUID } from "node:crypto";
 import type { Client, SFTPWrapper } from "ssh2";
@@ -249,7 +250,7 @@ function beginFileWrite(
   }
 }
 
-export const uploadTransfers = new UploadService({
+const uploadPorts: UploadPorts = {
   async target(userId, sessionId) {
     const target = await resolveFileDocumentTarget(
       { userId, source: "human" },
@@ -264,7 +265,9 @@ export const uploadTransfers = new UploadService({
   audit: (userId, type, data) =>
     journalFor(userId).record(type, { source: "human", ...data }),
   locks: fileCommitLocks,
-});
+};
+export const uploadTransfers = new UploadService(uploadPorts);
+export const uploadTrees = new UploadTreeService(uploadPorts, uploadTransfers);
 
 const downloadPorts: DownloadPorts = {
   async target(userId, sessionId) {
