@@ -155,7 +155,23 @@ function registerTaskLocalFilesIpc({
           };
           current();
           let paths;
-          if (choice.direction === "upload") {
+          if (
+            choice.kind === "directory" &&
+            ["upload", "download"].includes(choice.direction)
+          ) {
+            const selected = await dialog.showOpenDialog(getWindow(), {
+              title:
+                choice.direction === "upload"
+                  ? "选择本任务的上传目录"
+                  : "选择本任务的下载目录",
+              message: choice.title,
+              buttonLabel: "授权所选目录",
+              properties: ["openDirectory"],
+            });
+            paths = selected.canceled ? null : selected.filePaths;
+          } else if (choice.kind && choice.kind !== "file")
+            throw Error("FILE_LOCAL_REQUEST_INVALID");
+          else if (choice.direction === "upload") {
             const selected = await dialog.showOpenDialog(getWindow(), {
               title: "选择本任务的上传来源",
               message: choice.title,

@@ -224,3 +224,35 @@ it("allows a window-close revocation even while request admission is full", asyn
   );
   pending.forEach((release) => release());
 });
+it.each(["upload", "download"] as const)(
+  "uses a native directory picker for %s directory tickets",
+  async (direction) => {
+    const f = await fixture();
+    f.dialog.showOpenDialog.mockResolvedValueOnce({
+      canceled: false,
+      filePaths: [f.folder],
+    });
+    const ticket = f.service.issue("owner", f.context.taskId, {
+      windowToken: f.token,
+      direction,
+      kind: "directory",
+    });
+    const result = await f.invoke("choose", ticket.id);
+    expect(result.ok).toBe(true);
+    expect(f.dialog.showOpenDialog).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        title:
+          direction === "upload"
+            ? "选择本任务的上传目录"
+            : "选择本任务的下载目录",
+        properties: ["openDirectory"],
+      }),
+    );
+    expect(f.dialog.showSaveDialog).not.toHaveBeenCalled();
+    expect(f.service.list("owner", f.context.taskId)[0]).toMatchObject({
+      kind: "directory",
+      direction,
+    });
+  },
+);

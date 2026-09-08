@@ -65,6 +65,7 @@
 | [AI/MCP 传输工具](docs/30-transfer-tools.md) | 29 项 MCP 工具、内置 AI 文件传输与真实桌面自动/协同验证 |
 | [保存流程中的文件步骤](docs/31-workflow-files.md) | 混合步骤、中文本地文件绑定、父任务预算与恢复验证 |
 | [终端可靠性记录](docs/32-terminal-reliability.md) | 损坏标记与核对超时处理、实际桌面正负向验证及兼容风险 |
+| [任务目录传输接入](docs/33-task-directory-transfers.md) | 原生目录授权、逐次 I/O 检查与 AI/MCP 目录工具接线进度 |
 
 ## 产品主线
 

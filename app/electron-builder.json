@@ -19,7 +19,9 @@
     "electron/task-local-files.cjs",
     "electron/upload-sources.cjs",
     "electron/download-sink.cjs",
-    "electron/download-directory-targets.cjs"
+    "electron/download-directory-targets.cjs",
+    "electron/task-local-directories.cjs",
+    "electron/task-upload-access.cjs"
   ],
   "files": [
     "dist/**/*",

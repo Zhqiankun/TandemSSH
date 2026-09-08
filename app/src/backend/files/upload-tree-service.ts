@@ -406,16 +406,28 @@ export class UploadTreeService {
       r.busy = false;
     }
   }
-  async directories(actor: UploadActor, id: string, takeover = false) {
+  async directories(
+    actor: UploadActor,
+    id: string,
+    takeover = false,
+    entryId?: string,
+  ) {
     const r = this.owned(actor, id);
     this.alive(actor, r);
     if (r.busy || r.view.state !== "confirmed")
       throw Error("UPLOAD_STATE_INVALID");
+    if (
+      entryId !== undefined &&
+      r.entries.get(entryId)?.view.kind !== "directory"
+    )
+      throw Error("FILE_DIRECTORY_ENTRY_INVALID");
     r.busy = true;
     const releases: Array<() => void> = [];
     try {
       const directoryEntries = [...r.entries.values()].filter(
-        (e) => e.view.kind === "directory",
+        (e) =>
+          e.view.kind === "directory" &&
+          (entryId === undefined || e.view.id === entryId),
       );
       if (directoryEntries.every((e) => e.view.action === "skip")) {
         for (const e of directoryEntries) e.view.result = { state: "skipped" };
@@ -430,7 +442,11 @@ export class UploadTreeService {
       releases.push(t.retain?.() ?? (() => {}));
       releases.push(this.ports.beginWrite(actor.userId, t, takeover));
       for (const e of [...r.entries.values()]
-        .filter((e) => e.view.kind === "directory")
+        .filter(
+          (e) =>
+            e.view.kind === "directory" &&
+            (entryId === undefined || e.view.id === entryId),
+        )
         .sort((a, b) => a.names.length - b.names.length)) {
         this.alive(actor, r);
         if (e.view.action === "skip") {
@@ -520,7 +536,11 @@ export class UploadTreeService {
         }
       }
       return r.view.entries
-        .filter((e) => e.kind === "directory")
+        .filter(
+          (e) =>
+            e.kind === "directory" &&
+            (entryId === undefined || e.id === entryId),
+        )
         .map((e) => ({ id: e.id, path: e.path, ...e.result! }));
     } finally {
       releases.reverse().forEach((fn) => fn());

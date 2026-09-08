@@ -68,6 +68,31 @@ async function probe(root) {
     "node-pty",
   ])
     verifyDependency(name, load);
+  const filesRoot = fs.realpathSync(
+    path.join(root, "resources", "app.asar.unpacked", "electron"),
+  );
+  if (!filesRoot.startsWith(fs.realpathSync(root) + path.sep))
+    throw Error("Native file capabilities escaped package");
+  for (const name of [
+    "task-local-files.cjs",
+    "task-local-directories.cjs",
+    "task-upload-access.cjs",
+    "upload-sources.cjs",
+    "download-sink.cjs",
+    "download-directory-targets.cjs",
+  ]) {
+    const file = fs.realpathSync(path.join(filesRoot, name));
+    if (!file.startsWith(filesRoot + path.sep) || !fs.statSync(file).isFile())
+      throw Error("Native file capability missing: " + name);
+  }
+  const { TaskLocalFiles } = load(path.join(filesRoot, "task-local-files.cjs"));
+  const taskFiles = new TaskLocalFiles();
+  if (
+    typeof taskFiles.directory !== "function" ||
+    typeof taskFiles.directoryState !== "function"
+  )
+    throw Error("Packaged directory capability missing");
+  await taskFiles.dispose();
   const Database = load("better-sqlite3"),
     database = new Database(":memory:");
   try {
@@ -126,6 +151,8 @@ async function probe(root) {
     PREFIX +
       JSON.stringify({
         dependenciesVerified: verified.size,
+        fileCapabilities: true,
+        directoryCapabilities: true,
         sqlite: true,
         serial: true,
         keyring: true,
@@ -190,9 +217,14 @@ if (process.argv[2] === "--probe") {
     if (!line) throw Error("Native package probe did not report completion");
     const evidence = JSON.parse(line.slice(PREFIX.length));
     if (
-      !["sqlite", "serial", "keyring", "pty"].every(
-        (key) => evidence[key] === true,
-      )
+      ![
+        "sqlite",
+        "serial",
+        "keyring",
+        "pty",
+        "fileCapabilities",
+        "directoryCapabilities",
+      ].every((key) => evidence[key] === true)
     )
       throw Error("Native package probe incomplete");
     if (

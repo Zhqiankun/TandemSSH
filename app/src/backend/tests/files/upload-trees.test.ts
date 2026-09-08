@@ -403,3 +403,18 @@ describe("reviewed directory uploads over real SFTP", () => {
     expect((await f.trees.directories(actor, p.id))[0].state).toBe("created");
   });
 });
+it("creates only one selected remote directory for one task operation", async () => {
+  const f = await fixture(),
+    preview = await f.preview();
+  await f.confirm(preview);
+  await expect(
+    f.trees.directories(actor, preview.id, false, "missing"),
+  ).rejects.toThrow("FILE_DIRECTORY_ENTRY_INVALID");
+  const first = await f.trees.directories(actor, preview.id, false, "dir");
+  expect(first).toHaveLength(1);
+  expect(first[0]).toMatchObject({ id: "dir", state: "created" });
+  await expect(f.remote.io.stat("/dest/应用/空目录")).rejects.toThrow();
+  const second = await f.trees.directories(actor, preview.id, false, "empty");
+  expect(second).toHaveLength(1);
+  expect(second[0]).toMatchObject({ id: "empty", state: "created" });
+});

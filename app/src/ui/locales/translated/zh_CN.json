@@ -4968,7 +4968,15 @@
         "WORKFLOW_DOWNLOAD_TARGET_REUSED": "不同下载步骤不能使用同一个本地目标授权。",
         "WORKFLOW_FILE_CWD_UNSUPPORTED": "文件步骤使用绝对远端路径，不能设置命令工作目录。",
         "SHELL_PROTOCOL_INVALID": "终端返回的命令标记不完整，已暂停自动执行。请检查提示符和终端状态后再交还控制权。",
-        "SHELL_CONTEXT_TIMEOUT": "15 秒内未能核对终端状态，已暂停自动执行。请人工检查终端是否可输入。"
+        "SHELL_CONTEXT_TIMEOUT": "15 秒内未能核对终端状态，已暂停自动执行。请人工检查终端是否可输入。",
+        "FILE_LOCAL_ACCESS_CLOSED": "此本地文件读取已结束，请重新准备传输。",
+        "FILE_DIRECTORY_AUTHORIZATION_REQUIRED": "目录操作缺少有效任务授权或审计上下文。",
+        "FILE_LOCAL_DIRECTORY_REQUIRED": "此操作需要方向和版本匹配的本地目录授权。",
+        "FILE_LOCAL_DIRECTORY_CHANGED": "所选本地目录已变化，请重新选择并核对。",
+        "FILE_DIRECTORY_DECISION_CHANGED": "目录冲突处理选择已变化，请重新核对预览。",
+        "FILE_DIRECTORY_RESULT_UNKNOWN": "目录创建结果未知，请人工核实后再继续。",
+        "FILE_DIRECTORY_UNAVAILABLE": "目录传输能力当前不可用。",
+        "FILE_DIRECTORY_ENTRY_INVALID": "该目录条目不在本次预览中，或不是目录。"
       },
       "allowedPrograms": "本次允许的程序（每行一个）",
       "operationProgress": "已完成 {{done}} / {{total}} 条命令",

@@ -1,3 +1,8 @@
+import type {
+  DirectoryGrantReference,
+  NativeTaskDirectoryAccess,
+  NativeDirectoryInspection,
+} from "./local-directory-ports.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { FileTaskContext } from "./automated-documents.js";
@@ -20,6 +25,9 @@ export interface LocalTaskIdentity extends FileTaskContext {
   title: string;
 }
 export interface NativeLocalSelection {
+  kind?: "directory";
+  entries?: number;
+  excluded?: number;
   id: string;
   version: string;
   direction: "upload" | "download";
@@ -38,8 +46,18 @@ export interface NativeTaskLocalFiles {
     owner: string,
     paths: string[],
     guard: () => void,
+    kind?: "file" | "directory",
   ): Promise<NativeLocalSelection[]>;
   view(id: string): NativeLocalSelection;
+  directory?(
+    id: string,
+    guard: () => void,
+    signal: AbortSignal,
+    options: { allowOverwrite: boolean },
+  ): NativeTaskDirectoryAccess;
+  directoryState?(id: string, previewId: string): NativeDirectoryInspection;
+  cancelDirectoryPreview?(id: string, previewId: string): Promise<unknown>;
+  forgetDirectoryPreview?(id: string, previewId: string): void;
   upload(
     id: string,
     guard: () => void,
@@ -69,6 +87,7 @@ const id = z.string().uuid();
 export const localFileTicketSchema = z
   .object({
     windowToken: id,
+    kind: z.enum(["file", "directory"]).default("file"),
     direction: z.enum(["upload", "download"]),
     allowOverwrite: z.boolean().default(false),
     suggestedName: z
@@ -80,6 +99,7 @@ export const localFileTicketSchema = z
   })
   .strict();
 interface Ticket {
+  kind: "file" | "directory";
   id: string;
   windowToken: string;
   context: LocalTaskIdentity;
@@ -178,6 +198,13 @@ export class LocalFileGrants implements TaskLocalTransferPort {
       taskId: g.context.taskId,
       direction: g.native.direction,
       name: g.native.name,
+      ...(g.native.kind === "directory"
+        ? {
+            kind: "directory" as const,
+            entries: g.native.entries,
+            excluded: g.native.excluded,
+          }
+        : {}),
       size: g.native.size,
       allowOverwrite: g.allowOverwrite,
       state: g.revoked ? "revoked" : native.consumed ? "consumed" : "active",
@@ -228,6 +255,7 @@ export class LocalFileGrants implements TaskLocalTransferPort {
     return {
       id: ticket.id,
       direction: ticket.direction,
+      ...(ticket.kind === "directory" ? { kind: "directory" as const } : {}),
       expiresAt: ticket.expiresAt,
     };
   }
@@ -252,6 +280,7 @@ export class LocalFileGrants implements TaskLocalTransferPort {
     t.state = "claimed";
     return {
       direction: t.direction,
+      ...(t.kind === "directory" ? { kind: "directory" as const } : {}),
       suggestedName: t.suggestedName,
       title: t.context.title.slice(0, 120),
       allowOverwrite: t.allowOverwrite,
@@ -308,14 +337,26 @@ export class LocalFileGrants implements TaskLocalTransferPort {
     try {
       selected = await this.ports
         .native()
-        .select(t.direction, t.context.userId, paths, guard);
+        .select(
+          t.direction,
+          t.context.userId,
+          paths,
+          guard,
+          ...(t.kind === "directory" ? ["directory" as const] : []),
+        );
       guard();
       await this.ports.audit(t.context.userId, "local_file.granted", {
         taskId: t.context.taskId,
         sessionId: t.context.sessionId,
         direction: t.direction,
         allowOverwrite: t.allowOverwrite,
-        files: selected.map((e) => ({ id: e.id, name: e.name, size: e.size })),
+        files: selected.map((e) => ({
+          id: e.id,
+          name: e.name,
+          size: e.size,
+          kind: e.kind,
+          entries: e.entries,
+        })),
       });
       guard();
       for (const native of selected)
@@ -383,6 +424,7 @@ export class LocalFileGrants implements TaskLocalTransferPort {
     const g = this.owned(context.userId, context.taskId, action.localGrantId);
     this.active(g);
     if (
+      g.native.kind === "directory" ||
       g.context.sessionId !== context.sessionId ||
       g.context.control.generation !== context.control.generation ||
       g.native.version !== action.localVersion ||
@@ -427,6 +469,74 @@ export class LocalFileGrants implements TaskLocalTransferPort {
       },
       signal,
     );
+  }
+  assertDirectory(context: FileTaskContext, ref: DirectoryGrantReference) {
+    const g = this.owned(context.userId, context.taskId, ref.localGrantId);
+    this.active(g);
+    if (
+      g.native.kind !== "directory" ||
+      g.native.direction !== ref.direction ||
+      g.native.version !== ref.localVersion ||
+      g.context.sessionId !== context.sessionId ||
+      g.context.control.generation !== context.control.generation
+    )
+      throw Error("FILE_LOCAL_DIRECTORY_REQUIRED");
+    if (ref.overwrite && !g.allowOverwrite)
+      throw Error("FILE_LOCAL_OVERWRITE_REQUIRED");
+  }
+  directory(
+    context: FileTaskContext,
+    ref: DirectoryGrantReference,
+    guard: () => void,
+    signal: AbortSignal,
+  ) {
+    const frozen = structuredClone(ref);
+    this.assertDirectory(context, frozen);
+    const native = this.ports.native();
+    if (!native.directory) throw Error("FILE_DIRECTORY_UNAVAILABLE");
+    return native.directory(
+      frozen.localGrantId,
+      () => {
+        this.assertDirectory(context, frozen);
+        guard();
+      },
+      signal,
+      { allowOverwrite: frozen.overwrite },
+    );
+  }
+  private directoryOwner(context: FileTaskContext, grantId: string) {
+    const g = this.owned(context.userId, context.taskId, grantId);
+    if (
+      g.native.kind !== "directory" ||
+      g.context.sessionId !== context.sessionId
+    )
+      throw Error("FILE_LOCAL_DIRECTORY_REQUIRED");
+    return this.ports.native();
+  }
+  directoryState(context: FileTaskContext, grantId: string, previewId: string) {
+    const native = this.directoryOwner(context, grantId);
+    if (!native.directoryState) throw Error("FILE_DIRECTORY_UNAVAILABLE");
+    return native.directoryState(grantId, previewId);
+  }
+  cancelDirectoryPreview(
+    context: FileTaskContext,
+    grantId: string,
+    previewId: string,
+  ) {
+    const native = this.directoryOwner(context, grantId);
+    if (!native.cancelDirectoryPreview)
+      throw Error("FILE_DIRECTORY_UNAVAILABLE");
+    return native.cancelDirectoryPreview(grantId, previewId);
+  }
+  forgetDirectoryPreview(
+    context: FileTaskContext,
+    grantId: string,
+    previewId: string,
+  ) {
+    const native = this.directoryOwner(context, grantId);
+    if (!native.forgetDirectoryPreview)
+      throw Error("FILE_DIRECTORY_UNAVAILABLE");
+    return native.forgetDirectoryPreview(grantId, previewId);
   }
   async dispose() {
     for (const token of this.windows) this.closeWindow(token);

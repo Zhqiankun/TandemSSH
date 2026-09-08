@@ -11,6 +11,7 @@ export function matchingWorkflowGrants(
     direction = uses[0]?.direction;
   return grants.filter(
     (g) =>
+      g.kind !== "directory" &&
       g.taskId === taskId &&
       g.state === "active" &&
       g.expiresAt > Date.now() &&

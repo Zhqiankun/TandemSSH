@@ -1,19 +1,18 @@
+const { TaskLocalDirectories } = require("./task-local-directories.cjs");
+const { openTaskUploadSource } = require("./task-upload-access.cjs");
 // Pure Node file capabilities. Electron only supplies native picker results through private IPC.
 const fs = require("node:fs/promises"),
   path = require("node:path"),
-  { randomUUID, createHash } = require("node:crypto");
+  { randomUUID } = require("node:crypto");
 const { UploadSourceStore } = require("./upload-sources.cjs");
-const {
-  DownloadSink,
-  inspectDownloadTarget,
-  CHUNK_BYTES,
-} = require("./download-sink.cjs");
+const { DownloadSink, inspectDownloadTarget } = require("./download-sink.cjs");
 const { validName } = require("./download-directory-targets.cjs");
 const identity = (s) => [s.dev, s.ino, s.birthtimeMs].join(":");
 class TaskLocalFiles {
   constructor() {
     this.sources = new UploadSourceStore();
     this.sink = new DownloadSink();
+    this.directories = new TaskLocalDirectories(this.sources, this.sink);
     this.records = new Map();
     this.groups = new Map();
   }
@@ -28,6 +27,7 @@ class TaskLocalFiles {
     authorize();
   }
   view(id) {
+    if (this.directories.has(id)) return this.directories.view(id);
     const r = this.owned(id),
       local = r.downloadId
         ? this.sink.view(this.sink.owned(r.owner, r.downloadId))
@@ -48,7 +48,15 @@ class TaskLocalFiles {
       consumed: local?.state === "completed",
     };
   }
-  async select(direction, owner, paths, authorize) {
+  async select(direction, owner, paths, authorize, kind = "file") {
+    if (kind === "directory") {
+      if (!Array.isArray(paths) || paths.length !== 1)
+        throw Error("FILE_LOCAL_SELECTION_INVALID");
+      return [
+        await this.directories.select(direction, owner, paths[0], authorize),
+      ];
+    }
+    if (kind !== "file") throw Error("FILE_LOCAL_SELECTION_INVALID");
     authorize();
     if (
       !Array.isArray(paths) ||
@@ -65,7 +73,7 @@ class TaskLocalFiles {
     if (this.records.size + paths.length > 128)
       throw Error("FILE_LOCAL_GRANT_LIMIT");
     if (direction === "upload") {
-      const selection = await this.sources.select(owner, paths);
+      const selection = await this.sources.select(owner, paths, authorize);
       try {
         authorize();
         if (selection.entries.some((e) => e.kind !== "file" || e.error))
@@ -134,55 +142,16 @@ class TaskLocalFiles {
       throw Error("FILE_LOCAL_GRANT_BUSY");
     guard();
     r.busy = true;
-    try {
-      await this.sources.check(r.owner, r.selectionId, r.entry.id, guard);
-      const hashes = [];
-      for (let at = 0; at < r.entry.size; at += CHUNK_BYTES) {
-        guard();
-        const bytes = await this.sources.chunk(
-          r.owner,
-          r.selectionId,
-          r.entry.id,
-          at,
-          Math.min(CHUNK_BYTES, r.entry.size - at),
-          guard,
-        );
-        hashes.push(createHash("sha256").update(bytes).digest("hex"));
-      }
-      guard();
-      return {
-        manifest: {
-          name: r.name,
-          size: r.entry.size,
-          lastModified: r.entry.lastModified,
-          hashes,
-        },
-        read: async (offset, length) => {
-          guard();
-          return Buffer.from(
-            await this.sources.chunk(
-              r.owner,
-              r.selectionId,
-              r.entry.id,
-              offset,
-              length,
-              guard,
-            ),
-          );
-        },
-        verify: async () => {
-          guard();
-          await this.sources.check(r.owner, r.selectionId, r.entry.id, guard);
-        },
-        close: () => {
-          r.busy = false;
-        },
-      };
-    } catch (e) {
-      r.busy = false;
-      throw e;
-    }
+    return openTaskUploadSource(
+      this.sources,
+      { owner: r.owner, selectionId: r.selectionId, entry: r.entry },
+      guard,
+      () => {
+        r.busy = false;
+      },
+    );
   }
+
   async download(id, source, authorize, signal) {
     const r = this.owned(id),
       guard = () => {
@@ -232,10 +201,27 @@ class TaskLocalFiles {
       throw e;
     }
   }
+  directory(id, authorize, signal, options) {
+    return this.directories.access(id, authorize, signal, options);
+  }
+  directoryState(id, previewId) {
+    return this.directories.downloadState(id, previewId);
+  }
+  cancelDirectoryPreview(id, previewId) {
+    return this.directories.cancelPreview(id, previewId);
+  }
+  forgetDirectoryPreview(id, previewId) {
+    return this.directories.forgetPreview(id, previewId);
+  }
   revoke(id) {
+    if (this.directories.has(id)) {
+      this.directories.revoke(id);
+      return;
+    }
     this.owned(id).revoked = true;
   }
   async forget(id) {
+    if (this.directories.has(id)) return this.directories.forget(id);
     const r = this.owned(id);
     r.revoked = true;
     if (r.busy) throw Error("FILE_LOCAL_GRANT_BUSY");
@@ -257,6 +243,7 @@ class TaskLocalFiles {
     this.records.delete(id);
   }
   async dispose() {
+    await this.directories.dispose();
     for (const r of this.records.values()) r.revoked = true;
     for (const r of this.records.values())
       if (!r.busy) await this.forget(r.id).catch(() => {});

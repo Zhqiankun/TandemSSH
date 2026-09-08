@@ -45,7 +45,10 @@ class UploadSourceStore {
       excluded: r.excluded,
     };
   }
-  async select(owner, paths) {
+  async select(owner, paths, authorize) {
+    if (authorize !== undefined && typeof authorize !== "function")
+      throw Error("UPLOAD_REQUEST_INVALID");
+    authorize?.();
     if (
       !Array.isArray(paths) ||
       !paths.length ||
@@ -91,10 +94,10 @@ class UploadSourceStore {
       });
     };
     const walk = async (file, parentId, relative, depth) => {
-      this.guard(r);
+      this.guard(r, authorize);
       if (depth > 64) throw Error("UPLOAD_TREE_LIMIT");
       const before = await fs.lstat(file);
-      this.guard(r);
+      this.guard(r, authorize);
       const view = {
         id: randomUUID(),
         parentId,
@@ -145,7 +148,7 @@ class UploadSourceStore {
       let closed = false;
       try {
         for await (const child of directory) {
-          this.guard(r);
+          this.guard(r, authorize);
           await walk(
             path.join(file, child.name),
             view.id,
@@ -195,7 +198,7 @@ class UploadSourceStore {
           0,
         );
       }
-      this.guard(r);
+      this.guard(r, authorize);
       return this.view(r);
     } catch (error) {
       r.cancelled = true;

@@ -38,13 +38,16 @@ class DownloadDirectoryTargets {
     if (!r || r.owner !== owner) throw Error("DOWNLOAD_NOT_FOUND");
     return r;
   }
-  guard(r) {
+  guard(r, authorize) {
+    if (authorize !== undefined && typeof authorize !== "function")
+      throw Error("DOWNLOAD_REQUEST_INVALID");
+    authorize?.();
     if (r.cancelled || this.roots.get(r.id) !== r)
       throw Error("DOWNLOAD_CANCELLED");
     r.touched = Date.now();
   }
-  async rootUnchanged(r) {
-    this.guard(r);
+  async rootUnchanged(r, authorize) {
+    this.guard(r, authorize);
     const current = await fs.lstat(r.path);
     if (
       !current.isDirectory() ||
@@ -53,7 +56,7 @@ class DownloadDirectoryTargets {
       pathKey(await fs.realpath(r.path)) !== pathKey(r.path)
     )
       throw Error("DOWNLOAD_TARGET_CHANGED");
-    this.guard(r);
+    this.guard(r, authorize);
   }
   view(r) {
     return {
@@ -79,7 +82,8 @@ class DownloadDirectoryTargets {
       })),
     };
   }
-  async choose(owner, chooseDirectory) {
+  async choose(owner, chooseDirectory, authorize) {
+    authorize?.();
     if (
       this.choosing ||
       this.roots.size >= 8 ||
@@ -89,6 +93,7 @@ class DownloadDirectoryTargets {
     this.choosing = true;
     try {
       const chosen = await chooseDirectory();
+      authorize?.();
       if (!chosen) return null;
       if (!path.isAbsolute(chosen)) throw Error("DOWNLOAD_LOCAL_FILE_INVALID");
       const directory = await fs.realpath(chosen),
@@ -107,14 +112,15 @@ class DownloadDirectoryTargets {
         busy: false,
         touched: Date.now(),
       };
+      authorize?.();
       this.roots.set(r.id, r);
       return this.view(r);
     } finally {
       this.choosing = false;
     }
   }
-  async previewParentsUnchanged(r, e, entries) {
-    await this.rootUnchanged(r);
+  async previewParentsUnchanged(r, e, entries, authorize) {
+    await this.rootUnchanged(r, authorize);
     let parent = e.parentId ? entries.get(e.parentId) : undefined;
     while (parent) {
       if (parent.status !== "directory")
@@ -127,11 +133,11 @@ class DownloadDirectoryTargets {
         pathKey(await fs.realpath(parent.path)) !== pathKey(parent.path)
       )
         throw Error("DOWNLOAD_TARGET_CHANGED");
-      this.guard(r);
+      this.guard(r, authorize);
       parent = parent.parentId ? entries.get(parent.parentId) : undefined;
     }
   }
-  async preview(owner, id, raw) {
+  async preview(owner, id, raw, authorize) {
     const r = this.owned(owner, id);
     if (r.busy) throw Error("DOWNLOAD_BUSY");
     if (r.confirmed) throw Error("DOWNLOAD_NOT_READY");
@@ -144,7 +150,7 @@ class DownloadDirectoryTargets {
       throw Error("DOWNLOAD_TREE_LIMIT");
     r.busy = true;
     try {
-      await this.rootUnchanged(r);
+      await this.rootUnchanged(r, authorize);
       const entries = new Map(),
         active = new Set();
       for (const value of raw) {
@@ -209,7 +215,7 @@ class DownloadDirectoryTargets {
       for (const e of [...entries.values()].sort(
         (a, b) => a.names.length - b.names.length,
       )) {
-        this.guard(r);
+        this.guard(r, authorize);
         if (e.status === "blocked") continue;
         const parent = e.parentId ? entries.get(e.parentId) : undefined;
         if (parent?.status === "blocked") {
@@ -219,9 +225,9 @@ class DownloadDirectoryTargets {
         }
         if (parent?.status === "new") continue;
         try {
-          await this.previewParentsUnchanged(r, e, entries);
+          await this.previewParentsUnchanged(r, e, entries, authorize);
           const current = await stat(e.path);
-          this.guard(r);
+          this.guard(r, authorize);
           if (!current) continue;
           if (
             current.isSymbolicLink() ||
@@ -236,21 +242,21 @@ class DownloadDirectoryTargets {
           } else {
             if (!current.isFile()) throw Error("DOWNLOAD_TREE_TYPE_CONFLICT");
             const snapshot = await inspectDownloadTarget(e.path, () =>
-              this.guard(r),
+              this.guard(r, authorize),
             );
             if (!snapshot) throw Error("DOWNLOAD_TARGET_CHANGED");
-            await this.previewParentsUnchanged(r, e, entries);
+            await this.previewParentsUnchanged(r, e, entries, authorize);
             // Keep one full-file digest, not its per-block manifest, for each existing target.
             e.snapshot = { stat: snapshot.stat, sha256: snapshot.sha256 };
             e.status = "conflict";
           }
         } catch (error) {
-          this.guard(r);
+          this.guard(r, authorize);
           e.status = "blocked";
           e.error = errorCode(error);
         }
       }
-      await this.rootUnchanged(r);
+      await this.rootUnchanged(r, authorize);
       r.entries = entries;
       r.revision = randomUUID();
       return this.view(r);
@@ -258,9 +264,9 @@ class DownloadDirectoryTargets {
       r.busy = false;
     }
   }
-  confirm(owner, id, revision, decisions) {
+  confirm(owner, id, revision, decisions, authorize) {
     const r = this.owned(owner, id);
-    this.guard(r);
+    this.guard(r, authorize);
     if (r.busy) throw Error("DOWNLOAD_BUSY");
     if (
       r.confirmed ||
@@ -305,8 +311,8 @@ class DownloadDirectoryTargets {
     r.confirmed = true;
     return this.view(r);
   }
-  async parentsUnchanged(r, e) {
-    await this.rootUnchanged(r);
+  async parentsUnchanged(r, e, authorize) {
+    await this.rootUnchanged(r, authorize);
     let parent = e.parentId ? r.entries.get(e.parentId) : undefined;
     while (parent) {
       if (!["created", "merged"].includes(parent.result?.state))
@@ -319,32 +325,52 @@ class DownloadDirectoryTargets {
         pathKey(await fs.realpath(parent.path)) !== pathKey(parent.path)
       )
         throw Error("DOWNLOAD_TARGET_CHANGED");
-      this.guard(r);
+      this.guard(r, authorize);
       parent = parent.parentId ? r.entries.get(parent.parentId) : undefined;
     }
   }
-  async directories(owner, id) {
+  async directories(owner, id, hooks = {}) {
     const r = this.owned(owner, id);
-    this.guard(r);
+    this.guard(r, () => hooks.authorize?.());
     if (r.busy) throw Error("DOWNLOAD_BUSY");
     if (!r.confirmed) throw Error("DOWNLOAD_NOT_READY");
+    if (
+      hooks.entryId !== undefined &&
+      r.entries.get(hooks.entryId)?.kind !== "directory"
+    )
+      throw Error("FILE_DIRECTORY_ENTRY_INVALID");
     r.busy = true;
     try {
       for (const e of [...r.entries.values()]
-        .filter((e) => e.kind === "directory")
+        .filter(
+          (e) =>
+            e.kind === "directory" &&
+            (hooks.entryId === undefined || e.id === hooks.entryId),
+        )
         .sort((a, b) => a.names.length - b.names.length)) {
-        this.guard(r);
+        const authorize = () => hooks.authorize?.(e.id);
+        this.guard(r, authorize);
         if (e.action === "skip") {
           e.result = { state: "skipped" };
           continue;
         }
         if (e.binding) throw Error("DOWNLOAD_BUSY");
-        if (e.result?.state === "unknown") continue;
+        if (e.result?.state === "unknown") {
+          if (hooks.stopOnError) throw Error("FILE_DIRECTORY_RESULT_UNKNOWN");
+          continue;
+        }
         let creating = false,
           creationSucceeded = false;
         try {
-          await this.parentsUnchanged(r, e);
+          await this.parentsUnchanged(r, e, authorize);
+          await hooks.audit?.("local_directory.entry-started", {
+            entryId: e.id,
+            relativePath: e.names.join("/"),
+            action: e.action,
+          });
+          this.guard(r, authorize);
           const current = await stat(e.path);
+          this.guard(r, authorize);
           if (e.directoryIdentity) {
             if (
               !current ||
@@ -358,16 +384,24 @@ class DownloadDirectoryTargets {
             };
           } else {
             if (current) throw Error("DOWNLOAD_TARGET_CHANGED");
-            this.guard(r);
+            this.guard(r, authorize);
             creating = true;
             await fs.mkdir(e.path);
             creationSucceeded = true;
+            this.guard(r, authorize);
             const created = await fs.lstat(e.path);
             if (!created.isDirectory() || created.isSymbolicLink())
               throw Error("DOWNLOAD_TARGET_CHANGED");
             e.directoryIdentity = identity(created);
             e.result = { state: "created" };
           }
+          this.guard(r, authorize);
+          await hooks.audit?.("local_directory.entry-completed", {
+            entryId: e.id,
+            relativePath: e.names.join("/"),
+            result: e.result,
+          });
+          this.guard(r, authorize);
         } catch (error) {
           e.result = {
             state:
@@ -385,19 +419,24 @@ class DownloadDirectoryTargets {
                 : "failed",
             error: errorCode(error),
           };
+          if (hooks.stopOnError) throw error;
         }
       }
       return [...r.entries.values()]
-        .filter((e) => e.kind === "directory")
+        .filter(
+          (e) =>
+            e.kind === "directory" &&
+            (hooks.entryId === undefined || e.id === hooks.entryId),
+        )
         .map((e) => ({ id: e.id, path: e.path, ...e.result }));
     } finally {
       r.busy = false;
     }
   }
-  async file(owner, id, entryId, spec) {
+  async file(owner, id, entryId, spec, authorize) {
     const r = this.owned(owner, id),
       e = r.entries.get(entryId);
-    this.guard(r);
+    this.guard(r, authorize);
     if (r.busy || e?.binding) throw Error("DOWNLOAD_BUSY");
     if (
       !r.confirmed ||
@@ -411,7 +450,7 @@ class DownloadDirectoryTargets {
       throw Error("DOWNLOAD_NOT_READY");
     e.binding = true;
     try {
-      await this.parentsUnchanged(r, e);
+      await this.parentsUnchanged(r, e, authorize);
       if (e.child) {
         let previous;
         try {
@@ -426,7 +465,7 @@ class DownloadDirectoryTargets {
         owner,
         { ...spec, name: e.name },
         async () => {
-          await this.parentsUnchanged(r, e);
+          await this.parentsUnchanged(r, e, authorize);
           return e.path;
         },
         {
@@ -436,11 +475,12 @@ class DownloadDirectoryTargets {
             identity: parent?.directoryIdentity ?? r.identity,
           },
         },
+        () => this.guard(r, authorize),
       );
       e.child = view.id;
       e.sha256 = spec.sha256;
       try {
-        this.guard(r);
+        this.guard(r, authorize);
       } catch (error) {
         await this.sink.cancel(owner, view.id);
         this.sink.forget(owner, view.id);

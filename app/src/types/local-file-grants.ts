@@ -1,5 +1,8 @@
 import type { DownloadNativeResult } from "./file-download.js";
 export interface LocalFileGrantView {
+  kind?: "directory";
+  entries?: number;
+  excluded?: number;
   id: string;
   version: string;
   taskId: string;
@@ -19,6 +22,7 @@ export interface HumanLocalFileGrant extends LocalFileGrantView {
   transferState?: string;
 }
 export interface LocalFileTicket {
+  kind?: "directory";
   id: string;
   direction: "upload" | "download";
   expiresAt: number;
