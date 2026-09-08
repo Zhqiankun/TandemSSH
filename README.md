@@ -6,7 +6,7 @@
 
 ## 仓库与版本更新
 
-源码仓库：[Zhqiankun/TandemSSH](https://github.com/Zhqiankun/TandemSSH)。当前为开发预览，完整功能清单仍在实施；尚无正式安装包。
+源码仓库：[Zhqiankun/TandemSSH](https://github.com/Zhqiankun/TandemSSH)。当前为开发预览，完整功能清单仍在实施。标准 Windows 原生构建已通过，Actions 提供 NSIS/ZIP 预览包；尚未发布正式 Release，真实安装升级仍待验收。
 
 桌面仪表盘的版本区域提供“检查更新 / 更新版本”：检查版本、下载进度、取消下载和重启安装。在线安装适用于 Windows 安装版；免安装版可打开发布页下载新版。安装前会要求保存草稿并结束连接。更新源固定为本仓库，不会安装上游 Termix 的发行包。
 

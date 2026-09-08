@@ -51,6 +51,17 @@ jobs:
         run: npm run build:win-installer
       - name: Verify packaged native modules
         run: node scripts/verify-native-package.cjs
+      - name: Verify Windows installation and removal
+        timeout-minutes: 10
+        run: ./scripts/verify-windows-installation.ps1
+      - name: Preserve installation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: TandemSSH-installation-evidence
+          path: app/release/installer-validation
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Generate and validate version-pinned update manifest
         run: npm run release:manifest
       - name: Preserve release artifacts

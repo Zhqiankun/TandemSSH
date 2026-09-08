@@ -57,6 +57,18 @@ jobs:
       - name: Verify packaged native modules
         if: github.event_name != 'pull_request'
         run: node scripts/verify-native-package.cjs
+      - name: Verify Windows installation and removal
+        if: github.event_name != 'pull_request'
+        timeout-minutes: 10
+        run: ./scripts/verify-windows-installation.ps1
+      - name: Preserve installation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: TandemSSH-installation-evidence
+          path: app/release/installer-validation
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Preserve Windows preview installers
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
