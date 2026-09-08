@@ -523,3 +523,31 @@ describe("workflow timeout and takeover", () => {
     expect(f.writes).toEqual(["df -h"]);
   });
 });
+
+it("preserves unknown status and revokes control for malformed command frames", async () => {
+  const f = fixture({
+    executor: {
+      prepare: async () => ({
+        bytes: Buffer.from("command"),
+        completion: Promise.resolve({
+          exitCode: 0,
+          cwd: "/untrusted-result",
+          output: "unverified",
+          protocolError: true,
+        }),
+        dispose: () => {},
+      }),
+    },
+  });
+  f.grant();
+  const op = await f.gateway.propose(f.context("bad-frame"), action());
+  const result = await f.gateway.dispatch(op.id);
+  expect(result).toMatchObject({
+    status: "unknown",
+    exitCode: null,
+    error: "SHELL_PROTOCOL_INVALID",
+  });
+  expect(result.resultingCwd).toBeUndefined();
+  expect(f.control.snapshot().controller.kind).toBe("human");
+  expect(f.writes).toEqual(["command"]);
+});

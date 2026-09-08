@@ -41,6 +41,8 @@ export function TaskWorkflowFiles({
           <label key={name}>
             {t("tandem.workflow.localFileSlot") + " · " + name}
             <select
+              aria-label={t("tandem.workflow.localFileSlot") + " · " + name}
+              title={selected?.path}
               required
               value={selected?.id ?? ""}
               onChange={(e) => {
@@ -60,10 +62,15 @@ export function TaskWorkflowFiles({
               </option>
               {options.map((g) => (
                 <option key={g.id} value={g.id}>
-                  {g.path}
+                  {g.name} · {g.path}
                 </option>
               ))}
             </select>
+            {selected && (
+              <small className="break-all whitespace-pre-wrap text-muted-foreground">
+                {selected.path}
+              </small>
+            )}
           </label>
         );
       })}

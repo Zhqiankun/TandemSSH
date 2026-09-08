@@ -4966,7 +4966,9 @@
         "WORKFLOW_FILE_BINDING_REQUIRED": "Bind authorized local files for remaining steps first.",
         "WORKFLOW_DOWNLOAD_SLOT_REUSED": "Each download step requires a distinct file slot.",
         "WORKFLOW_DOWNLOAD_TARGET_REUSED": "Download steps cannot share a local destination grant.",
-        "WORKFLOW_FILE_CWD_UNSUPPORTED": "File steps use absolute remote paths and cannot set a command working directory."
+        "WORKFLOW_FILE_CWD_UNSUPPORTED": "File steps use absolute remote paths and cannot set a command working directory.",
+        "SHELL_PROTOCOL_INVALID": "The terminal returned incomplete command markers. Automation is paused. Check the prompt and terminal state before handing control back.",
+        "SHELL_CONTEXT_TIMEOUT": "The terminal state could not be verified within 15 seconds. Automation is paused. Check that the terminal is ready for input."
       },
       "allowedPrograms": "Programs allowed for this task (one per line)",
       "operationProgress": "{{done}} / {{total}} commands completed",

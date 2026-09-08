@@ -37,6 +37,7 @@ function fixture(
       record(type: string, data: unknown): Promise<void>;
     };
     hold?: boolean;
+    contextResult?: Awaited<PreparedCommand["completion"]>;
     assertAvailable?: () => void;
     files?: FileExecutorPort;
     policy?: CommandPolicySnapshot;
@@ -73,11 +74,13 @@ function fixture(
     executor: {
       prepareContext: (): PreparedCommand => ({
         bytes: Buffer.from("context"),
-        completion: Promise.resolve({
-          exitCode: 0,
-          output: "",
-          cwd: "/srv/app",
-        }),
+        completion: Promise.resolve(
+          options.contextResult ?? {
+            exitCode: 0,
+            output: "",
+            cwd: "/srv/app",
+          },
+        ),
         dispose: () => {},
       }),
       prepare: async (action: TaskCommand): Promise<PreparedCommand> => {
@@ -678,3 +681,33 @@ it("MCP-owned tasks share file and command budgets and retain distinct file outc
   );
   expect(calls).toEqual(["file.read"]);
 });
+
+it.each([
+  {
+    exitCode: null,
+    output: "",
+    protocolError: true,
+    error: "SHELL_PROTOCOL_INVALID",
+  },
+  {
+    exitCode: null,
+    output: "",
+    timedOut: true,
+    error: "SHELL_CONTEXT_TIMEOUT",
+  },
+])(
+  "returns manual control and sends no plan after $error",
+  async ({ error, ...contextResult }) => {
+    const f = fixture({ contextResult }),
+      task = await f.create();
+    try {
+      await expect(f.authorize(task)).rejects.toThrow(error);
+      expect(f.runtime.get(human, task.id).state).toBe("paused-error");
+      expect(f.control.snapshot().controller.kind).toBe("human");
+      expect(f.writes).toEqual(["context"]);
+      expect(f.commands).toEqual([]);
+    } finally {
+      f.disconnect();
+    }
+  },
+);

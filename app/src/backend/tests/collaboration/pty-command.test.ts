@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import {
   CommandFrameDecoder,
@@ -196,4 +199,123 @@ describe("known delayed ConPTY input echo", () => {
     );
     expect(result).toMatchObject({ output: "different output\n" });
   });
+});
+
+describe("damaged terminal frame handling", () => {
+  it("rejects a matching end before begin across packet splits without claiming success", () => {
+    const results: PtyCommandResult[] = [];
+    const decoder = new CommandFrameDecoder(token, (r) => results.push(r));
+    for (const byte of Buffer.from(
+      "bash: ommand: command not found\r\n" + end(0, "/srv"),
+    ))
+      decoder.feed(Buffer.of(byte));
+    expect(results).toEqual([
+      {
+        exitCode: null,
+        cwd: undefined,
+        output: "",
+        truncated: false,
+        protocolError: true,
+      },
+    ]);
+    decoder.feed(begin + end(0, "/"));
+    expect(results).toHaveLength(1);
+  });
+  it("ignores another operation's marker and still accepts its own complete frame", () => {
+    let result: PtyCommandResult | undefined;
+    const decoder = new CommandFrameDecoder(token, (r) => (result = r));
+    decoder.feed(end(0, "/wrong").replaceAll(token, "b".repeat(32)));
+    expect(result).toBeUndefined();
+    decoder.feed(begin + "verified" + end(0, "/srv"));
+    expect(result).toMatchObject({
+      exitCode: 0,
+      output: "verified",
+      cwd: "/srv",
+    });
+    expect(result?.protocolError).toBeUndefined();
+  });
+  it("bounds context verification independently of a long command timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const stream = new EventEmitter(),
+        executor = new PtyCommandExecutor(() => stream, 120000),
+        probe = executor.prepareContext();
+      let done = false;
+      void probe.completion.then(() => {
+        done = true;
+      });
+      probe.beforeSend?.();
+      await vi.advanceTimersByTimeAsync(14999);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await probe.completion).toMatchObject({
+        exitCode: null,
+        timedOut: true,
+      });
+      expect(stream.listenerCount("data")).toBe(0);
+      probe.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  const shell =
+    process.env.TANDEM_TEST_BASH ??
+    (process.platform === "win32" ? "" : "/bin/bash");
+  it.skipIf(!shell)(
+    "does not execute the requested side effect when the frame's first command is damaged",
+    () => {
+      const base = fs.realpathSync(path.resolve(process.cwd(), "../.cache")),
+        folder = fs.mkdtempSync(path.join(base, "damaged-frame-")),
+        file = path.join(folder, "side-effect");
+      const posix = (p: string) =>
+        process.platform === "win32"
+          ? p
+              .replace(/\\/g, "/")
+              .replace(/^([A-Za-z]):/, (_, d: string) => "/" + d.toLowerCase())
+          : p;
+      try {
+        const line = Buffer.from(
+          frameCommand(
+            {
+              type: "terminal.command",
+              program: "touch",
+              args: [posix(file)],
+              cwd: posix(folder),
+            },
+            token,
+          ),
+        )
+          .toString()
+          .replace(/\r$/, "");
+        for (const broken of [
+          line.slice(1),
+          line.replace("if command printf", "if __tandem_missing_printf"),
+        ]) {
+          const result = spawnSync(
+            shell,
+            ["--noprofile", "--norc", "-c", broken],
+            {
+              cwd: folder,
+              encoding: "utf8",
+              windowsHide: true,
+              timeout: 10000,
+            },
+          );
+          expect(result.error).toBeUndefined();
+          expect(fs.existsSync(file)).toBe(false);
+        }
+        const good = spawnSync(shell, ["--noprofile", "--norc", "-c", line], {
+          cwd: folder,
+          encoding: "utf8",
+          windowsHide: true,
+          timeout: 10000,
+        });
+        expect(good.status, good.stderr).toBe(0);
+        expect(fs.existsSync(file)).toBe(true);
+      } finally {
+        if (fs.existsSync(file)) fs.unlinkSync(file);
+        fs.rmdirSync(folder);
+      }
+    },
+  );
 });

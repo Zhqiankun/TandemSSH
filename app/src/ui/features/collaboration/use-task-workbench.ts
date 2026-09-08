@@ -8,6 +8,11 @@ type Snapshot = Awaited<ReturnType<typeof collaborationApi.snapshot>>;
 export function useTaskWorkbench(sessionId: string) {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [error, setError] = useState<string>();
+  const errorScope = useRef(0);
+  const clearActionError = useCallback(() => {
+    errorScope.current++;
+    setError(undefined);
+  }, []);
   const [connectionError, setConnectionError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const sequence = useRef(0),
@@ -48,6 +53,7 @@ export function useTaskWorkbench(sessionId: string) {
     };
   }, [refresh]);
   const run = async (action: () => Promise<TaskView>) => {
+    const scope = errorScope.current;
     setBusy(true);
     setError(undefined);
     try {
@@ -67,7 +73,8 @@ export function useTaskWorkbench(sessionId: string) {
       await refresh();
       return task;
     } catch (error) {
-      if (alive.current) setError(collaborationErrorCode(error));
+      if (alive.current && scope === errorScope.current)
+        setError(collaborationErrorCode(error));
       return undefined;
     } finally {
       if (alive.current) setBusy(false);
@@ -76,13 +83,15 @@ export function useTaskWorkbench(sessionId: string) {
   // Takeover stays available while an authorization or command request is pending.
   const takeover = async () => {
     if (takingOver.current) return;
+    const scope = errorScope.current;
     takingOver.current = true;
     setTakeoverPending(true);
     try {
       await collaborationApi.takeover(sessionId);
       await refresh();
     } catch (error) {
-      if (alive.current) setError(collaborationErrorCode(error));
+      if (alive.current && scope === errorScope.current)
+        setError(collaborationErrorCode(error));
     } finally {
       takingOver.current = false;
       if (alive.current) setTakeoverPending(false);
@@ -90,6 +99,7 @@ export function useTaskWorkbench(sessionId: string) {
   };
   return {
     snapshot,
+    clearActionError,
     error: error ?? connectionError,
     busy,
     run,

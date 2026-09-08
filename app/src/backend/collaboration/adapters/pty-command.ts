@@ -8,8 +8,13 @@ import type {
 
 export interface TerminalOutputStream {
   destroyed?: boolean;
-  on(event: string, listener: (...args: any[]) => void): unknown;
-  removeListener(event: string, listener: (...args: any[]) => void): unknown;
+  on(event: "data", listener: (data: Uint8Array | string) => void): unknown;
+  on(event: "close" | "error", listener: () => void): unknown;
+  removeListener(
+    event: "data",
+    listener: (data: Uint8Array | string) => void,
+  ): unknown;
+  removeListener(event: "close" | "error", listener: () => void): unknown;
 }
 export interface PtyCommandResult {
   exitCode: number | null;
@@ -17,6 +22,7 @@ export interface PtyCommandResult {
   cwd?: string;
   truncated: boolean;
   timedOut?: boolean;
+  protocolError?: boolean;
 }
 
 export function quoteShellWord(value: string): string {
@@ -71,13 +77,15 @@ export function frameCommand(
   // The command runs in the existing shell, so cd/export persist. Only the
   // read-only encoding of the physical working directory uses a command substitution. No eval or second
   // SSH exec channel is used. POSIX shell plus base64/tr is required.
+  // A broken begin command must not fall through to the requested operation.
   const line =
+    `if command printf '${marker}begin\\007'; then ` +
     [
-      `command printf '${marker}begin\\007'`,
       command,
       `command printf '${marker}end;%s;%s\\007' "$${resultVariable}" "$(command printf '%s' "$(command pwd -P)" | command base64 | command tr -d '\\r\\n')"`,
       `unset ${resultVariable} ${variables.join(" ")}`,
-    ].join("; ") + "\r";
+    ].join("; ") +
+    "; fi\r";
   const bytes = Buffer.from(line, "utf8");
   if (bytes.byteLength > 64 * 1024) throw new Error("ACTION_TOO_LARGE");
   return bytes;
@@ -92,6 +100,7 @@ export class CommandFrameDecoder {
   private phase: "waiting" | "output" | "metadata" | "done" = "waiting";
   private output = "";
   private truncated = false;
+  private protocolError = false;
   private echoTail: string | undefined;
 
   constructor(
@@ -109,6 +118,12 @@ export class CommandFrameDecoder {
       typeof data === "string" ? data : this.decoder.write(Buffer.from(data));
     if (this.phase === "waiting") {
       const index = this.pending.indexOf(this.begin);
+      const prematureEnd = this.pending.indexOf(this.end);
+      if (prematureEnd >= 0 && (index < 0 || prematureEnd < index)) {
+        this.protocolError = true;
+        this.unknown();
+        return;
+      }
       if (index < 0) {
         this.pending = this.pending.slice(
           -Math.max(
@@ -214,6 +229,7 @@ export class CommandFrameDecoder {
       cwd,
       output: this.output,
       truncated: this.truncated,
+      ...(this.protocolError ? { protocolError: true } : {}),
     });
   }
 }
@@ -275,10 +291,15 @@ export class PtyCommandExecutor implements CommandExecutorPort {
       beforeSend: () => {
         if (settled || stream.destroyed)
           throw new Error("TRANSPORT_UNAVAILABLE");
-        timer = setTimeout(() => {
-          timedOut = true;
-          decoder.unknown();
-        }, action?.timeoutMs ?? this.timeoutMs);
+        timer = setTimeout(
+          () => {
+            timedOut = true;
+            decoder.unknown();
+          },
+          action
+            ? (action.timeoutMs ?? this.timeoutMs)
+            : Math.min(this.timeoutMs, 15_000),
+        );
       },
       dispose: () => {
         cleanup();

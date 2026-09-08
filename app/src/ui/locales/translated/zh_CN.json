@@ -4966,7 +4966,9 @@
         "WORKFLOW_FILE_BINDING_REQUIRED": "请先为剩余文件步骤选择本次任务授权的本地文件。",
         "WORKFLOW_DOWNLOAD_SLOT_REUSED": "每个下载步骤需要独立的文件位置。",
         "WORKFLOW_DOWNLOAD_TARGET_REUSED": "不同下载步骤不能使用同一个本地目标授权。",
-        "WORKFLOW_FILE_CWD_UNSUPPORTED": "文件步骤使用绝对远端路径，不能设置命令工作目录。"
+        "WORKFLOW_FILE_CWD_UNSUPPORTED": "文件步骤使用绝对远端路径，不能设置命令工作目录。",
+        "SHELL_PROTOCOL_INVALID": "终端返回的命令标记不完整，已暂停自动执行。请检查提示符和终端状态后再交还控制权。",
+        "SHELL_CONTEXT_TIMEOUT": "15 秒内未能核对终端状态，已暂停自动执行。请人工检查终端是否可输入。"
       },
       "allowedPrograms": "本次允许的程序（每行一个）",
       "operationProgress": "已完成 {{done}} / {{total}} 条命令",

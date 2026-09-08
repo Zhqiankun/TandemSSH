@@ -74,6 +74,7 @@ export interface PreparedCommand {
     cwd?: string;
     truncated?: boolean;
     timedOut?: boolean;
+    protocolError?: boolean;
   }>;
   beforeSend?(): void;
   dispose(): void;
@@ -622,19 +623,26 @@ export class OperationGateway {
             /* A newer owner must never receive this timeout interrupt. */
           }
         }
-        view.exitCode = operation.interrupted ? null : result.exitCode;
+        view.exitCode =
+          operation.interrupted || result.protocolError
+            ? null
+            : result.exitCode;
         view.output = result.output.slice(0, 256_000);
         view.outputTruncated =
           !!result.truncated || result.output.length > 256_000;
-        view.resultingCwd = result.cwd;
+        view.resultingCwd = result.protocolError ? undefined : result.cwd;
         view.status =
-          operation.interrupted || result.exitCode === null
+          operation.interrupted ||
+          result.protocolError ||
+          result.exitCode === null
             ? "unknown"
             : result.exitCode === 0
               ? "succeeded"
               : "failed";
         if (view.status === "unknown") {
-          view.error = "RESULT_UNKNOWN";
+          view.error = result.protocolError
+            ? "SHELL_PROTOCOL_INVALID"
+            : "RESULT_UNKNOWN";
           this.pauseOwnLease(view.context.lease);
         }
       }

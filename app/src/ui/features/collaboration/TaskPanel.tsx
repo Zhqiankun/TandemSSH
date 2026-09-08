@@ -81,6 +81,10 @@ export function TaskPanel({
   const [formError, setFormError] = useState("");
   const tasks = work.snapshot?.tasks ?? [];
   const task = tasks.find((item) => item.id === selected) ?? tasks.at(-1);
+  const clearActionError = work.clearActionError;
+  useEffect(() => {
+    clearActionError();
+  }, [task?.id, composing, clearActionError]);
   const agent = work.snapshot?.agents?.find((run) => run.taskId === task?.id);
   const session = work.snapshot?.session;
   const control = session?.control;

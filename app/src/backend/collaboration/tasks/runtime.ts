@@ -787,6 +787,8 @@ export class TaskRuntime {
       task.probe.dispose();
       task.probe = undefined;
       task.session.control.assertLease(task.lease);
+      if (context.protocolError) throw new Error("SHELL_PROTOCOL_INVALID");
+      if (context.timedOut) throw new Error("SHELL_CONTEXT_TIMEOUT");
       if (context.exitCode !== 0 || !context.cwd)
         throw new Error("SHELL_CONTEXT_UNKNOWN");
       const directory = scope.directory || context.cwd;
