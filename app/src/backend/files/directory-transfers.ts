@@ -56,6 +56,7 @@ interface Record {
   rootCanonical: string;
   busy: boolean;
   previewFinished: boolean;
+  holders: Set<object>;
   scope?: Scope;
   stop?: AbortController;
   uploads: UploadService;
@@ -160,6 +161,7 @@ export class DirectoryTransfers {
     r.rootCanonical = "";
     r.busy = false;
     r.previewFinished = false;
+    r.holders = new Set();
     r.uploads = new UploadService(scoped);
     r.downloads = new DownloadService(scoped);
     r.uploadTrees = new UploadTreeService(scoped, r.uploads);
@@ -452,6 +454,18 @@ export class DirectoryTransfers {
     r: Record,
     a: Extract<DirectoryAction, { type: "file.directory.confirm" }>,
   ) {
+    if (
+      a.requireAllAllowed &&
+      [...r.entries.values()].some(
+        (e) => e.kind !== "excluded" && e.status === "blocked",
+      )
+    )
+      return { status: "failed" as const, error: "DIRECTORY_BLOCKED" };
+    if (
+      a.stopOnConflict &&
+      [...r.entries.values()].some((e) => e.status === "conflict")
+    )
+      return { status: "failed" as const, error: "DIRECTORY_CONFLICT" };
     const s = this.current(r),
       digest = createHash("sha256")
         .update(
@@ -529,6 +543,7 @@ export class DirectoryTransfers {
       e.status === "blocked"
     )
       throw Error("DIRECTORY_NOT_CONFIRMED");
+    e.operationId = s.context.operationId;
     if (e.resultData?.status === "succeeded")
       return structuredClone(e.resultData);
     if (
@@ -784,13 +799,24 @@ export class DirectoryTransfers {
       },
     };
   }
+  retain(c: FileTaskContext, id: string) {
+    const r = this.owned(c, id, true),
+      token = Object.freeze({});
+    if (r.view.assigned) throw Error("DIRECTORY_PREVIEW_USED");
+    r.view.assigned = true;
+    r.holders.add(token);
+    return () => {
+      r.holders.delete(token);
+    };
+  }
   list(c: FileTaskContext) {
     return [...this.records.values()]
       .filter((r) => r.previewFinished && identity(c, r.context))
-      .map((r) => structuredClone(r.view));
+      .map((r) => ({ ...structuredClone(r.view), inUse: r.holders.size > 0 }));
   }
   summary(c: FileTaskContext, id: string) {
-    return structuredClone(this.owned(c, id).view);
+    const r = this.owned(c, id);
+    return { ...structuredClone(r.view), inUse: r.holders.size > 0 };
   }
   page(c: FileTaskContext, id: string, offset = 0, limit = 100) {
     if (
@@ -805,6 +831,7 @@ export class DirectoryTransfers {
       rows = [...r.entries.values()];
     return {
       ...structuredClone(r.view),
+      inUse: r.holders.size > 0,
       offset,
       items: rows
         .slice(offset, offset + limit)
@@ -873,6 +900,7 @@ export class DirectoryTransfers {
   }
   async release(c: FileTaskContext, id: string) {
     const r = this.owned(c, id);
+    if (r.holders.size) throw Error("DIRECTORY_IN_PROGRESS");
     if (
       r.busy ||
       [...r.entries.values()].some(

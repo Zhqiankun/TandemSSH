@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "id": "directory-roundtrip",
+  "name": "上传目录、校验文件并下载副本",
+  "version": "1.0.0",
+  "description": "上传时保留所选本地根目录名称。请将 uploadedDirectory 设置为 remoteParent/所选根目录名，并将 checkFile 指向其中一个文件。远端父目录须已存在。",
+  "files": {
+    "artifact": { "direction": "upload", "kind": "directory", "description": "运行时通过桌面选择要上传的目录。" },
+    "result": { "direction": "download", "kind": "directory", "description": "运行时选择用于接收目录副本的本地目录。" }
+  },
+  "parameters": {
+    "remoteParent": { "type": "remote-directory", "required": true, "description": "已存在的远端父目录，例如 /srv/packages。" },
+    "uploadedDirectory": { "type": "remote-directory", "required": true, "description": "上传后的远端目录，例如 /srv/packages/bundle。" },
+    "checkFile": { "type": "remote-path", "required": true, "description": "需要校验的远端文件，例如 /srv/packages/bundle/app.tar.gz。" }
+  },
+  "defaults": { "cwd": { "param": "remoteParent" }, "timeoutMs": 120000, "onFailure": "stop" },
+  "steps": [
+    { "id": "upload", "name": "上传目录", "action": { "type": "upload-directory", "path": { "param": "remoteParent" }, "localFile": "artifact", "overwrite": false, "onConflict": "fail" } },
+    { "id": "verify", "name": "校验上传文件", "action": { "type": "command", "program": "sha256sum", "args": [{ "param": "checkFile" }] } },
+    { "id": "download", "name": "下载目录副本", "action": { "type": "download-directory", "path": { "param": "uploadedDirectory" }, "localFile": "result", "overwrite": false, "onConflict": "fail" } }
+  ]
+}

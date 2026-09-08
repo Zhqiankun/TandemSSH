@@ -405,8 +405,16 @@ export function TaskPanel({
                 onActiveChange={(active) =>
                   setDirectoryActive({ taskId: task.id, active })
                 }
+                operationVersion={[
+                  task.operations.at(-1)?.id,
+                  task.operations.at(-1)?.status,
+                  task.operations.at(-1)?.auditGap,
+                  task.state,
+                ].join(":")}
                 ready={task.state === "ready"}
-                disabled={finished(task) || !session?.connected}
+                disabled={
+                  finished(task) || !session?.connected || task.stepCount > 0
+                }
                 onChange={() => {
                   void work.run(() => Promise.resolve(task));
                 }}
@@ -714,6 +722,12 @@ function OperationCard({
           onApprove={onApprove}
         />
       )}
+      {op.action.type === "file.directory.confirm" &&
+        op.action.stopOnConflict && (
+          <p className="text-xs">
+            {t("tandem.workflow.directoryConflictStop")}
+          </p>
+        )}
       {op.action.type === "file.directory.confirm" && (
         <DirectoryTransferManifest
           key={op.id}

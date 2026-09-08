@@ -1,3 +1,4 @@
+import { DirectoryWorkflowSteps } from "../collaboration/files/directory-workflow";
 import { DirectoryAutomation } from "../collaboration/files/directories";
 import { DirectoryTransfers } from "../files/directory-transfers";
 import type { AutomatedTransferPorts } from "../files/automated-transfers";
@@ -52,6 +53,10 @@ export async function transferToolsFixture() {
   );
   const policy: CommandPolicySnapshot = { revision: 1, sets: [] };
   const runtime = new TaskRuntime({
+    directorySteps: {
+      validate: (...args) => directoryWorkflowSteps.validate(...args),
+      open: (...args) => directoryWorkflowSteps.open(...args),
+    },
     validateFileBinding: (userId, taskId, action) =>
       grants.assert(
         runtime.fileObservationContext({ kind: "human", userId }, taskId),
@@ -145,6 +150,12 @@ export async function transferToolsFixture() {
   };
   const transfers = new AutomatedTransfers(transferPorts);
   const directoryTransfers = new DirectoryTransfers(grants, transferPorts);
+  const directoryWorkflowSteps = new DirectoryWorkflowSteps(
+    grants,
+    directoryTransfers,
+    (userId, taskId) =>
+      runtime.fileObservationContext({ kind: "human", userId }, taskId),
+  );
   runtime.connectClient(principal.connectionId);
   const automation = new TransferAutomation(runtime, grants, transfers);
   const workflowStore = new Map<string, string>();

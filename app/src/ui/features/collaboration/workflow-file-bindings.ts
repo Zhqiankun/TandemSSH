@@ -11,7 +11,8 @@ export function matchingWorkflowGrants(
     direction = uses[0]?.direction;
   return grants.filter(
     (g) =>
-      g.kind !== "directory" &&
+      (g.kind === "directory") === (uses[0]?.kind === "directory-transfer") &&
+      uses.every((s) => s.kind === uses[0]?.kind) &&
       g.taskId === taskId &&
       g.state === "active" &&
       g.expiresAt > Date.now() &&
@@ -33,7 +34,7 @@ export function workflowBindingsReady(
           g.id === binding?.localGrantId && g.version === binding.localVersion,
       );
     if (!grant) return false;
-    if (grant.direction === "download") {
+    if (grant.direction === "download" && grant.kind !== "directory") {
       if (downloads.has(grant.id)) return false;
       downloads.add(grant.id);
     }

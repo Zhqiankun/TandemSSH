@@ -1,5 +1,10 @@
+import type {
+  DirectoryStepCursor,
+  DirectoryStepPort,
+} from "./directory-plan-port.js";
 import {
   isTaskFileStep,
+  type TaskFileStep,
   type TaskPlanStep,
   type TaskFileBindings,
 } from "../../../types/task-plan.js";
@@ -64,6 +69,7 @@ export interface TaskSession {
   executor: CommandExecutorPort & { prepareContext(): PreparedCommand };
 }
 export interface TaskRuntimePorts {
+  directorySteps?: DirectoryStepPort;
   validateFileBinding?(
     userId: string,
     taskId: string,
@@ -107,6 +113,10 @@ export interface AttachWorkflow {
   commands: TaskCommand[];
   expectedControl: { generation: number; controlEpoch: number };
 }
+type RuntimeStep = TaskPlanStep & {
+  operationId?: string;
+  directoryCursor?: DirectoryStepCursor;
+};
 interface RecordTask {
   view: Omit<TaskView, "control" | "operations" | "policyRevision">;
   initialPlan: { steps: TaskPlanStep[]; workflow?: TaskView["workflow"] };
@@ -134,7 +144,7 @@ interface RecordTask {
   operationIds: string[];
   operationRequests: Map<string, string>;
   pendingOperations: Set<string>;
-  steps: Array<TaskPlanStep & { operationId?: string }>;
+  steps: RuntimeStep[];
   fileBindings: TaskFileBindings;
   generation: number;
   pumping?: number;
@@ -176,6 +186,7 @@ export class TaskRuntime {
       ) {
         task.generation++;
         task.view.state = "cancelled";
+        this.closeDirectorySteps(task);
         task.view.error ??= "CLIENT_DISCONNECTED";
         task.probe?.dispose();
         this.returnControl(task);
@@ -396,7 +407,10 @@ export class TaskRuntime {
           task.probe?.dispose();
         }
       }
-      if (session.control.snapshot().closed) unsubscribe();
+      if (session.control.snapshot().closed) {
+        this.closeDirectorySteps(task);
+        unsubscribe();
+      }
     });
     this.tasks.set(task.view.id, task);
     this.requests.set(key, task.view.id);
@@ -742,12 +756,19 @@ export class TaskRuntime {
     const currentPolicy = await this.ports.policy(actor.userId);
     if (scope.policyRevision !== currentPolicy.revision)
       throw new Error("POLICY_CHANGED");
-    while (
-      task.steps[task.view.nextStep]?.operationId &&
-      task.gateway.get(task.steps[task.view.nextStep].operationId!).status ===
-        "succeeded"
-    )
+    while (task.steps[task.view.nextStep]?.operationId) {
+      const step = task.steps[task.view.nextStep],
+        op = task.gateway.get(step.operationId!);
+      if (op.status !== "succeeded" || op.error || op.auditGap) break;
+      if (isTaskFileStep(step) && step.kind === "directory-transfer") {
+        const cursor = this.directoryCursor(task, step);
+        cursor.accept(op);
+        step.operationId = undefined;
+        if (!cursor.done) break;
+        cursor.close();
+      }
       task.view.nextStep++;
+    }
     const pendingStep = task.steps[task.view.nextStep];
     const prior = pendingStep?.operationId
       ? task.gateway.get(pendingStep.operationId)
@@ -841,14 +862,29 @@ export class TaskRuntime {
           at: Date.now(),
         });
       if (scope.reconciliation === "skip" && prior) {
+        pendingStep?.directoryCursor?.close();
         task.view.nextStep++;
         task.view.hasFailures = true;
         if (task.activeWorkflowRunId)
           task.workflowRuns.get(task.activeWorkflowRunId)!.summary.hasFailures =
             true;
       }
-      for (let i = task.view.nextStep; i < task.steps.length; i++)
-        task.steps[i].operationId = undefined;
+      for (let i = task.view.nextStep; i < task.steps.length; i++) {
+        const step = task.steps[i],
+          cursor = step.directoryCursor;
+        if (
+          cursor &&
+          isTaskFileStep(step) &&
+          ((i === task.view.nextStep &&
+            scope.reconciliation === "retry" &&
+            cursor.canRestart) ||
+            !cursor.matchesBinding(fileBindings[step.localFile]))
+        ) {
+          cursor.close();
+          step.directoryCursor = undefined;
+        }
+        step.operationId = undefined;
+      }
       const matches = task.steps.length
         ? task.steps
             .filter(
@@ -909,9 +945,25 @@ export class TaskRuntime {
     this.fileObservationContext(actor, taskId);
     this.validateBindings(this.owned(actor, taskId), plan, bindings);
   }
+  private closeDirectorySteps(task: RecordTask) {
+    for (const step of task.steps) step.directoryCursor?.close();
+  }
+  private directoryCursor(
+    task: RecordTask,
+    step: TaskFileStep & { directoryCursor?: DirectoryStepCursor },
+  ): DirectoryStepCursor {
+    if (!this.ports.directorySteps)
+      throw Error("WORKFLOW_DIRECTORY_EXECUTOR_REQUIRED");
+    return (step.directoryCursor ??= this.ports.directorySteps.open(
+      task.userId,
+      task.view.id,
+      step,
+      task.fileBindings,
+    ));
+  }
   private validateBindings(
     task: RecordTask,
-    plan: TaskPlanStep[],
+    plan: RuntimeStep[],
     raw: TaskFileBindings,
     start = 0,
   ) {
@@ -922,15 +974,32 @@ export class TaskRuntime {
     const downloadGrants = new Set<string>();
     for (const step of plan.slice(start))
       if (isTaskFileStep(step)) {
-        const action = fileStepAction(step, bindings);
-        if (step.direction === "download") {
-          if (downloadGrants.has(action.localGrantId))
-            throw Error("WORKFLOW_DOWNLOAD_TARGET_REUSED");
-          downloadGrants.add(action.localGrantId);
+        if (step.kind === "directory-transfer") {
+          if (!this.ports.directorySteps)
+            throw Error("WORKFLOW_DIRECTORY_EXECUTOR_REQUIRED");
+          if (
+            step.directoryCursor &&
+            !step.directoryCursor.canRestart &&
+            !step.directoryCursor.matchesBinding(bindings[step.localFile])
+          )
+            throw Error("WORKFLOW_DIRECTORY_BINDING_LOCKED");
+          this.ports.directorySteps.validate(
+            task.userId,
+            task.view.id,
+            step,
+            bindings,
+          );
+        } else {
+          const action = fileStepAction(step, bindings);
+          if (step.direction === "download") {
+            if (downloadGrants.has(action.localGrantId))
+              throw Error("WORKFLOW_DOWNLOAD_TARGET_REUSED");
+            downloadGrants.add(action.localGrantId);
+          }
+          if (!this.ports.validateFileBinding)
+            throw Error("FILE_LOCAL_GRANT_REQUIRED");
+          this.ports.validateFileBinding(task.userId, task.view.id, action);
         }
-        if (!this.ports.validateFileBinding)
-          throw Error("FILE_LOCAL_GRANT_REQUIRED");
-        this.ports.validateFileBinding(task.userId, task.view.id, action);
       }
   }
   private inScope(task: RecordTask, cwd: string): boolean {
@@ -951,23 +1020,34 @@ export class TaskRuntime {
         task.view.nextStep < task.steps.length
       ) {
         const step = task.steps[task.view.nextStep];
+        const cursor =
+          isTaskFileStep(step) && step.kind === "directory-transfer"
+            ? this.directoryCursor(task, step)
+            : undefined;
+        if (cursor?.done) {
+          cursor.close();
+          task.view.nextStep++;
+          continue;
+        }
         let op: OperationView;
         if (step.operationId) op = task.gateway.get(step.operationId);
         else {
-          const action = isTaskFileStep(step)
-            ? fileStepAction(step, task.fileBindings)
-            : {
-                type: "terminal.command" as const,
-                program: step.program,
-                args: step.args,
-                cwd:
-                  step.cwd ??
-                  (task.view.workflow?.shellState === "explicit-cwd"
-                    ? task.workflowCwd!
-                    : task.view.cwd!),
-                timeoutMs: step.timeoutMs,
-              };
-          if (isTaskFileStep(step))
+          const action = cursor
+            ? cursor.next()!
+            : isTaskFileStep(step)
+              ? fileStepAction(step, task.fileBindings)
+              : {
+                  type: "terminal.command" as const,
+                  program: step.program,
+                  args: step.args,
+                  cwd:
+                    step.cwd ??
+                    (task.view.workflow?.shellState === "explicit-cwd"
+                      ? task.workflowCwd!
+                      : task.view.cwd!),
+                  timeoutMs: step.timeoutMs,
+                };
+          if (isTaskFileStep(step) && step.kind === "file-transfer")
             this.ports.validateFileBinding?.(
               task.userId,
               task.view.id,
@@ -976,7 +1056,7 @@ export class TaskRuntime {
           op = await this.propose(
             task,
             action,
-            `${task.activeWorkflowRunId ?? "initial"}-step-${task.view.nextStep}-v${version}`,
+            `${task.activeWorkflowRunId ?? "initial"}-step-${task.view.nextStep}${cursor ? "-directory-" + cursor.requestIndex : ""}-v${version}`,
           );
           if (version !== task.generation) break;
           step.operationId = op.id;
@@ -1002,6 +1082,7 @@ export class TaskRuntime {
         if (version !== task.generation) break;
         if (
           isTaskFileStep(step) &&
+          step.kind === "file-transfer" &&
           (result.status === "succeeded" || canContinueStepFailure(result))
         ) {
           try {
@@ -1019,6 +1100,17 @@ export class TaskRuntime {
           !(step.onFailure === "continue" && canContinueStepFailure(result))
         )
           break;
+        if (cursor) {
+          if (result.status === "succeeded") {
+            cursor.accept(result);
+            step.operationId = undefined;
+            if (!cursor.done) {
+              task.view.state = "ready";
+              continue;
+            }
+          }
+          cursor.close();
+        }
         if (result.status === "failed") {
           task.view.hasFailures = true;
           task.continuedFailures.add(result.id);
@@ -1456,6 +1548,7 @@ export class TaskRuntime {
     const task = this.owned(actor, taskId);
     task.generation++;
     task.view.state = "cancelled";
+    this.closeDirectorySteps(task);
     if (task.activeWorkflowRunId)
       task.workflowRuns.get(task.activeWorkflowRunId)!.summary.endedAt =
         Date.now();

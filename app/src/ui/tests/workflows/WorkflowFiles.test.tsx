@@ -230,3 +230,141 @@ it("creates upload and download steps in the Chinese editor without local paths"
   expect(current.files?.download_one.direction).toBe("download");
   expect(JSON.stringify(current)).not.toMatch(/localPath|localGrantId/);
 });
+
+it("edits directory actions and conflict choices without downgrading v3 when adding file slots", () => {
+  let current: WorkflowDefinition = {
+    schemaVersion: 1,
+    id: "directory-editor",
+    name: "目录流程",
+    version: "1.0.0",
+    parameters: {},
+    defaults: {},
+    steps: [
+      {
+        id: "one",
+        name: "第一步",
+        action: { type: "command", program: "pwd", args: [] },
+      },
+    ],
+  };
+  function Editor() {
+    const [definition, setDefinition] = useState(current);
+    return (
+      <WorkflowDefinitionEditor
+        definition={definition}
+        onChange={(d) => {
+          current = d;
+          setDefinition(d);
+        }}
+      />
+    );
+  }
+  render(<Editor />);
+  const type = screen.getByRole("combobox", {
+    name: i18n.t("tandem.workflow.actionType"),
+  });
+  fireEvent.change(type, { target: { value: "upload-directory" } });
+  expect(current.schemaVersion).toBe(3);
+  expect(current.steps[0].action.type).toBe("upload-directory");
+  expect(current.files?.["upload-directory_one"]).toMatchObject({
+    kind: "directory",
+    direction: "upload",
+  });
+  fireEvent.change(screen.getByRole("combobox", { name: "目标文件冲突时" }), {
+    target: { value: "overwrite" },
+  });
+  expect(current.steps[0].action).toMatchObject({
+    type: "upload-directory",
+    onConflict: "overwrite",
+    overwrite: true,
+  });
+  fireEvent.click(
+    screen.getByRole("checkbox", {
+      name: i18n.t("tandem.workflow.fileOverwrite"),
+    }),
+  );
+  expect(current.steps[0].action).toMatchObject({
+    onConflict: "fail",
+    overwrite: false,
+  });
+  fireEvent.change(
+    screen.getByRole("textbox", {
+      name: i18n.t("tandem.workflow.fileSlotName"),
+    }),
+    { target: { value: "extra" } },
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: i18n.t("tandem.workflow.addFileSlot") }),
+  );
+  expect(current.files?.extra.kind).toBeUndefined();
+  expect(current.schemaVersion).toBe(3);
+  fireEvent.change(type, { target: { value: "download-directory" } });
+  expect(current.files?.["download-directory_one"]).toMatchObject({
+    kind: "directory",
+    direction: "download",
+  });
+  expect(JSON.stringify(current)).not.toMatch(/localGrantId|localVersion|C:\//);
+});
+it("binds only directory grants and fills directory scopes for directory workflow steps", () => {
+  const directoryTask: TaskView = {
+    ...task,
+    plan: task.plan!.map((s) =>
+      "kind" in s
+        ? {
+            ...s,
+            kind: "directory-transfer",
+            path: "/srv/tree",
+            onConflict: "fail",
+          }
+        : s,
+    ),
+  };
+  const directoryGrants: HumanLocalFileGrant[] = grants.map((g) => ({
+    ...g,
+    id: g.id + "-dir",
+    kind: "directory",
+    name: "目录",
+    path: "C:/本次/目录",
+    entries: 4,
+  }));
+  const authorize = vi.fn(async () => {});
+  render(
+    <TaskAuthorizationForm
+      task={directoryTask}
+      localGrants={[...grants, ...directoryGrants]}
+      disabled={false}
+      revision={1}
+      onAuthorize={authorize}
+    />,
+  );
+  expect(screen.getByText(/上传目录 \/srv\/tree/)).toBeTruthy();
+  const upload = screen.getByRole("combobox", {
+    name: "文件位置 · artifact",
+  }) as HTMLSelectElement;
+  expect([...upload.options].some((o) => o.value === "upload")).toBe(false);
+  fireEvent.change(upload, { target: { value: "upload-dir" } });
+  fireEvent.change(
+    screen.getByRole("combobox", { name: "文件位置 · result" }),
+    { target: { value: "download-dir" } },
+  );
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: i18n.t("tandem.workflow.addPlannedFileScopes"),
+    }),
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: /我已确认终端位于命令提示符/ }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "授权并交还控制权" }));
+  expect(authorize).toHaveBeenCalledWith(
+    expect.objectContaining({
+      fileBindings: {
+        artifact: { localGrantId: "upload-dir", localVersion: "v1" },
+        result: { localGrantId: "download-dir", localVersion: "v2" },
+      },
+      fileScopes: [
+        { kind: "directory", path: "/srv/tree", access: ["write", "read"] },
+      ],
+    }),
+  );
+});

@@ -44,12 +44,24 @@ export type WorkflowFileAction = {
   path: WorkflowValue;
   localFile: string;
   overwrite?: boolean;
-} & ({ type: "upload" } | { type: "download" });
+} & (
+  | { type: "upload" }
+  | { type: "download" }
+  | {
+      type: "upload-directory";
+      onConflict?: "fail" | "skip" | "overwrite";
+    }
+  | { type: "download-directory"; onConflict?: "fail" | "skip" | "overwrite" }
+);
 export interface WorkflowDefinition {
-  schemaVersion: 1 | 2;
+  schemaVersion: 1 | 2 | 3;
   files?: Record<
     string,
-    { direction: "upload" | "download"; description?: string }
+    {
+      direction: "upload" | "download";
+      kind?: "directory";
+      description?: string;
+    }
   >;
   id: string;
   name: string;
@@ -103,4 +115,15 @@ export interface WorkflowPreview {
   fileBindings?: TaskFileBindings;
   warnings: string[];
   expiresAt: number;
+}
+
+export function isWorkflowFileAction(
+  action: WorkflowDefinition["steps"][number]["action"],
+): action is WorkflowFileAction {
+  return (
+    action.type === "upload" ||
+    action.type === "download" ||
+    action.type === "upload-directory" ||
+    action.type === "download-directory"
+  );
 }

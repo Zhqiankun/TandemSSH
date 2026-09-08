@@ -40,7 +40,7 @@ export const aiWorkflowTools: ToolDefinition[] = [
   {
     name: "preview_workflow",
     description:
-      "填写流程参数并预览完整步骤。预览绑定当前父任务与会话，不授予权限，不执行命令。含文件步骤时可把 list_authorized_files 返回的本任务 ID/版本绑定到文件槽位，不可传本地路径。",
+      "填写流程参数并预览完整步骤。预览绑定当前父任务与会话，不授予权限，不执行命令。含文件步骤时可把 list_authorized_files 返回的本任务 ID/版本绑定到文件槽位，不可传本地路径。目录槽位必须绑定 kind=directory 的授权；目录每个条目独立遵循任务预算和审批，等整个步骤结束后再执行后续命令。",
     parameters: {
       type: "object",
       properties: {

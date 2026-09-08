@@ -30,7 +30,16 @@ export function TaskAuthorizationForm({
   const [fileScopes, setFileScopes] = useState<FileScope[]>([]);
   const [directory, setDirectory] = useState("");
   const [reviewed, setReviewed] = useState(false);
-  const [budget, setBudget] = useState(Math.max(task.stepCount, 10));
+  const [budget, setBudget] = useState(
+    Math.max(
+      task.stepCount,
+      task.plan?.some(
+        (s) => isTaskFileStep(s) && s.kind === "directory-transfer",
+      )
+        ? 100
+        : 10,
+    ),
+  );
   const [minutes, setMinutes] = useState(15);
   const [allowedPrograms, setAllowedPrograms] = useState("pwd\ndf\nuptime");
   const [reconciliation, setReconciliation] = useState<"retry" | "skip" | "">(
@@ -129,13 +138,18 @@ export function TaskAuthorizationForm({
             for (const step of remainingFiles) {
               const access = step.direction === "upload" ? "write" : "read",
                 found = scopes.find(
-                  (s) => s.kind === "path" && s.path === step.path,
+                  (s) =>
+                    s.kind ===
+                      (step.kind === "directory-transfer"
+                        ? "directory"
+                        : "path") && s.path === step.path,
                 );
               if (found) {
                 if (!found.access.includes(access)) found.access.push(access);
               } else
                 scopes.push({
-                  kind: "path",
+                  kind:
+                    step.kind === "directory-transfer" ? "directory" : "path",
                   path: step.path,
                   access: [access],
                 });

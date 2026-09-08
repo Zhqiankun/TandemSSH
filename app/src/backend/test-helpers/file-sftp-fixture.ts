@@ -362,6 +362,8 @@ export async function fileSftpFixture(
     connections: () => acceptedConnections,
     port: (server.address() as { port: number }).port,
     io,
+    // Desktop fixtures can attach their shell to the same owned filesystem as SFTP.
+    localPathForTest: (p: string) => target(p),
     read: (p: string) => fs.readFile(target(p)),
     writes: () => writes,
     renames: () => renames,

@@ -1,6 +1,7 @@
 import type { TaskCommand } from "./collaboration-task.js";
 export interface TaskFileStep {
-  kind: "file-transfer";
+  kind: "file-transfer" | "directory-transfer";
+  onConflict?: "fail" | "skip" | "overwrite";
   stepId: string;
   name: string;
   direction: "upload" | "download";
@@ -16,5 +17,8 @@ export type TaskFileBindings = Record<
   { localGrantId: string; localVersion: string }
 >;
 export function isTaskFileStep(step: TaskPlanStep): step is TaskFileStep {
-  return "kind" in step && step.kind === "file-transfer";
+  return (
+    "kind" in step &&
+    (step.kind === "file-transfer" || step.kind === "directory-transfer")
+  );
 }

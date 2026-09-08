@@ -4987,7 +4987,15 @@
         "DIRECTORY_RUN_NOT_FOUND": "目录批次不存在或不属于此任务。",
         "DIRECTORY_RUN_LIMIT": "目录批次记录已达到本次运行的容量上限。",
         "DIRECTORY_PREVIEW_LIMIT": "目录清单超过容量限制，请缩小选择范围。",
-        "DIRECTORY_PREVIEW_EXPIRED": "目录预览已过期，请释放后重新生成。"
+        "DIRECTORY_PREVIEW_EXPIRED": "目录预览已过期，请释放后重新生成。",
+        "WORKFLOW_DIRECTORY_SCHEMA_REQUIRED": "目录流程需要版本 3 的格式。",
+        "WORKFLOW_DIRECTORY_OVERWRITE_REQUIRED": "覆盖冲突文件前，需要在流程动作中明确允许覆盖。",
+        "WORKFLOW_DIRECTORY_EXECUTOR_REQUIRED": "当前运行环境没有可用的目录流程执行器。",
+        "WORKFLOW_DIRECTORY_BINDING_LOCKED": "目录已有条目执行，不能在中途更换本地目录授权。请保留原绑定，或明确跳过该目录步骤后重新安排任务。",
+        "WORKFLOW_DIRECTORY_RESULT_INVALID": "目录步骤结果不匹配，已停止后续流程，请核对任务记录。",
+        "WORKFLOW_DIRECTORY_CLOSED": "目录步骤已经结束，不能再次执行。",
+        "DIRECTORY_CONFLICT": "目标文件存在冲突，本目录步骤尚未写入，请核对后重试或跳过。",
+        "DIRECTORY_BLOCKED": "目录包含规则禁止或越界条目，已停止整个目录步骤。"
       },
       "allowedPrograms": "本次允许的程序（每行一个）",
       "operationProgress": "已完成 {{done}} / {{total}} 条命令",
@@ -5360,11 +5368,25 @@
       "fileOverwrite": "允许覆盖（仍需本次任务授权）",
       "uploadStep": "上传文件",
       "downloadStep": "下载文件",
-      "fileBindings": "本次流程的本地文件",
-      "fileBindingsHint": "先在上方授权本地文件，再为尚未完成的步骤选择对应来源或目标。每个下载目标只能使用一次。",
-      "chooseAuthorizedFile": "选择已授权文件",
-      "fileBindingsRequired": "请为每个文件位置选择有效授权；不同下载位置需要不同目标。",
-      "addPlannedFileScopes": "填入剩余步骤的远端文件范围"
+      "fileBindings": "本次流程的本地文件和目录",
+      "fileBindingsHint": "先在上方授权本地文件或目录，再为尚未完成的步骤选择对应来源或目标。每个单文件下载目标只能使用一次；目录授权可按流程复用。",
+      "chooseAuthorizedFile": "选择本次已授权的文件或目录",
+      "fileBindingsRequired": "请为剩余的文件或目录步骤选择类型、方向和覆盖权限匹配的本地授权。",
+      "addPlannedFileScopes": "填入剩余步骤的远端文件范围",
+      "uploadDirectoryStep": "上传目录",
+      "downloadDirectoryStep": "下载目录",
+      "fileSlotKind": "位置类型",
+      "singleFileSlot": "单个文件",
+      "directorySlot": "目录",
+      "directoryConflict": "目标文件冲突时",
+      "directoryConflicts": {
+        "fail": "停止并核对",
+        "skip": "跳过冲突文件",
+        "overwrite": "覆盖冲突文件"
+      },
+      "directoryStepHint": "目录作为一个流程步骤；预览、清单确认和每个条目分别消耗操作预算。接管后保留已完成项目，后续命令等待整个目录步骤结束。",
+      "directoryInUse": "此预览已分配给保存流程，请在对应操作卡中核对和审批。暂停期间保留占用；流程结束后可以释放，重新执行需生成新预览。",
+      "directoryConflictStop": "遇到目标文件冲突将停止本目录步骤，不会继续写入剩余条目。"
     },
     "fileScope": {
       "title": "本次任务的文件范围",

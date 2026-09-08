@@ -10,6 +10,7 @@ interface Run {
   actor: TaskActor;
   view: DirectoryRunView;
   token: object;
+  releasePreview: () => void;
   entryOperations: Map<string, string>;
   confirm: Extract<DirectoryAction, { type: "file.directory.confirm" }>;
   actions?: Array<Extract<DirectoryAction, { type: "file.directory.entry" }>>;
@@ -58,7 +59,7 @@ export class DirectoryAutomation {
     return {
       ...page,
       items: page.items.map((entry) => {
-        const id = run?.entryOperations.get(entry.id);
+        const id = run?.entryOperations.get(entry.id) ?? entry.operationId;
         if (!id) return entry;
         const op = this.tasks.operation(actor, taskId, id);
         return {
@@ -115,26 +116,34 @@ export class DirectoryAutomation {
       throw Error("DIRECTORY_PREVIEW_USED");
     const confirm = this.directories.confirmation(c, previewId, choices);
     if (confirm.revision !== revision) throw Error("DIRECTORY_PREVIEW_CHANGED");
-    const token = this.tasks.reserveDirectory(actor, taskId),
-      r: Run = {
-        actor: structuredClone(actor),
-        token,
-        entryOperations: new Map(),
-        confirm,
-        index: -1,
-        attempt: 0,
-        failures: false,
-        stop: false,
-        view: {
-          id: randomUUID(),
-          taskId,
-          previewId,
-          state: "running",
-          completed: 0,
-          total: choices.filter((c) => c.action !== "skip").length,
-          createdAt: Date.now(),
-        },
-      };
+    const token = this.tasks.reserveDirectory(actor, taskId);
+    let releasePreview: () => void;
+    try {
+      releasePreview = this.directories.retain(c, previewId);
+    } catch (error) {
+      this.tasks.releaseDirectory(taskId, token);
+      throw error;
+    }
+    const r: Run = {
+      actor: structuredClone(actor),
+      token,
+      releasePreview,
+      entryOperations: new Map(),
+      confirm,
+      index: -1,
+      attempt: 0,
+      failures: false,
+      stop: false,
+      view: {
+        id: randomUUID(),
+        taskId,
+        previewId,
+        state: "running",
+        completed: 0,
+        total: choices.filter((c) => c.action !== "skip").length,
+        createdAt: Date.now(),
+      },
+    };
     this.runs.set(r.view.id, r);
     this.requests.set(key, { fingerprint, id: r.view.id });
     void this.drive(r);
@@ -274,6 +283,7 @@ export class DirectoryAutomation {
       if (r.stop) r.view.state = "cancelled";
       r.view.endedAt = Date.now();
       r.wake?.();
+      r.releasePreview();
       this.tasks.releaseDirectory(r.view.taskId, r.token);
     }
   }

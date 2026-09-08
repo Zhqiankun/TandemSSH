@@ -18,6 +18,8 @@ export type DirectoryAction = DirectoryFields &
       }
     | {
         type: "file.directory.confirm";
+        requireAllAllowed?: boolean;
+        stopOnConflict?: boolean;
         previewId: string;
         revision: string;
         choices: Array<{ id: string; action: DirectoryChoice }>;
@@ -47,6 +49,7 @@ export interface DirectoryResult {
     "created" | "merged" | "skipped" | "succeeded" | "failed" | "unknown";
 }
 export interface DirectoryEntryView {
+  operationId?: string;
   id: string;
   parentId?: string;
   relativePath: string;
@@ -71,6 +74,8 @@ export interface DirectoryEntryView {
   };
 }
 export interface DirectoryPreviewView {
+  inUse?: boolean;
+  assigned?: boolean;
   overwrite: boolean;
   renames?: Array<{ relativePath: string; name: string }>;
   timeoutMs?: number;

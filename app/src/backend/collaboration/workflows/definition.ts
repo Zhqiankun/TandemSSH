@@ -80,13 +80,14 @@ const parameter = z.discriminatedUnion("type", [
 const timeout = z.number().int().min(1000).max(600000);
 export const workflowSchema = z
   .object({
-    schemaVersion: z.union([z.literal(1), z.literal(2)]),
+    schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     files: z
       .record(
         identifier,
         z
           .object({
             direction: z.enum(["upload", "download"]),
+            kind: z.literal("directory").optional(),
             description: z.string().max(2000).optional(),
           })
           .strict(),
@@ -123,6 +124,24 @@ export const workflowSchema = z
             timeoutMs: timeout.optional(),
             onFailure: z.enum(["stop", "continue"]).optional(),
             action: z.discriminatedUnion("type", [
+              z
+                .object({
+                  type: z.literal("upload-directory"),
+                  path: value,
+                  localFile: identifier,
+                  overwrite: z.boolean().optional(),
+                  onConflict: z.enum(["fail", "skip", "overwrite"]).optional(),
+                })
+                .strict(),
+              z
+                .object({
+                  type: z.literal("download-directory"),
+                  path: value,
+                  localFile: identifier,
+                  overwrite: z.boolean().optional(),
+                  onConflict: z.enum(["fail", "skip", "overwrite"]).optional(),
+                })
+                .strict(),
               z
                 .object({
                   type: z.literal("upload"),
@@ -188,9 +207,21 @@ export function parseWorkflow(input: unknown): WorkflowDefinition {
       (s) => s.action.type === "upload" || s.action.type === "download",
     ) ||
       Object.keys(definition.files ?? {}).length) &&
-    definition.schemaVersion !== 2
+    definition.schemaVersion === 1
   )
     fail("WORKFLOW_FILE_SCHEMA_REQUIRED");
+  if (
+    (definition.steps.some(
+      (s) =>
+        s.action.type === "upload-directory" ||
+        s.action.type === "download-directory",
+    ) ||
+      Object.values(definition.files ?? {}).some(
+        (s) => s.kind === "directory",
+      )) &&
+    definition.schemaVersion !== 3
+  )
+    fail("WORKFLOW_DIRECTORY_SCHEMA_REQUIRED");
   if (Object.keys(definition.files ?? {}).length > 64)
     fail("WORKFLOW_PARAMETER_LIMIT");
   if (Object.keys(definition.parameters).length > 64)
@@ -229,17 +260,37 @@ export function parseWorkflow(input: unknown): WorkflowDefinition {
     check(atom, "env." + name);
   for (const step of definition.steps) {
     if (step.cwd) check(step.cwd, step.id + ".cwd", true);
-    if (step.action.type === "upload" || step.action.type === "download") {
+    if (
+      step.action.type === "upload" ||
+      step.action.type === "download" ||
+      step.action.type === "upload-directory" ||
+      step.action.type === "download-directory"
+    ) {
       const slot = definition.files?.[step.action.localFile];
-      if (!slot || slot.direction !== step.action.type)
+      const isDirectory = step.action.type.endsWith("-directory"),
+        direction = step.action.type.startsWith("upload")
+          ? "upload"
+          : "download";
+      if (
+        !slot ||
+        slot.direction !== direction ||
+        (slot.kind === "directory") !== isDirectory
+      )
         fail("WORKFLOW_FILE_SLOT_INVALID", step.id);
       if (step.cwd !== undefined)
         fail("WORKFLOW_FILE_CWD_UNSUPPORTED", step.id);
-      if (step.action.type === "download") {
+      if (direction === "download" && !isDirectory) {
         if (downloadSlots.has(step.action.localFile))
           fail("WORKFLOW_DOWNLOAD_SLOT_REUSED", step.id);
         downloadSlots.add(step.action.localFile);
       }
+      if (
+        (step.action.type === "upload-directory" ||
+          step.action.type === "download-directory") &&
+        step.action.onConflict === "overwrite" &&
+        !step.action.overwrite
+      )
+        fail("WORKFLOW_DIRECTORY_OVERWRITE_REQUIRED", step.id);
       check(step.action.path, step.id + ".path");
     } else
       for (const atom of step.action.args ?? []) check(atom, step.id + ".args");
@@ -365,15 +416,31 @@ export function compileWorkflow(
     warnings.push("PERSISTENT_ENVIRONMENT");
   }
   for (const [index, step] of definition.steps.entries()) {
-    if (step.action.type === "upload" || step.action.type === "download") {
+    if (
+      step.action.type === "upload" ||
+      step.action.type === "download" ||
+      step.action.type === "upload-directory" ||
+      step.action.type === "download-directory"
+    ) {
       const path = resolve(step.action.path);
-      if (!filePathSchema.safeParse(path).success || path === "/")
+      if (
+        !filePathSchema.safeParse(path).success ||
+        (path === "/" && !step.action.type.endsWith("-directory"))
+      )
         fail("INVALID_FILE_PATH", step.id);
       plan.push({
-        kind: "file-transfer",
+        kind: step.action.type.endsWith("-directory")
+          ? "directory-transfer"
+          : "file-transfer",
+        ...(step.action.type === "upload-directory" ||
+        step.action.type === "download-directory"
+          ? { onConflict: step.action.onConflict ?? "fail" }
+          : {}),
         stepId: step.id,
         name: step.name,
-        direction: step.action.type,
+        direction: step.action.type.startsWith("upload")
+          ? "upload"
+          : "download",
         path,
         localFile: step.action.localFile,
         overwrite: step.action.overwrite ?? false,

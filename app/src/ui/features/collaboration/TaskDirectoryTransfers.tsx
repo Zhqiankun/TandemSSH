@@ -19,8 +19,10 @@ export function TaskDirectoryTransfers({
   disabled,
   onChange,
   onActiveChange,
+  operationVersion,
 }: {
   taskId: string;
+  operationVersion?: string;
   grants: HumanLocalFileGrant[];
   ready: boolean;
   disabled: boolean;
@@ -261,6 +263,11 @@ export function TaskDirectoryTransfers({
               {t("tandem.collaboration.errors.DIRECTORY_PREVIEW_EXPIRED")}
             </p>
           )}
+          {preview.assigned && !run && (
+            <p className="text-xs text-muted-foreground">
+              {t("tandem.workflow.directoryInUse")}
+            </p>
+          )}
           {run && (
             <div
               role="status"
@@ -291,16 +298,16 @@ export function TaskDirectoryTransfers({
             key={preview.id}
             taskId={taskId}
             previewId={preview.id}
-            editable={!run && preview.state === "preview"}
+            editable={!preview.assigned && !run && preview.state === "preview"}
             refreshKey={
               run
                 ? [run.state, run.operationId, run.completed].join(":")
-                : undefined
+                : [preview.state, preview.inUse, operationVersion].join(":")
             }
-            onReview={!run ? setReview : undefined}
+            onReview={!preview.assigned && !run ? setReview : undefined}
           />
           <div className="flex flex-wrap gap-2">
-            {!run && preview.state === "preview" && (
+            {!preview.assigned && !run && preview.state === "preview" && (
               <>
                 {review?.hasRenames ? (
                   <Button
@@ -340,7 +347,7 @@ export function TaskDirectoryTransfers({
             <Button
               size="sm"
               variant="outline"
-              disabled={busy || (!!run && !run.endedAt)}
+              disabled={busy || !!preview.inUse || (!!run && !run.endedAt)}
               onClick={() =>
                 void act(() => directoryTransferApi.release(taskId, preview.id))
               }

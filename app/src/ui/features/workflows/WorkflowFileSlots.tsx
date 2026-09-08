@@ -11,7 +11,8 @@ export function WorkflowFileSlots({
 }) {
   const { t } = useTranslation(),
     [name, setName] = useState(""),
-    [direction, setDirection] = useState<"upload" | "download">("upload");
+    [direction, setDirection] = useState<"upload" | "download">("upload"),
+    [kind, setKind] = useState<"file" | "directory">("file");
   return (
     <section>
       <h3>{t("tandem.workflow.fileSlots")}</h3>
@@ -21,7 +22,13 @@ export function WorkflowFileSlots({
       {Object.entries(definition.files ?? {}).map(([key, slot]) => (
         <div className="tandem-settings-row" key={key}>
           <strong>{key}</strong>
-          <span>{t("tandem.collaboration.fileActions." + slot.direction)}</span>
+          <span>
+            {t(
+              slot.kind === "directory"
+                ? "tandem.directoryTask.direction." + slot.direction
+                : "tandem.collaboration.fileActions." + slot.direction,
+            )}
+          </span>
           <input
             aria-label={t("tandem.workflow.fileSlotDescription") + " · " + key}
             value={slot.description ?? ""}
@@ -57,6 +64,16 @@ export function WorkflowFileSlots({
           onChange={(e) => setName(e.target.value)}
         />
         <select
+          aria-label={t("tandem.workflow.fileSlotKind")}
+          value={kind}
+          onChange={(e) => setKind(e.target.value as typeof kind)}
+        >
+          <option value="file">{t("tandem.workflow.singleFileSlot")}</option>
+          <option value="directory">
+            {t("tandem.workflow.directorySlot")}
+          </option>
+        </select>
+        <select
           aria-label={t("tandem.workflow.fileSlotDirection")}
           value={direction}
           onChange={(e) => setDirection(e.target.value as typeof direction)}
@@ -78,8 +95,17 @@ export function WorkflowFileSlots({
           onClick={() => {
             onChange({
               ...definition,
-              schemaVersion: 2,
-              files: { ...definition.files, [name]: { direction } },
+              schemaVersion:
+                kind === "directory" || definition.schemaVersion === 3 ? 3 : 2,
+              files: {
+                ...definition.files,
+                [name]: {
+                  direction,
+                  ...(kind === "directory"
+                    ? { kind: "directory" as const }
+                    : {}),
+                },
+              },
             });
             setName("");
           }}

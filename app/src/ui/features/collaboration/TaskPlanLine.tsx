@@ -6,7 +6,12 @@ export function TaskPlanLine({ step }: { step: TaskPlanStep }) {
   return isTaskFileStep(step) ? (
     <>
       <code>
-        {t("tandem.collaboration.fileActions." + step.direction)} {step.path}
+        {t(
+          step.kind === "directory-transfer"
+            ? "tandem.directoryTask.direction." + step.direction
+            : "tandem.collaboration.fileActions." + step.direction,
+        )}{" "}
+        {step.path}
       </code>
       <small>
         {t("tandem.workflow.localFileSlot")}: {step.localFile} ·{" "}
@@ -16,6 +21,14 @@ export function TaskPlanLine({ step }: { step: TaskPlanStep }) {
             : "tandem.localFiles.noOverwrite",
         )}
       </small>
+      {step.kind === "directory-transfer" && (
+        <small>
+          {t("tandem.workflow.directoryConflict")}:{" "}
+          {t(
+            "tandem.workflow.directoryConflicts." + (step.onConflict ?? "fail"),
+          )}
+        </small>
+      )}
     </>
   ) : (
     <>

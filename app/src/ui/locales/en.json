@@ -4987,7 +4987,15 @@
         "DIRECTORY_RUN_NOT_FOUND": "The batch is missing or belongs to a different task.",
         "DIRECTORY_RUN_LIMIT": "Directory batch history capacity reached.",
         "DIRECTORY_PREVIEW_LIMIT": "The manifest exceeds capacity. Choose a smaller directory.",
-        "DIRECTORY_PREVIEW_EXPIRED": "Directory preview expired. Release it and preview again."
+        "DIRECTORY_PREVIEW_EXPIRED": "Directory preview expired. Release it and preview again.",
+        "WORKFLOW_DIRECTORY_SCHEMA_REQUIRED": "The directory workflow cannot continue. Review its definition, bindings and task history.",
+        "WORKFLOW_DIRECTORY_OVERWRITE_REQUIRED": "The directory workflow cannot continue. Review its definition, bindings and task history.",
+        "WORKFLOW_DIRECTORY_EXECUTOR_REQUIRED": "The directory workflow cannot continue. Review its definition, bindings and task history.",
+        "WORKFLOW_DIRECTORY_BINDING_LOCKED": "The directory workflow cannot continue. Review its definition, bindings and task history.",
+        "WORKFLOW_DIRECTORY_RESULT_INVALID": "The directory workflow cannot continue. Review its definition, bindings and task history.",
+        "WORKFLOW_DIRECTORY_CLOSED": "The directory workflow cannot continue. Review its definition, bindings and task history.",
+        "DIRECTORY_CONFLICT": "Target files conflict; the directory step stopped before writing.",
+        "DIRECTORY_BLOCKED": "Blocked or out-of-scope entries stopped the directory step."
       },
       "allowedPrograms": "Programs allowed for this task (one per line)",
       "operationProgress": "{{done}} / {{total}} commands completed",
@@ -5360,11 +5368,25 @@
       "fileOverwrite": "Allow overwrite (task authorization still required)",
       "uploadStep": "Upload file",
       "downloadStep": "Download file",
-      "fileBindings": "Local files for this run",
-      "fileBindingsHint": "Authorize local files above, then bind sources or destinations for remaining steps. Each download destination can be used once.",
-      "chooseAuthorizedFile": "Choose an authorized file",
-      "fileBindingsRequired": "Choose a valid grant for every file slot. Download slots require distinct destinations.",
-      "addPlannedFileScopes": "Add remote file scopes for remaining steps"
+      "fileBindings": "Local files and directories for this workflow",
+      "fileBindingsHint": "Authorize local files or folders above, then bind sources or targets for unfinished steps. Each single-file download target is single-use; directory grants can be reused by workflow steps.",
+      "chooseAuthorizedFile": "Choose an authorized file or directory",
+      "fileBindingsRequired": "Bind compatible local grants for the remaining file or directory steps, including type, direction and overwrite permission.",
+      "addPlannedFileScopes": "Add remote file scopes for remaining steps",
+      "uploadDirectoryStep": "Upload directory",
+      "downloadDirectoryStep": "Download directory",
+      "fileSlotKind": "Slot type",
+      "singleFileSlot": "Single file",
+      "directorySlot": "Directory",
+      "directoryConflict": "Existing file conflicts",
+      "directoryConflicts": {
+        "fail": "Stop and review",
+        "skip": "Skip conflicting files",
+        "overwrite": "Overwrite conflicting files"
+      },
+      "directoryStepHint": "A directory is one workflow step. Preview, confirmation and every entry each consume the task budget. Completed entries survive takeover; later commands wait for the whole directory step.",
+      "directoryInUse": "This preview belongs to a running workflow. Review and approve its operation cards; it remains reserved while paused.",
+      "directoryConflictStop": "Existing file conflicts stop this directory step before further writes."
     },
     "fileScope": {
       "title": "File scope for this task",

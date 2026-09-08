@@ -62,6 +62,8 @@ const schema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("file.directory.confirm"),
+      requireAllAllowed: z.boolean().optional(),
+      stopOnConflict: z.boolean().optional(),
       ...directoryFields,
       previewId: z.string().uuid(),
       revision: z.string().uuid(),

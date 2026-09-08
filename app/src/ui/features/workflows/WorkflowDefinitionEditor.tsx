@@ -1,3 +1,4 @@
+import { isWorkflowFileAction } from "@/types/workflow";
 import { WorkflowFileSlots } from "./WorkflowFileSlots";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -144,8 +145,7 @@ export function WorkflowDefinitionEditor({
   }
   function argument(index: number, n: number, value: WorkflowArgument) {
     const step = definition.steps[index];
-    if (step.action.type === "upload" || step.action.type === "download")
-      return;
+    if (isWorkflowFileAction(step.action)) return;
     updateStep(index, {
       action: {
         ...step.action,
@@ -169,17 +169,31 @@ export function WorkflowDefinitionEditor({
     index: number,
     type: WorkflowDefinition["steps"][number]["action"]["type"],
   ) {
-    if (type === "upload" || type === "download") {
+    if (
+      type === "upload" ||
+      type === "download" ||
+      type === "upload-directory" ||
+      type === "download-directory"
+    ) {
+      const isDirectory = type.endsWith("-directory"),
+        direction = type.startsWith("upload")
+          ? ("upload" as const)
+          : ("download" as const);
       const localFile =
         Object.entries(definition.files ?? {}).find(
-          ([, s]) => s.direction === type,
+          ([, s]) =>
+            s.direction === direction &&
+            (s.kind === "directory") === isDirectory,
         )?.[0] ?? type + "_" + definition.steps[index].id;
       onChange({
         ...definition,
-        schemaVersion: 2,
+        schemaVersion: isDirectory || definition.schemaVersion === 3 ? 3 : 2,
         files: {
           ...definition.files,
-          [localFile]: definition.files?.[localFile] ?? { direction: type },
+          [localFile]: definition.files?.[localFile] ?? {
+            direction,
+            ...(isDirectory ? { kind: "directory" as const } : {}),
+          },
         },
         steps: definition.steps.map((s, i) =>
           i === index
@@ -188,7 +202,8 @@ export function WorkflowDefinitionEditor({
                 cwd: undefined,
                 action: {
                   type,
-                  path: "/srv/file",
+                  path: isDirectory ? "/srv" : "/srv/file",
+                  ...(isDirectory ? { onConflict: "fail" as const } : {}),
                   localFile,
                   overwrite: false,
                 },
@@ -653,6 +668,12 @@ export function WorkflowDefinitionEditor({
                   <option value="script">{w("script")}</option>
                   <option value="upload">{w("uploadStep")}</option>
                   <option value="download">{w("downloadStep")}</option>
+                  <option value="upload-directory">
+                    {w("uploadDirectoryStep")}
+                  </option>
+                  <option value="download-directory">
+                    {w("downloadDirectoryStep")}
+                  </option>
                 </select>
               </label>
               {step.action.type === "command" ? (
@@ -711,11 +732,16 @@ export function WorkflowDefinitionEditor({
                 </label>
               </>
             )}
-            {(step.action.type === "upload" ||
-              step.action.type === "download") && (
+            {isWorkflowFileAction(step.action) && (
               <>
                 <WorkflowValueEditor
-                  label={w("remoteFilePath")}
+                  label={
+                    step.action.type === "upload-directory"
+                      ? t("tandem.directoryTask.remoteParent")
+                      : step.action.type === "download-directory"
+                        ? t("tandem.directoryTask.remoteSource")
+                        : w("remoteFilePath")
+                  }
                   parameters={Object.fromEntries(
                     Object.entries(definition.parameters).filter(
                       ([, p]) =>
@@ -725,8 +751,7 @@ export function WorkflowDefinitionEditor({
                   value={step.action.path}
                   onChange={(value) => {
                     if (
-                      (step.action.type === "upload" ||
-                        step.action.type === "download") &&
+                      isWorkflowFileAction(step.action) &&
                       !(typeof value === "object" && "whenTrue" in value)
                     )
                       updateStep(index, {
@@ -739,10 +764,7 @@ export function WorkflowDefinitionEditor({
                   <select
                     value={step.action.localFile}
                     onChange={(e) => {
-                      if (
-                        step.action.type === "upload" ||
-                        step.action.type === "download"
-                      )
+                      if (isWorkflowFileAction(step.action))
                         updateStep(index, {
                           action: { ...step.action, localFile: e.target.value },
                         });
@@ -750,7 +772,15 @@ export function WorkflowDefinitionEditor({
                   >
                     <option value="">{w("chooseFileSlot")}</option>
                     {Object.entries(definition.files ?? {})
-                      .filter(([, slot]) => slot.direction === step.action.type)
+                      .filter(
+                        ([, slot]) =>
+                          slot.direction ===
+                            (step.action.type.startsWith("upload")
+                              ? "upload"
+                              : "download") &&
+                          (slot.kind === "directory") ===
+                            step.action.type.endsWith("-directory"),
+                      )
                       .map(([name]) => (
                         <option key={name} value={name}>
                           {name}
@@ -763,20 +793,64 @@ export function WorkflowDefinitionEditor({
                     type="checkbox"
                     checked={step.action.overwrite ?? false}
                     onChange={(e) => {
-                      if (
-                        step.action.type === "upload" ||
-                        step.action.type === "download"
-                      )
+                      if (isWorkflowFileAction(step.action))
                         updateStep(index, {
                           action: {
                             ...step.action,
                             overwrite: e.target.checked,
+                            ...((step.action.type === "upload-directory" ||
+                              step.action.type === "download-directory") &&
+                            !e.target.checked &&
+                            step.action.onConflict === "overwrite"
+                              ? { onConflict: "fail" as const }
+                              : {}),
                           },
                         });
                     }}
                   />
                   <span>{w("fileOverwrite")}</span>
                 </label>
+                {(step.action.type === "upload-directory" ||
+                  step.action.type === "download-directory") && (
+                  <>
+                    <label>
+                      {w("directoryConflict")}
+                      <select
+                        value={step.action.onConflict ?? "fail"}
+                        onChange={(event) => {
+                          if (
+                            step.action.type === "upload-directory" ||
+                            step.action.type === "download-directory"
+                          ) {
+                            const onConflict = event.target.value as
+                              "fail" | "skip" | "overwrite";
+                            updateStep(index, {
+                              action: {
+                                ...step.action,
+                                onConflict,
+                                overwrite:
+                                  onConflict === "overwrite"
+                                    ? true
+                                    : step.action.overwrite,
+                              },
+                            });
+                          }
+                        }}
+                      >
+                        {(["fail", "skip", "overwrite"] as const).map(
+                          (value) => (
+                            <option key={value} value={value}>
+                              {w("directoryConflicts." + value)}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </label>
+                    <p className="tandem-settings-help">
+                      {w("directoryStepHint")}
+                    </p>
+                  </>
+                )}
               </>
             )}
             {commandArgs(step.action).map((arg, n) => (

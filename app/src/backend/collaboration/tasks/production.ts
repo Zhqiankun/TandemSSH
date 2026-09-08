@@ -1,3 +1,4 @@
+import { DirectoryWorkflowSteps } from "../files/directory-workflow.js";
 import { directoryTransfers } from "../../files/directory-transfer-production.js";
 import { automatedTransfers } from "../../files/automated-transfer-production.js";
 import {
@@ -52,6 +53,10 @@ export function readPolicy(userId: string): CommandPolicySnapshot {
   };
 }
 export const taskRuntime = new TaskRuntime({
+  directorySteps: {
+    validate: (...args) => directoryWorkflowSteps.validate(...args),
+    open: (...args) => directoryWorkflowSteps.open(...args),
+  },
   validateFileBinding: (userId, taskId, action) =>
     localFileGrants.assert(
       taskRuntime.fileObservationContext({ kind: "human", userId }, taskId),
@@ -168,3 +173,10 @@ export async function savePolicy(
   }
   return next;
 }
+
+const directoryWorkflowSteps = new DirectoryWorkflowSteps(
+  localFileGrants,
+  directoryTransfers,
+  (userId, taskId) =>
+    taskRuntime.fileObservationContext({ kind: "human", userId }, taskId),
+);
