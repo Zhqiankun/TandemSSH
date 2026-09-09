@@ -443,16 +443,21 @@ async function main() {
     await readyDesktop(newRenderer);
     stage = "retention-check";
     const retained = await api(newRenderer, "/tandem/workflows");
-    if (
-      !retained.workflows?.some(
-        (w) => w.id === workflow.id && w.name === markerName,
-      ) ||
-      (await hash(path.join(profile, "upgrade-retention.json"))) !==
-        retainedDigest ||
-      (await newRenderer.evaluate(
-        "localStorage.getItem('tandem-upgrade-retention')",
-      )) !== markerName
-    )
+    const retention = {
+      workflow:
+        retained.workflows?.some(
+          (w) => w.id === workflow.id && w.definition?.name === markerName,
+        ) === true,
+      file:
+        (await hash(path.join(profile, "upgrade-retention.json"))) ===
+        retainedDigest,
+      ui:
+        (await newRenderer.evaluate(
+          "localStorage.getItem('tandem-upgrade-retention')",
+        )) === markerName,
+    };
+    evidence.retention = retention;
+    if (!retention.workflow || !retention.file || !retention.ui)
       throw Error("Upgrade did not retain database, file or UI data");
     const newState = await status(newRenderer);
     if (
