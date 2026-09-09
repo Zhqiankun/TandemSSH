@@ -282,3 +282,180 @@ it("rejects a different download root and aborts without consuming the user's se
     [],
   );
 });
+
+it("hands paused download members and the directory checkpoint to one encrypted batch record", async () => {
+  const f = await fixture(),
+    { randomUUID, randomBytes } = await import("node:crypto"),
+    { sealRecord, openRecord } =
+      await import("../src/backend/privacy/encrypted-record-codec"),
+    { DownloadBatchVault } = require("../electron/download-batch-vault.cjs");
+  const key = randomBytes(32),
+    vault = new DownloadBatchVault({
+      root: path.join(f.root, "vault"),
+      crypto: {
+        isEncryptionAvailable: () => true,
+        encryptString: (s: string) => sealRecord(s, key, "TDB1", "test"),
+        decryptString: (b: Buffer) => openRecord(b, key, "TDB1", "test"),
+      },
+    });
+  const local = path.join(f.root, "destination");
+  await fs.mkdir(local);
+  const chosen = await f.targets.choose(1, async () => local),
+    p = await f.targets.preview(1, chosen.id, [
+      { id: "one", name: "one.bin", kind: "file", size: 4 },
+      { id: "two", name: "two.bin", kind: "file", size: 4 },
+    ]);
+  confirm(f.targets, p);
+  const bytes = Buffer.from("data"),
+    ids: string[] = [];
+  for (const entry of ["one", "two"]) {
+    const v = await f.targets.file(1, p.id, entry, spec(bytes));
+    await f.sink.start(1, v.id, false);
+    await f.sink.append(1, v.id, 0, bytes);
+    await f.sink.pause(1, v.id);
+    ids.push(v.id);
+  }
+  await expect(
+    f.sink.suspendBatch(1, ids, async () => {
+      throw Error("DOWNLOAD_DISK_FULL");
+    }),
+  ).rejects.toThrow("DOWNLOAD_DISK_FULL");
+  expect(f.sink.view(f.sink.owned(1, ids[0])).state).toBe("paused");
+  expect(f.sink.view(f.sink.owned(1, ids[1])).state).toBe("paused");
+  const id = randomUUID(),
+    tree = {
+      schemaVersion: 1,
+      id: randomUUID(),
+      userId: "owner",
+      targetKey: "test-host",
+      peer: "SHA256:test-peer",
+      hostIdentity: "test",
+      entries: ["one", "two"].map((entry) => ({
+        view: {
+          id: entry,
+          kind: "file",
+          name: entry + ".bin",
+          path: "/" + entry + ".bin",
+          size: 4,
+        },
+      })),
+    };
+  let stored: { id: string; claim: { id: string } } | undefined;
+  await f.sink.suspendBatch(
+    1,
+    ids,
+    async (
+      parts: Array<{
+        id: string;
+        checkpoint: {
+          id: string;
+          spec: { sha256: string; hashes: string[] };
+          writtenBytes: number;
+        };
+      }>,
+    ) => {
+      const target = await f.targets.checkpoint(
+        1,
+        p.id,
+        undefined,
+        new Set(ids),
+      );
+      const members = parts.map((part, i) => ({
+        entryId: i ? "two" : "one",
+        state: "paused",
+        local: part.checkpoint,
+        source: {
+          schemaVersion: 1,
+          id: part.id,
+          userId: "owner",
+          targetKey: tree.targetKey,
+          peer: tree.peer,
+          canonicalPath: i ? "/two.bin" : "/one.bin",
+          stat: { size: 4 },
+          sha256: part.checkpoint.spec.sha256,
+          hashes: part.checkpoint.spec.hashes,
+        },
+      }));
+      stored = await vault.create("owner", id, tree, target, members);
+    },
+  );
+  expect(() => f.sink.owned(1, ids[0])).toThrow("DOWNLOAD_NOT_FOUND");
+  f.targets.releaseRecovery(1, p.id);
+  await vault.release("owner", id, stored!.claim.id);
+  const dir = path.join(
+      f.root,
+      "vault",
+      createHash("sha256").update("owner").digest("hex"),
+    ),
+    encrypted = await fs.readFile(path.join(dir, id + ".recovery"));
+  expect(encrypted.includes(Buffer.from("one.bin"))).toBe(false);
+  const other = new DownloadBatchVault({
+    root: vault.root,
+    crypto: vault.crypto,
+  });
+  const claims = await Promise.allSettled([
+    vault.claim("owner", id),
+    other.claim("owner", id),
+  ]);
+  expect(claims.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  expect(claims.filter((r) => r.status === "rejected")).toHaveLength(1);
+  const row = (
+    claims.find((r) => r.status === "fulfilled") as PromiseFulfilledResult<
+      Awaited<ReturnType<typeof vault.claim>>
+    >
+  ).value;
+  expect(await vault.read("other-user", id)).toBeNull();
+  vi.spyOn(vault.crypto, "isEncryptionAvailable").mockReturnValueOnce(false);
+  await expect(
+    vault.create("owner", randomUUID(), row.source, row.target, row.members),
+  ).rejects.toThrow("DOWNLOAD_BATCH_ENCRYPTION_UNAVAILABLE");
+  const next = f.create(),
+    selected = await next.targets.choose(1, async () => local),
+    target = await next.targets.restore(1, selected.id, row.target);
+  confirm(next.targets, target);
+  for (const m of row.members) {
+    const v = await next.sink.restore(1, m.local, {
+      authorize: () => {},
+      overwrite: false,
+      source: m.local.spec,
+    });
+    await next.targets.attachRestored(1, target.id, m.entryId, v.id);
+    await next.sink.resume(1, v.id);
+    await next.sink.finish(1, v.id);
+    expect(next.targets.complete(1, target.id, m.entryId).sha256).toBe(
+      digest(bytes),
+    );
+  }
+  expect((await fs.readFile(path.join(local, "one.bin"))).equals(bytes)).toBe(
+    true,
+  );
+  expect((await fs.readFile(path.join(local, "two.bin"))).equals(bytes)).toBe(
+    true,
+  );
+});
+it("preserves confirmed native batch progress on revocation instead of deleting its partial file", async () => {
+  const f = await fixture(),
+    bytes = Buffer.alloc(4194304 + 7, 9),
+    v = await f.sink.choose(1, spec(bytes), async () =>
+      path.join(f.root, "partial.bin"),
+    );
+  await f.sink.start(1, v.id, false);
+  await f.sink.append(1, v.id, 0, bytes.subarray(0, 4194304));
+  const result = await f.sink.preserveBatch(1, [v.id]);
+  expect(result[0].checkpoint.writtenBytes).toBe(4194304);
+  expect((await fs.stat(result[0].checkpoint.stagePath)).size).toBe(4194304);
+  expect(() => f.sink.owned(1, v.id)).toThrow("DOWNLOAD_NOT_FOUND");
+  const next = f.create(),
+    restored = await next.sink.restore(1, result[0].checkpoint, {
+      authorize: () => {},
+      overwrite: false,
+      source: spec(bytes),
+    });
+  expect(restored.state).toBe("paused");
+  await next.sink.resume(1, restored.id);
+  await next.sink.append(1, restored.id, 4194304, bytes.subarray(4194304));
+  await next.sink.finish(1, restored.id);
+  expect(
+    (await fs.readFile(path.join(f.root, "partial.bin"))).equals(bytes),
+  ).toBe(true);
+});

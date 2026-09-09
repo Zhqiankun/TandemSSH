@@ -408,6 +408,107 @@ class DownloadSink {
       }
     });
   }
+  /** Internal checkpoint for a member already managed by a durable batch. */
+  recoveryCheckpoint(owner, id) {
+    const r = this.owned(owner, id);
+    if (
+      !r.stageIdentity ||
+      !r.view.temporaryPath ||
+      !["writing", "paused", "failed", "unknown", "committing"].includes(
+        r.view.state,
+      )
+    )
+      throw Error("DOWNLOAD_NOT_READY");
+    return readDownloadCheckpoint({
+      schemaVersion: 1,
+      platform: process.platform,
+      id: r.view.id,
+      savedAt: Date.now(),
+      spec: r.spec,
+      parent: r.parent,
+      parentIdentity: r.parentIdentity,
+      destination: r.view.path,
+      stagePath: r.view.temporaryPath,
+      stageIdentity: r.stageIdentity,
+      writtenBytes: r.view.writtenBytes,
+      previous: r.previous
+        ? { sha256: r.previous.sha256, stat: checkpointStat(r.previous.stat) }
+        : undefined,
+    });
+  }
+  /** Hold all members until one durable write records the whole batch. */
+  async suspendBatch(owner, ids, persist) {
+    if (
+      !Array.isArray(ids) ||
+      ids.length > 128 ||
+      new Set(ids).size !== ids.length ||
+      typeof persist !== "function"
+    )
+      throw Error("DOWNLOAD_REQUEST_INVALID");
+    const members = [],
+      records = ids.map((id) => this.owned(owner, id));
+    let durable = false;
+    const save = async (index) => {
+      if (index === ids.length) {
+        await persist(members);
+        durable = true;
+        for (const m of members) {
+          const r = this.owned(owner, m.id);
+          r.recoveryCheckpoint = m.checkpoint;
+        }
+        return;
+      }
+      const id = ids[index];
+      await this.suspend(owner, id, async (checkpoint) => {
+        members.push({ id, checkpoint });
+        await save(index + 1);
+      });
+    };
+    try {
+      await save(0);
+    } catch (error) {
+      if (!durable)
+        for (const r of records)
+          if (
+            this.records.get(r.view.id) === r &&
+            !r.cancelled &&
+            !r.preserved &&
+            r.view.state === "failed"
+          )
+            r.view.state = "paused";
+      throw error;
+    }
+    return members.map((m) => ({
+      id: m.id,
+      writtenBytes: m.checkpoint.writtenBytes,
+    }));
+  }
+  /** Revocation is immediate; cleanup reads only already-owned metadata and handles. */
+  async preserveBatch(owner, ids) {
+    if (
+      !Array.isArray(ids) ||
+      ids.length > 128 ||
+      new Set(ids).size !== ids.length
+    )
+      throw Error("DOWNLOAD_REQUEST_INVALID");
+    const records = ids.map((id) => this.owned(owner, id));
+    for (const r of records) r.cancelled = true;
+    const result = [];
+    for (const r of records) {
+      await r.tail.catch(() => {});
+      let checkpoint;
+      if (r.handle) {
+        await r.handle.sync();
+        if (r.view.temporaryPath && r.stageIdentity)
+          checkpoint = this.recoveryCheckpoint(owner, r.view.id);
+        await r.handle.close();
+        r.handle = undefined;
+      }
+      result.push({ id: r.view.id, view: this.view(r), checkpoint });
+      this.records.delete(r.view.id);
+    }
+    return result;
+  }
   /** Only a trusted coordinator may pass a decrypted checkpoint and a NEW authorization guard. */
   async restore(owner, raw, options) {
     const checkpoint = readDownloadCheckpoint(raw),

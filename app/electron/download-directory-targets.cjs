@@ -124,7 +124,15 @@ class DownloadDirectoryTargets {
     }
   }
   /** Member sinks must first be suspended by the batch recovery coordinator. */
-  async checkpoint(owner, id, authorize) {
+  /** Only the durable recovery owner may release a view retaining uncertain outcomes. */
+  releaseRecovery(owner, id) {
+    const r = this.owned(owner, id);
+    if (r.busy || [...r.entries.values()].some((e) => e.binding))
+      throw Error("DOWNLOAD_BUSY");
+    r.cancelled = true;
+    this.roots.delete(id);
+  }
+  async checkpoint(owner, id, authorize, heldMembers = new Set()) {
     const r = this.owned(owner, id);
     this.guard(r, authorize);
     if (
@@ -137,7 +145,8 @@ class DownloadDirectoryTargets {
       if (e.child) {
         try {
           this.sink.owned(owner, e.child);
-          throw Error("DOWNLOAD_TREE_MEMBER_ACTIVE");
+          if (!heldMembers.has(e.child))
+            throw Error("DOWNLOAD_TREE_MEMBER_ACTIVE");
         } catch (error) {
           if (error.message !== "DOWNLOAD_NOT_FOUND") throw error;
         }
@@ -171,6 +180,7 @@ class DownloadDirectoryTargets {
           kind: e.kind,
           size: e.size,
           status: e.status,
+          action: e.action,
           error: e.error,
           directoryIdentity: e.directoryIdentity,
           snapshot: e.snapshot

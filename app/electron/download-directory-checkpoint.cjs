@@ -45,6 +45,7 @@ const schema = z
               .nonnegative()
               .max(4194304 * 16384),
             status: z.enum(["new", "directory", "conflict", "blocked"]),
+            action: z.enum(["create", "merge", "overwrite", "skip"]).optional(),
             error: z.string().max(128).optional(),
             directoryIdentity: z.string().min(1).max(256).optional(),
             snapshot: snapshot.optional(),

@@ -456,6 +456,25 @@ export class DownloadTreeService {
       else this.scanningOwners.delete(actor.userId);
     }
   }
+  memberProof(
+    actor: DownloadActor,
+    id: string,
+    entryId: string,
+    sourceId: string,
+  ) {
+    const r = this.owned(actor, id),
+      expected = r.constraints.get(entryId),
+      source = this.downloads.recoveryMetadata(actor, sourceId);
+    if (
+      !expected ||
+      source.targetKey !== expected.key ||
+      source.peer !== expected.peer ||
+      source.canonicalPath !== expected.canonicalPath ||
+      attributes(source.stat) !== attributes(expected.stat)
+    )
+      throw Error("DOWNLOAD_BATCH_MEMBER_INVALID");
+    return source;
+  }
   async prepareEntry(
     actor: DownloadActor,
     treeId: string,

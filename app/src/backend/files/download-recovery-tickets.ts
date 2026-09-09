@@ -34,6 +34,14 @@ interface Ticket {
 }
 export class DownloadRecoveryTickets {
   private windows = new Set<string>();
+  private closeObservers = new Set<(token: string) => void>();
+  isBound(token: string) {
+    return this.windows.has(token);
+  }
+  onClose(fn: (token: string) => void) {
+    this.closeObservers.add(fn);
+    return () => this.closeObservers.delete(fn);
+  }
   private tickets = new Map<string, Ticket>();
   private sources = new Map<string, Map<string, string>>();
   constructor(
@@ -81,6 +89,7 @@ export class DownloadRecoveryTickets {
   }
   close(token: string) {
     this.windows.delete(token);
+    for (const close of this.closeObservers) close(token);
     for (const id of this.sources.get(token)?.keys() ?? [])
       void this.releaseSource(token, id);
     this.sources.delete(token);

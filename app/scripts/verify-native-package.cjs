@@ -83,6 +83,8 @@ async function probe(root) {
     "download-checkpoint.cjs",
     "download-directory-targets.cjs",
     "download-directory-checkpoint.cjs",
+    "download-batch-record.cjs",
+    "download-batch-vault.cjs",
   ]) {
     const file = fs.realpathSync(path.join(filesRoot, name));
     if (!file.startsWith(filesRoot + path.sep) || !fs.statSync(file).isFile())
@@ -103,6 +105,14 @@ async function probe(root) {
         throw Error(
           "Packaged directory recovery capability missing: " + method,
         );
+  const { DownloadBatchVault } = load(
+    path.join(filesRoot, "download-batch-vault.cjs"),
+  );
+  if (
+    typeof DownloadBatchVault.prototype.claim !== "function" ||
+    typeof DownloadBatchVault.prototype.change !== "function"
+  )
+    throw Error("Packaged download batch vault missing");
   const { TaskLocalFiles } = load(path.join(filesRoot, "task-local-files.cjs"));
   const taskFiles = new TaskLocalFiles();
   if (

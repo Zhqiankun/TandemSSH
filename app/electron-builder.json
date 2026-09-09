@@ -23,6 +23,8 @@
     "electron/download-checkpoint.cjs",
     "electron/download-directory-targets.cjs",
     "electron/download-directory-checkpoint.cjs",
+    "electron/download-batch-record.cjs",
+    "electron/download-batch-vault.cjs",
     "electron/task-local-directories.cjs",
     "electron/task-upload-access.cjs"
   ],

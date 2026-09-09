@@ -325,6 +325,20 @@ export class DownloadService {
     if (r.busy || r.view.state !== "paused" || r.release)
       throw Error("DOWNLOAD_NOT_READY");
     if (!r.peer) throw Error("DOWNLOAD_HOST_IDENTITY_CHANGED");
+    return this.snapshot(r);
+  }
+  recoveryMetadata(actor: DownloadActor, id: string) {
+    const r = this.owned(actor, id);
+    this.alive(actor, r);
+    if (
+      r.busy ||
+      !["ready", "paused", "verified"].includes(r.view.state) ||
+      !r.peer
+    )
+      throw Error("DOWNLOAD_NOT_READY");
+    return this.snapshot(r);
+  }
+  private snapshot(r: RecordState): DownloadCheckpoint {
     return downloadCheckpointSchema.parse({
       schemaVersion: 1,
       id: r.view.id,
