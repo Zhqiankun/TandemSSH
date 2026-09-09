@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { desktopAppearanceSchema } from "../../types/desktop-preferences.js";
+import { backupKeybindingSchema, projectKeybindings } from "./keyboard.js";
 import { randomUUID } from "node:crypto";
 import { parseWorkflow } from "../collaboration/workflows/definition.js";
 import { redact } from "../privacy/redaction.js";
@@ -32,13 +34,15 @@ const hostSchema = z.object({
 });
 const fileSchema = z.object({
   format: z.literal("tandemssh-configuration"),
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]),
   createdAt: z.string().datetime(),
   hosts: z.array(hostSchema).max(500),
   workflows: z
     .array(z.object({ ref: z.string().uuid(), definition: z.unknown() }))
     .max(128),
   preferences: z.unknown().optional(),
+  appearance: desktopAppearanceSchema.optional(),
+  keybindings: z.array(backupKeybindingSchema).max(200).optional(),
 });
 function ignored(
   input: unknown,
@@ -111,6 +115,8 @@ export function parseConfigurationBackup(input: unknown): {
     throw Error("BACKUP_DUPLICATE_REFERENCE");
   const payload: ConfigurationBackup = {
     ...parsed,
+    version: 2,
+    keybindings: undefined,
     hosts: [],
     workflows: [],
     preferences: undefined,
@@ -146,6 +152,26 @@ export function parseConfigurationBackup(input: unknown): {
         path: "preferences",
       });
   }
+  if (parsed.keybindings) {
+    if (
+      new Set(parsed.keybindings.map((row) => row.ref)).size !==
+      parsed.keybindings.length
+    )
+      throw Error("BACKUP_DUPLICATE_REFERENCE");
+    payload.keybindings = parsed.keybindings.filter((row, index) => {
+      if (JSON.stringify(redact(row)) === JSON.stringify(row)) return true;
+      warnings.push({
+        code: "KEYBINDING_SECRET_EXCLUDED",
+        path: `keybindings[${index}]`,
+      });
+      return false;
+    });
+    if (payload.keybindings.length)
+      warnings.push({
+        code: "KEYBINDINGS_REVIEW_REQUIRED",
+        path: "keybindings",
+      });
+  }
   ignored(input, payload, "backup", warnings);
   if (JSON.stringify(parsed.hosts) !== JSON.stringify(payload.hosts))
     warnings.push({ code: "RECOGNIZED_SECRET_REDACTED", path: "hosts" });
@@ -163,6 +189,8 @@ export function projectConfigurationBackup(
   hosts: Array<Record<string, unknown>>,
   workflows: Array<{ definition: unknown }>,
   preferences?: unknown,
+  appearance?: unknown,
+  keybindings?: unknown,
 ) {
   const warnings: BackupWarning[] = [],
     entries: unknown[] = [];
@@ -195,9 +223,12 @@ export function projectConfigurationBackup(
       originalAuthType: String(host.authType ?? "password"),
     });
   }
+  const projectedKeys = projectKeybindings(keybindings);
+  if (projectedKeys.excluded)
+    warnings.push({ code: "KEYBINDING_SECRET_EXCLUDED", path: "keybindings" });
   const result = parseConfigurationBackup({
     format: "tandemssh-configuration",
-    version: 1,
+    version: 2,
     createdAt: new Date().toISOString(),
     hosts: entries,
     workflows: workflows.map((row) => ({
@@ -205,6 +236,8 @@ export function projectConfigurationBackup(
       definition: row.definition,
     })),
     preferences,
+    appearance,
+    keybindings: projectedKeys.bindings,
   });
   return {
     payload: result.payload,

@@ -2775,7 +2775,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             if (!cancelled) {
               customKeybindingsRef.current = parseCustomKeybindings(
                 prefs.customKeybindings,
-              ).filter((kb) => kb.enabled);
+              ).filter((kb) => kb.enabled && !kb.needsReview);
             }
           })
           .catch(() => {

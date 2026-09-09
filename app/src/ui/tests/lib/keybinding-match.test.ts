@@ -86,3 +86,29 @@ describe("findMatchingKeybinding", () => {
     expect(findMatchingKeybinding(e, bindings)).toBeUndefined();
   });
 });
+
+it("does not dispatch disabled or unreviewed imported shortcuts", () => {
+  const entry: CustomKeybinding = {
+    id: "imported",
+    combo: ctrlC,
+    action: {
+      type: "sendText",
+      text: "printf should-not-run",
+      appendEnter: true,
+    },
+    enabled: false,
+    needsReview: true,
+    createdAt: "",
+    updatedAt: "",
+  };
+  const event = makeEvent({ key: "c", ctrlKey: true });
+  expect(findMatchingKeybinding(event, [entry])).toBeUndefined();
+  expect(
+    findMatchingKeybinding(event, [{ ...entry, enabled: true }]),
+  ).toBeUndefined();
+  expect(
+    findMatchingKeybinding(event, [
+      { ...entry, enabled: true, needsReview: undefined },
+    ])?.id,
+  ).toBe("imported");
+});

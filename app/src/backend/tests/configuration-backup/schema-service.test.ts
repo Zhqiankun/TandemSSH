@@ -122,7 +122,7 @@ describe("configuration backup boundaries", () => {
       "BACKUP_DUPLICATE_REFERENCE",
     );
     expect(() =>
-      parseConfigurationBackup({ ...input(), version: 2 }),
+      parseConfigurationBackup({ ...input(), version: 99 }),
     ).toThrow();
   });
   it("never mutates during preview and requires the owning user and matching direction", async () => {
@@ -209,4 +209,104 @@ it("redacts recognized secrets from supported preference string fields", () => {
   expect(warnings.some((w) => w.code === "PREFERENCE_SECRET_REDACTED")).toBe(
     true,
   );
+});
+
+it("accepts version 1 backups and exports current local appearance in version 2", async () => {
+  expect(parseConfigurationBackup(input()).payload.version).toBe(2);
+  const f = fixture(),
+    p = await f.service.previewExport("owner", {
+      appearance: {
+        theme: "nord",
+        fontSize: "lg",
+        accentColor: "#123456",
+        language: "zh-CN",
+      },
+    });
+  const data = JSON.parse(p.content);
+  expect(data.version).toBe(2);
+  expect(data.appearance).toMatchObject({ theme: "nord", fontSize: "lg" });
+  expect(() =>
+    parseConfigurationBackup({
+      ...input(),
+      appearance: { theme: "untrusted-css" },
+    }),
+  ).toThrow();
+});
+it("freezes shortcut restore choice in the confirmation", async () => {
+  const f = fixture(),
+    p = await f.service.previewImport("owner", JSON.stringify(input()));
+  await f.service.apply("owner", p.id, false, true);
+  expect(() => f.service.apply("owner", p.id, false, false)).toThrow(
+    "BACKUP_CONFIRMATION_CHANGED",
+  );
+  expect(f.apply).toHaveBeenCalledTimes(1);
+});
+it("excludes shortcut literal secrets and removes snippet identity on disabled restore", async () => {
+  const { projectKeybindings, restoreKeybindings } =
+    await import("../../configuration-backup/keyboard.js");
+  const combo = {
+    key: "k",
+    isCode: false,
+    ctrl: true,
+    alt: false,
+    shift: true,
+    meta: false,
+  };
+  const { bindings, excluded } = projectKeybindings([
+    {
+      id: "source",
+      combo,
+      action: { type: "runSnippet", snippetId: "7" },
+      enabled: true,
+    },
+    {
+      id: "source-secret",
+      combo,
+      action: { type: "sendText", text: "token=fixture-secret" },
+      enabled: true,
+    },
+  ]);
+  expect(excluded).toBe(1);
+  expect(bindings[0].action).toEqual({ type: "runSnippet", snippetRef: "7" });
+  const restored = restoreKeybindings(bindings)[0];
+  expect(restored).toMatchObject({
+    enabled: false,
+    needsReview: true,
+    action: { type: "runSnippet", snippetId: "" },
+  });
+  expect(restored.id).not.toBe("source");
+});
+
+it("preserves built-in shortcut override identity while keeping restoration disabled", async () => {
+  const { projectKeybindings, restoreKeybindings } =
+    await import("../../configuration-backup/keyboard.js");
+  const original = {
+    id: "override",
+    combo: {
+      key: "q",
+      isCode: false,
+      ctrl: true,
+      alt: true,
+      shift: false,
+      meta: false,
+    },
+    action: { type: "sendControlCode", controlCode: "q" },
+    enabled: true,
+    overridesDefaultId: "default-ctrlaltq",
+  };
+  const data = projectKeybindings([original]);
+  expect(data.bindings[0].overridesDefaultId).toBe("default-ctrlaltq");
+  expect(restoreKeybindings(data.bindings)[0]).toMatchObject({
+    overridesDefaultId: "default-ctrlaltq",
+    enabled: false,
+    needsReview: true,
+  });
+});
+
+it("preserves valid three-digit accent colors supported by the desktop editor", () => {
+  const { payload } = parseConfigurationBackup({
+    ...input(),
+    appearance: { accentColor: "#aBc" },
+  });
+  expect(payload.appearance?.accentColor).toBe("#aabbcc");
 });

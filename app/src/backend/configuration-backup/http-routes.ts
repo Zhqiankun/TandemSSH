@@ -1,5 +1,7 @@
 import express from "express";
 import { z } from "zod";
+import { desktopAppearanceSchema } from "../../types/desktop-preferences.js";
+import { sanitizeUiPreferences } from "../../types/ui-preferences.js";
 import type { AuthenticatedRequest } from "../../types/index.js";
 import type { ConfigurationBackupService } from "./service.js";
 import { MAX_BACKUP_BYTES } from "./schema.js";
@@ -46,9 +48,30 @@ export function configurationBackupRoutes(
     };
   router.post(
     "/export/preview",
-    handle(async (_req, res, user) =>
-      res.json(await service.previewExport(user)),
-    ),
+    handle(async (req, res, user) => {
+      const body = z
+        .object({
+          desktop: z
+            .object({
+              appearance: desktopAppearanceSchema.optional(),
+              preferences: z.unknown().optional(),
+            })
+            .strict()
+            .optional(),
+        })
+        .strict()
+        .parse(req.body);
+      const desktop = body.desktop
+        ? {
+            appearance: body.desktop.appearance,
+            preferences:
+              body.desktop.preferences === undefined
+                ? undefined
+                : sanitizeUiPreferences(body.desktop.preferences),
+          }
+        : undefined;
+      return res.json(await service.previewExport(user, desktop));
+    }),
   );
   router.get(
     "/export/:id",
@@ -80,7 +103,11 @@ export function configurationBackupRoutes(
     "/import/:id",
     handle(async (req, res, user) => {
       const input = z
-        .object({ confirmed: z.literal(true), restorePreferences: z.boolean() })
+        .object({
+          confirmed: z.literal(true),
+          restorePreferences: z.boolean(),
+          restoreKeybindings: z.boolean().default(false),
+        })
         .strict()
         .parse(req.body);
       res.json(
@@ -88,6 +115,7 @@ export function configurationBackupRoutes(
           user,
           z.string().uuid().parse(req.params.id),
           input.restorePreferences,
+          input.restoreKeybindings,
         ),
       );
     }),

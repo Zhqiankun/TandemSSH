@@ -4113,7 +4113,7 @@
         "textRequiredError": "Enter the text to send",
         "controlCodeRequiredError": "Enter a single letter for the control code",
         "snippetRequiredError": "Select a snippet",
-        "conflictWarning": "This combination is already bound to {{combo}}. Saving will make both fire.",
+        "conflictWarning": "This combination is already bound to {{combo}}. An existing match may take precedence; review the conflict.",
         "actionLabel": "Action",
         "actionCopy": "Copy selection",
         "actionPaste": "Paste",
@@ -6414,7 +6414,7 @@
   },
   "configBackup": {
     "title": "Configuration backup and restore",
-    "description": "Back up basic SSH host details, command workflows and interface preferences. SSH passwords, private keys, API keys, trust decisions and task authorizations are excluded. Review the exact content before continuing.",
+    "description": "Back up basic SSH host details, workflows, appearance, interface preferences and custom shortcuts. SSH passwords, private keys, API keys, trust decisions and task authorizations are excluded. Review the content before continuing.",
     "previewExport": "Preview export",
     "selectImport": "Select backup file",
     "working": "Preparing configuration…",
@@ -6424,7 +6424,7 @@
     "steps_one": "{{count}} step",
     "steps_other": "{{count}} steps",
     "inspectContent": "View exact backup content",
-    "restorePreferences": "Also restore interface preferences (requires a manual reload)",
+    "restorePreferences": "Also restore appearance and interface preferences (manual reload required)",
     "confirmExport": "Confirm and download",
     "confirmImport": "Confirm and import",
     "completed": "Added {{hosts}} hosts and {{workflows}} workflows.",
@@ -6455,7 +6455,9 @@
       "NO_AUTOMATIC_EXECUTION": "Import only adds configuration. It does not run commands or start connections.",
       "UNSUPPORTED_CONNECTION_TYPE": "Only SSH hosts are supported in this backup format.",
       "SECRETS_AND_STARTUP_EXCLUDED": "Credentials, startup commands, proxies, jump hosts and tunnels are excluded.",
-      "PREFERENCE_SECRET_REDACTED": "Recognized secrets in interface preferences were redacted."
+      "PREFERENCE_SECRET_REDACTED": "Recognized secrets in interface preferences were redacted.",
+      "KEYBINDING_SECRET_EXCLUDED": "Shortcuts containing recognized secrets were excluded.",
+      "KEYBINDINGS_REVIEW_REQUIRED": "Imported shortcuts stay disabled. Snippet shortcuts require selecting a snippet again."
     },
     "errors": {
       "BACKUP_FAILED": "The operation failed. Retry or create a new preview.",
@@ -6474,8 +6476,19 @@
       "WORKFLOW_STORE_INVALID": "The existing workflow library could not be read.",
       "WORKFLOW_HOST_BINDING_REQUIRED": "Select specific target hosts and save the restored workflow first.",
       "HOST_CREDENTIAL_REBIND_REQUIRED": "Configure credentials for the imported host first.",
-      "TRUSTED_UI_REQUIRED": "Use the signed-in desktop interface for configuration backups."
+      "TRUSTED_UI_REQUIRED": "Use the signed-in desktop interface for configuration backups.",
+      "BACKUP_LOCAL_RESTORE_FAILED": "Local display settings could not be written. Retry applying them.",
+      "BACKUP_LOCAL_CONFIGURATION_CHANGED": "Local display settings changed after the preview. Create a new preview.",
+      "BACKUP_KEYBINDING_LIMIT": "Import would exceed the limit of 200 shortcuts.",
+      "BACKUP_KEYBINDING_STORE_INVALID": "The existing shortcut settings could not be read."
     },
-    "steps": "{{count}} steps"
+    "steps": "{{count}} steps",
+    "restoreKeybindings": "Restore custom shortcuts (disabled until reviewed and saved)",
+    "keybindingsCount": "{{count}} custom shortcuts",
+    "keybindingsRestored": "Added {{count}} shortcuts, all disabled. Edit and save them in shortcut settings to enable them.",
+    "keybindingNeedsReview": "Restored from backup; disabled until reviewed and saved",
+    "localRestorePending": "Database configuration was restored, but local display settings could not be written. Retrying will not import again.",
+    "retryLocalRestore": "Retry applying display settings",
+    "editShortcut": "Edit shortcut {{combo}}"
   }
 }

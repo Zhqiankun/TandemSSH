@@ -1,4 +1,8 @@
 import { useRef, useState } from "react";
+import {
+  captureDesktopConfiguration,
+  applyDesktopConfiguration,
+} from "@/settings/desktop-configuration";
 import { useTranslation } from "react-i18next";
 import { Download, Upload, FileJson, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/button";
@@ -19,10 +23,13 @@ function errorCode(error: unknown): string {
 }
 export function ConfigurationBackupPanel() {
   const { t } = useTranslation(),
-    picker = useRef<HTMLInputElement>(null);
+    picker = useRef<HTMLInputElement>(null),
+    localSnapshot = useRef<string | null>(null);
   const [preview, setPreview] = useState<BackupPreview | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
+  const [restoreKeybindings, setRestoreKeybindings] = useState(false),
+    [localRestorePending, setLocalRestorePending] = useState(false);
   const [restorePreferences, setRestorePreferences] = useState(false),
     [result, setResult] = useState<BackupImportResult | null>(null);
   const run = async (work: () => Promise<void>) => {
@@ -40,7 +47,7 @@ export function ConfigurationBackupPanel() {
     run(async () => {
       setPreview(null);
       setResult(null);
-      setPreview(await api.previewExport());
+      setPreview(await api.previewExport(captureDesktopConfiguration()));
     });
   const importPreview = (file?: File) => {
     if (!file) return;
@@ -49,8 +56,20 @@ export function ConfigurationBackupPanel() {
       setResult(null);
       if (file.size > MAX_FILE_BYTES) throw Error("BACKUP_TOO_LARGE");
       setRestorePreferences(false);
+      setRestoreKeybindings(false);
+      localSnapshot.current = JSON.stringify(captureDesktopConfiguration());
       setPreview(await api.previewImport(await file.text()));
     });
+  };
+  const restoreLocal = (value: BackupImportResult) => {
+    if (!value.desktopConfiguration) return;
+    try {
+      applyDesktopConfiguration(value.desktopConfiguration);
+      setLocalRestorePending(false);
+    } catch (error) {
+      setLocalRestorePending(true);
+      throw error;
+    }
   };
   const confirm = () =>
     run(async () => {
@@ -67,9 +86,23 @@ export function ConfigurationBackupPanel() {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
         setPreview(null);
       } else {
-        setResult(await api.apply(preview.id, restorePreferences));
+        if (
+          restorePreferences &&
+          localSnapshot.current !==
+            JSON.stringify(captureDesktopConfiguration())
+        )
+          throw Error("BACKUP_LOCAL_CONFIGURATION_CHANGED");
+        const restored = await api.apply(
+          preview.id,
+          restorePreferences,
+          restoreKeybindings,
+        );
+        setResult(restored);
         setPreview(null);
         window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+        if (restored.keybindingsImported)
+          window.dispatchEvent(new Event("customKeybindingsChanged"));
+        restoreLocal(restored);
       }
     });
   return (
@@ -142,6 +175,13 @@ export function ConfigurationBackupPanel() {
               size: Math.ceil(preview.bytes / 1024),
             })}
           </p>
+          {!!preview.keybindingsCount && (
+            <p className="text-xs">
+              {t("configBackup.keybindingsCount", {
+                count: preview.keybindingsCount,
+              })}
+            </p>
+          )}
           <ul className="max-h-36 space-y-1 overflow-auto text-xs text-muted-foreground">
             {preview.hosts.map((host, index) => (
               <li key={index}>
@@ -189,6 +229,19 @@ export function ConfigurationBackupPanel() {
               {t("configBackup.restorePreferences")}
             </label>
           )}
+          {preview.direction === "import" && !!preview.keybindingsCount && (
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={restoreKeybindings}
+                disabled={busy}
+                onChange={(event) =>
+                  setRestoreKeybindings(event.target.checked)
+                }
+              />
+              {t("configBackup.restoreKeybindings")}
+            </label>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" disabled={busy} onClick={() => void confirm()}>
               {t(
@@ -222,7 +275,25 @@ export function ConfigurationBackupPanel() {
           <p className="text-muted-foreground">
             {t("configBackup.afterImport")}
           </p>
-          {result.preferencesRestored && (
+          {!!result.keybindingsImported && (
+            <p>
+              {t("configBackup.keybindingsRestored", {
+                count: result.keybindingsImported,
+              })}
+            </p>
+          )}
+          {localRestorePending && (
+            <div>
+              <p role="alert">{t("configBackup.localRestorePending")}</p>
+              <Button
+                disabled={busy}
+                onClick={() => void run(async () => restoreLocal(result))}
+              >
+                {t("configBackup.retryLocalRestore")}
+              </Button>
+            </div>
+          )}
+          {result.preferencesRestored && !localRestorePending && (
             <Button
               variant="outline"
               size="sm"

@@ -4106,25 +4106,25 @@
         "cancel": "取消",
         "saveBinding": "保存快捷方式",
         "saveError": "保存键盘快捷键失败",
-        "pressKeysToRecord": "关键组合",
+        "pressKeysToRecord": "快捷键组合",
         "pressKeysPlaceholder": "点击并按下按键",
         "recording": "按下按键……",
         "comboRequiredError": "先按下组合键",
         "textRequiredError": "请输入要发送的文本",
         "controlCodeRequiredError": "请输入单个字母作为控制码",
-        "snippetRequiredError": "选择一段文字",
-        "conflictWarning": "此组合已绑定到 {{combo}}。保存后两者都会生效。",
-        "actionLabel": "行动",
+        "snippetRequiredError": "请选择命令片段",
+        "conflictWarning": "此组合已绑定到 {{combo}}，已有匹配项可能优先生效，请检查冲突。",
+        "actionLabel": "操作",
         "actionCopy": "复制选择",
         "actionPaste": "粘贴",
         "actionSendControlCode": "发送 Ctrl+字母信号",
-        "actionSendText": "发送短信",
+        "actionSendText": "发送文本",
         "actionRunSnippet": "运行现有命令片段",
-        "controlCodeLabel": "信",
+        "controlCodeLabel": "字母",
         "textLabel": "发送的文本",
         "appendEnterLabel": "发送后按回车键",
         "snippetLabel": "片段",
-        "selectSnippetPlaceholder": "选择一段文字",
+        "selectSnippetPlaceholder": "选择命令片段",
         "orphanedSnippetWarning": "未找到命令片段",
         "clipboardPermissionNote": "某些浏览器在首次使用时可能会提示授予剪贴板权限。"
       },
@@ -6414,7 +6414,7 @@
   },
   "configBackup": {
     "title": "配置备份与恢复",
-    "description": "备份 SSH 主机的基本信息、命令流程和界面偏好，不携带 SSH 密码、私钥、API key、指纹信任和任务授权。继续前请核对预览中的具体内容。",
+    "description": "备份 SSH 主机基本信息、命令流程、外观、界面偏好与自定义快捷键，不携带 SSH 密码、私钥、API key、指纹信任和任务授权。继续前请核对预览内容。",
     "previewExport": "预览导出",
     "selectImport": "选择备份文件",
     "working": "正在准备配置…",
@@ -6425,7 +6425,7 @@
     "steps_one": "{{count}} 个步骤",
     "steps_other": "{{count}} 个步骤",
     "inspectContent": "查看备份的完整内容",
-    "restorePreferences": "同时恢复界面偏好（需要手动重新加载）",
+    "restorePreferences": "同时恢复外观和界面偏好（需要手动重新加载）",
     "confirmExport": "确认并下载",
     "confirmImport": "确认并导入",
     "completed": "已新增 {{hosts}} 台主机、{{workflows}} 个流程。",
@@ -6456,7 +6456,9 @@
       "NO_AUTOMATIC_EXECUTION": "导入只新增配置，不执行命令，也不自动连接主机。",
       "UNSUPPORTED_CONNECTION_TYPE": "当前备份格式仅支持 SSH 主机。",
       "SECRETS_AND_STARTUP_EXCLUDED": "不包含凭据、启动命令、代理、跳板和隧道配置。",
-      "PREFERENCE_SECRET_REDACTED": "界面偏好中的已识别敏感内容已脱敏。"
+      "PREFERENCE_SECRET_REDACTED": "界面偏好中的已识别敏感内容已脱敏。",
+      "KEYBINDING_SECRET_EXCLUDED": "含有已识别敏感内容的快捷键已排除。",
+      "KEYBINDINGS_REVIEW_REQUIRED": "快捷键导入后保持禁用；运行片段的快捷键需要重新选择片段。"
     },
     "errors": {
       "BACKUP_FAILED": "操作失败，请重试或重新生成预览。",
@@ -6475,7 +6477,18 @@
       "WORKFLOW_STORE_INVALID": "无法读取现有流程库。",
       "WORKFLOW_HOST_BINDING_REQUIRED": "请先为导入的流程选择具体目标主机并保存。",
       "HOST_CREDENTIAL_REBIND_REQUIRED": "请先为导入的主机重新配置凭据。",
-      "TRUSTED_UI_REQUIRED": "请通过已登录的桌面界面操作配置备份。"
-    }
+      "TRUSTED_UI_REQUIRED": "请通过已登录的桌面界面操作配置备份。",
+      "BACKUP_LOCAL_RESTORE_FAILED": "本地界面设置写入失败，请重试应用设置。",
+      "BACKUP_LOCAL_CONFIGURATION_CHANGED": "预览后本地界面设置发生了变化，请重新预览。",
+      "BACKUP_KEYBINDING_LIMIT": "导入后将超过 200 个快捷键的限制。",
+      "BACKUP_KEYBINDING_STORE_INVALID": "无法读取现有快捷键设置。"
+    },
+    "restoreKeybindings": "恢复自定义快捷键（先禁用，编辑确认后启用）",
+    "keybindingsCount": "{{count}} 个自定义快捷键",
+    "keybindingsRestored": "已新增 {{count}} 个快捷键，全部保持禁用。请在快捷键设置中编辑确认后启用。",
+    "keybindingNeedsReview": "从备份恢复，待编辑确认；目前已禁用",
+    "localRestorePending": "数据库中的配置已恢复，但本地界面设置未能写入。重试不会重复导入。",
+    "retryLocalRestore": "重试应用界面设置",
+    "editShortcut": "编辑快捷键 {{combo}}"
   }
 }

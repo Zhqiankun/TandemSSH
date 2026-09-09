@@ -1,8 +1,8 @@
 import { translateUiText } from "@/i18n/ui-text";
-import type { KeyCombo } from "@/types/keybindings";
+import type { KeyCombo, DefaultKeybindingId } from "@/types/keybindings";
 
 export interface DefaultKeybindingInfo {
-  id: string;
+  id: DefaultKeybindingId;
   combo: KeyCombo;
   description: string;
 }

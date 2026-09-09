@@ -1,12 +1,14 @@
 import { authApi } from "@/main-axios";
+import type { DesktopConfiguration } from "@/types/desktop-preferences";
 import type {
   BackupPreview,
   BackupImportResult,
 } from "@/types/configuration-backup";
 export const configurationBackupApi = {
-  async previewExport(): Promise<BackupPreview> {
-    return (await authApi.post("/configuration-backup/export/preview", {}))
-      .data;
+  async previewExport(desktop?: DesktopConfiguration): Promise<BackupPreview> {
+    return (
+      await authApi.post("/configuration-backup/export/preview", { desktop })
+    ).data;
   },
   async previewImport(content: string): Promise<BackupPreview> {
     return (
@@ -26,11 +28,13 @@ export const configurationBackupApi = {
   async apply(
     id: string,
     restorePreferences: boolean,
+    restoreKeybindings = false,
   ): Promise<BackupImportResult> {
     return (
       await authApi.post(`/configuration-backup/import/${id}`, {
         confirmed: true,
         restorePreferences,
+        restoreKeybindings,
       })
     ).data;
   },

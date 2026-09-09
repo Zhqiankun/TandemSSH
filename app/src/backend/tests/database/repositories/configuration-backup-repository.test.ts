@@ -196,3 +196,104 @@ it("restores preferences only when requested and keeps the target onboarding sta
   expect(restored.preset).toBe("advanced");
   expect(restored.onboarding).toEqual(current.onboarding);
 });
+
+it("appends disabled shortcuts and writes selected appearance in the same receipt", async () => {
+  const f = await fixture();
+  const old = {
+    id: "existing",
+    combo: {
+      key: "c",
+      isCode: false,
+      ctrl: true,
+      alt: false,
+      shift: false,
+      meta: false,
+    },
+    action: { type: "copy" },
+    enabled: true,
+    createdAt: "",
+    updatedAt: "",
+  };
+  await adapter.run(
+    sql`INSERT INTO user_preferences(user_id,theme,custom_keybindings) VALUES ('owner','dark',${JSON.stringify([old])})`,
+  );
+  f.request.fingerprint = (await f.repo.snapshot("owner")).fingerprint;
+  f.request.payload.appearance = {
+    theme: "nord",
+    fontSize: "lg",
+    accentColor: "#123456",
+  };
+  f.request.payload.keybindings = [
+    {
+      ref: randomUUID(),
+      combo: old.combo,
+      action: { type: "runSnippet", snippetRef: "7" },
+      originalEnabled: true,
+    },
+  ];
+  const request = {
+    ...f.request,
+    restorePreferences: true,
+    restoreKeybindings: true,
+  };
+  const result = await f.repo.apply("owner", request);
+  expect(result.keybindingsImported).toBe(1);
+  expect(result.desktopConfiguration?.appearance?.theme).toBe("nord");
+  const rows = await adapter.query<{
+    theme: string;
+    custom_keybindings: string;
+  }>(
+    sql`SELECT theme,custom_keybindings FROM user_preferences WHERE user_id='owner'`,
+  );
+  const keys = JSON.parse(rows[0].custom_keybindings);
+  expect(rows[0].theme).toBe("nord");
+  expect(keys[0]).toEqual(old);
+  expect(keys[1]).toMatchObject({
+    enabled: false,
+    needsReview: true,
+    action: { type: "runSnippet", snippetId: "" },
+  });
+  expect(await f.repo.apply("owner", request)).toEqual(result);
+  expect((await f.repo.snapshot("owner")).hosts).toHaveLength(1);
+});
+it("rolls back hosts and preferences if shortcut import exceeds the target limit", async () => {
+  const f = await fixture();
+  await adapter.run(
+    sql`INSERT INTO user_preferences(user_id,theme,custom_keybindings) VALUES ('owner','dark',${JSON.stringify(Array.from({ length: 200 }, (_, id) => ({ id: String(id) })))})`,
+  );
+  f.request.fingerprint = (await f.repo.snapshot("owner")).fingerprint;
+  f.request.payload.keybindings = [
+    {
+      ref: randomUUID(),
+      combo: {
+        key: "c",
+        isCode: false,
+        ctrl: true,
+        alt: false,
+        shift: false,
+        meta: false,
+      },
+      action: { type: "copy" },
+      originalEnabled: true,
+    },
+  ];
+  f.request.payload.appearance = { theme: "nord" };
+  await expect(
+    f.repo.apply("owner", {
+      ...f.request,
+      restorePreferences: true,
+      restoreKeybindings: true,
+    }),
+  ).rejects.toThrow("BACKUP_KEYBINDING_LIMIT");
+  expect(await adapter.query(sql`SELECT id FROM ssh_data`)).toHaveLength(0);
+  expect(await adapter.query(sql`SELECT * FROM ui_preferences`)).toHaveLength(
+    0,
+  );
+  expect(
+    (
+      await adapter.query<{ theme: string }>(
+        sql`SELECT theme FROM user_preferences`,
+      )
+    )[0].theme,
+  ).toBe("dark");
+});

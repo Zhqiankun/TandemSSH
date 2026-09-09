@@ -13,5 +13,7 @@ export function findMatchingKeybinding(
   e: KeyboardEvent,
   bindings: CustomKeybinding[],
 ): CustomKeybinding | undefined {
-  return bindings.find((kb) => eventMatchesCombo(e, kb.combo));
+  return bindings.find(
+    (kb) => kb.enabled && !kb.needsReview && eventMatchesCombo(e, kb.combo),
+  );
 }

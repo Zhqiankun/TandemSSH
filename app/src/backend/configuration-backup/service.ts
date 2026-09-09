@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { DesktopConfiguration } from "../../types/desktop-preferences.js";
 import type {
   ConfigurationBackup,
   BackupPreview,
@@ -15,6 +16,8 @@ export interface BackupSnapshot {
   hosts: Array<Record<string, unknown>>;
   workflows: Array<{ definition: unknown }>;
   preferences?: unknown;
+  appearance?: unknown;
+  keybindings?: unknown;
 }
 interface PreviewRecord {
   owner: string;
@@ -22,7 +25,11 @@ interface PreviewRecord {
   payload: ConfigurationBackup;
   fingerprint: string;
   settled?: boolean;
-  apply?: { preferences: boolean; promise: Promise<BackupImportResult> };
+  apply?: {
+    preferences: boolean;
+    keybindings: boolean;
+    promise: Promise<BackupImportResult>;
+  };
 }
 export class ConfigurationBackupService {
   private readonly previews = new Map<string, PreviewRecord>();
@@ -37,6 +44,7 @@ export class ConfigurationBackupService {
           digest: string;
           payload: ConfigurationBackup;
           restorePreferences: boolean;
+          restoreKeybindings?: boolean;
         },
       ): Promise<BackupImportResult>;
       audit(userId: string, type: string, data: unknown): Promise<void>;
@@ -78,18 +86,24 @@ export class ConfigurationBackupService {
         name: row.definition.name,
         steps: row.definition.steps.length,
       })),
-      hasPreferences: !!payload.preferences,
+      hasPreferences: !!payload.preferences || !!payload.appearance,
+      keybindingsCount: payload.keybindings?.length ?? 0,
       warnings,
     };
     this.previews.set(preview.id, { owner, preview, payload, fingerprint });
     return structuredClone(preview);
   }
-  async previewExport(userId: string): Promise<BackupPreview> {
+  async previewExport(
+    userId: string,
+    desktop?: DesktopConfiguration,
+  ): Promise<BackupPreview> {
     const snapshot = await this.ports.snapshot(userId),
       data = projectConfigurationBackup(
         snapshot.hosts,
         snapshot.workflows,
-        snapshot.preferences,
+        desktop?.preferences ?? snapshot.preferences,
+        desktop?.appearance ?? snapshot.appearance,
+        snapshot.keybindings,
       );
     return this.add(
       userId,
@@ -140,10 +154,14 @@ export class ConfigurationBackupService {
     userId: string,
     id: string,
     restorePreferences: boolean,
+    restoreKeybindings = false,
   ): Promise<BackupImportResult> {
     const record = this.record(userId, id, "import");
     if (record.apply) {
-      if (record.apply.preferences !== restorePreferences)
+      if (
+        record.apply.preferences !== restorePreferences ||
+        record.apply.keybindings !== restoreKeybindings
+      )
         throw Error("BACKUP_CONFIRMATION_CHANGED");
       return record.apply.promise;
     }
@@ -154,20 +172,30 @@ export class ConfigurationBackupService {
         hosts: record.payload.hosts.length,
         workflows: record.payload.workflows.length,
         restorePreferences,
+        restoreKeybindings,
       });
       return this.ports.apply(userId, {
         id,
         fingerprint: record.fingerprint,
         digest: createHash("sha256")
           .update(
-            JSON.stringify({ payload: record.payload, restorePreferences }),
+            JSON.stringify({
+              payload: record.payload,
+              restorePreferences,
+              restoreKeybindings,
+            }),
           )
           .digest("hex"),
         payload: record.payload,
         restorePreferences,
+        restoreKeybindings,
       });
     })();
-    record.apply = { preferences: restorePreferences, promise };
+    record.apply = {
+      preferences: restorePreferences,
+      keybindings: restoreKeybindings,
+      promise,
+    };
     void promise
       .finally(() => {
         record.settled = true;

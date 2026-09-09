@@ -1,3 +1,15 @@
+export const DEFAULT_KEYBINDING_IDS = [
+  "default-copy-ctrlc",
+  "default-copy-ctrlshiftc",
+  "default-copy-cmdc",
+  "default-paste-ctrlshiftv",
+  "default-ctrlaltw",
+  "default-ctrlaltt",
+  "default-ctrlaltn",
+  "default-ctrlaltq",
+] as const;
+export type DefaultKeybindingId = (typeof DEFAULT_KEYBINDING_IDS)[number];
+
 export interface KeyCombo {
   key: string;
   isCode: boolean;
@@ -23,6 +35,7 @@ export interface CustomKeybinding {
   combo: KeyCombo;
   action: KeybindingAction;
   enabled: boolean;
+  needsReview?: boolean;
   overridesDefaultId?: string;
   createdAt: string;
   updatedAt: string;

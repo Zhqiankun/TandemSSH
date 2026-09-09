@@ -215,7 +215,10 @@ export function KeybindingsDialog({
       toast.error(t("newUi.sidebar.keybindings.controlCodeRequiredError"));
       return;
     }
-    if (actionType === "runSnippet" && !snippetId) {
+    if (
+      actionType === "runSnippet" &&
+      (!snippetId || !snippets.some((s) => String(s.id) === snippetId))
+    ) {
       toast.error(t("newUi.sidebar.keybindings.snippetRequiredError"));
       return;
     }
@@ -258,8 +261,6 @@ export function KeybindingsDialog({
     resetForm();
   }
 
-  const customOnlyBindings = bindings.filter((kb) => !kb.overridesDefaultId);
-
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -280,7 +281,10 @@ export function KeybindingsDialog({
               </span>
               {BUILT_IN_DEFAULTS.map((def) => {
                 const override = bindings.find(
-                  (kb) => kb.overridesDefaultId === def.id,
+                  (kb) =>
+                    kb.overridesDefaultId === def.id &&
+                    kb.enabled &&
+                    !kb.needsReview,
                 );
                 return (
                   <div
@@ -361,12 +365,12 @@ export function KeybindingsDialog({
                 <span className="text-xs text-muted-foreground">
                   {t("newUi.sidebar.keybindings.loading")}
                 </span>
-              ) : customOnlyBindings.length === 0 ? (
+              ) : bindings.length === 0 ? (
                 <span className="text-xs text-muted-foreground/60">
                   {t("newUi.sidebar.keybindings.noCustomBindings")}
                 </span>
               ) : (
-                customOnlyBindings.map((kb) => {
+                bindings.map((kb) => {
                   const orphaned =
                     kb.action.type === "runSnippet" &&
                     !snippets.some((s) => String(s.id) === kb.action.snippetId);
@@ -376,6 +380,11 @@ export function KeybindingsDialog({
                       className="flex items-center justify-between gap-2 border border-border bg-background px-2.5 py-2"
                     >
                       <div className="flex flex-col min-w-0">
+                        {kb.needsReview && (
+                          <span className="text-xs text-amber-500">
+                            {t("configBackup.keybindingNeedsReview")}
+                          </span>
+                        )}
                         <span className="text-xs font-mono">
                           {formatCombo(kb.combo)}
                         </span>
@@ -398,6 +407,9 @@ export function KeybindingsDialog({
                           variant="ghost"
                           size="icon"
                           className="size-7"
+                          aria-label={t("configBackup.editShortcut", {
+                            combo: formatCombo(kb.combo),
+                          })}
                           onClick={() => openEditForm(kb)}
                         >
                           <Pencil className="size-3.5" />

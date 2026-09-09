@@ -1,7 +1,14 @@
 /* eslint-disable no-restricted-syntax -- Desktop-only synchronous SQLite transaction: assertDesktopStorage rejects every non-SQLite dialect before any query. */
 import { and, eq, gte, lt } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
-import { hosts, settings, uiPreferences } from "../db/schema.js";
+import {
+  hosts,
+  settings,
+  uiPreferences,
+  userPreferences,
+} from "../db/schema.js";
+import { restoreKeybindings } from "../../configuration-backup/keyboard.js";
+import type { DesktopConfiguration } from "../../../types/desktop-preferences.js";
 import type { DatabaseContext } from "./database-context.js";
 import { DataCrypto } from "../../utils/data-crypto.js";
 import { updateCachedSetting } from "./settings-cache.js";
@@ -41,6 +48,20 @@ export class ConfigurationBackupRepository {
       .from(uiPreferences)
       .where(eq(uiPreferences.userId, userId))
       .get()?.data;
+    const application = db
+      .select()
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, userId))
+      .get();
+    const applicationConfiguration = application
+      ? {
+          theme: application.theme,
+          fontSize: application.fontSize,
+          accentColor: application.accentColor,
+          language: application.language,
+          customKeybindings: application.customKeybindings,
+        }
+      : undefined;
     const configuration = rows.map((row) => ({
       id: row.id,
       name: row.name,
@@ -55,9 +76,16 @@ export class ConfigurationBackupRepository {
       credentialId: row.credentialId,
     }));
     const fingerprint = createHash("sha256")
-      .update(JSON.stringify({ configuration, rawWorkflows, rawPreferences }))
+      .update(
+        JSON.stringify({
+          configuration,
+          rawWorkflows,
+          rawPreferences,
+          applicationConfiguration,
+        }),
+      )
       .digest("hex");
-    return { rows, rawWorkflows, rawPreferences, fingerprint };
+    return { rows, rawWorkflows, rawPreferences, fingerprint, application };
   }
   async snapshot(userId: string) {
     this.assertDesktopStorage();
@@ -68,6 +96,19 @@ export class ConfigurationBackupRepository {
       throw Error("WORKFLOW_STORE_INVALID");
     return {
       fingerprint: state.fingerprint,
+      appearance: state.application
+        ? Object.fromEntries(
+            ["theme", "fontSize", "accentColor", "language"]
+              .map((key) => [
+                key,
+                state.application![
+                  key as "theme" | "fontSize" | "accentColor" | "language"
+                ],
+              ])
+              .filter(([, value]) => value !== null),
+          )
+        : undefined,
+      keybindings: state.application?.customKeybindings,
       hosts: state.rows.map(
         (row) =>
           DataCrypto.decryptRecord(
@@ -93,6 +134,7 @@ export class ConfigurationBackupRepository {
       digest: string;
       payload: ConfigurationBackup;
       restorePreferences: boolean;
+      restoreKeybindings?: boolean;
     },
   ): Promise<BackupImportResult> {
     this.assertDesktopStorage();
@@ -215,14 +257,18 @@ export class ConfigurationBackupRepository {
           })
           .run();
       const preferencesRestored =
-        request.restorePreferences && !!request.payload.preferences;
-      if (preferencesRestored) {
+        request.restorePreferences &&
+        !!(request.payload.preferences || request.payload.appearance);
+      const desktopConfiguration: DesktopConfiguration | undefined =
+        preferencesRestored ? {} : undefined;
+      if (request.restorePreferences && request.payload.preferences) {
         const preferences = sanitizeUiPreferences(request.payload.preferences);
         // Restoring layout must not reset the target workspace's onboarding state.
         if (before.rawPreferences)
           preferences.onboarding = sanitizeUiPreferences(
             JSON.parse(before.rawPreferences),
           ).onboarding;
+        desktopConfiguration!.preferences = preferences;
         const data = JSON.stringify(preferences),
           updatedAt = new Date().toISOString();
         tx.insert(uiPreferences)
@@ -233,11 +279,45 @@ export class ConfigurationBackupRepository {
           })
           .run();
       }
+      const applicationUpdates: Partial<typeof userPreferences.$inferInsert> =
+        {};
+      if (request.restorePreferences && request.payload.appearance) {
+        Object.assign(applicationUpdates, request.payload.appearance);
+        desktopConfiguration!.appearance = request.payload.appearance;
+      }
+      const importedKeys = request.restoreKeybindings
+        ? restoreKeybindings(request.payload.keybindings ?? [])
+        : [];
+      if (importedKeys.length) {
+        const existing = JSON.parse(
+          before.application?.customKeybindings ?? "[]",
+        );
+        if (!Array.isArray(existing))
+          throw Error("BACKUP_KEYBINDING_STORE_INVALID");
+        if (existing.length + importedKeys.length > 200)
+          throw Error("BACKUP_KEYBINDING_LIMIT");
+        applicationUpdates.customKeybindings = JSON.stringify([
+          ...existing,
+          ...importedKeys,
+        ]);
+      }
+      if (Object.keys(applicationUpdates).length) {
+        applicationUpdates.updatedAt = new Date().toISOString();
+        tx.insert(userPreferences)
+          .values({ userId, ...applicationUpdates })
+          .onConflictDoUpdate({
+            target: userPreferences.userId,
+            set: applicationUpdates,
+          })
+          .run();
+      }
       const result: BackupImportResult = {
         receiptId: request.id,
         hostIds,
         workflowIds: imported.map((row) => row.id),
         preferencesRestored,
+        keybindingsImported: importedKeys.length,
+        desktopConfiguration,
       };
       tx.insert(settings)
         .values({
