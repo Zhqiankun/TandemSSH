@@ -1,3 +1,9 @@
+import { randomUUID } from "node:crypto";
+import { UploadRecoveryCoordinator } from "../../files/upload-recovery-coordinator";
+import { UploadRecoveryStore } from "../../files/upload-recovery-store";
+import { UploadBatchRecoveryStore } from "../../files/upload-batch-recovery-store";
+import { UploadBatchRecoveryService } from "../../files/upload-batch-recovery-service";
+import { uploadBatchRecoveryApi } from "../../../ui/api/upload-batch-recovery-api";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -197,6 +203,7 @@ async function fixture() {
       timeout: 20000,
     });
   return {
+    nativeStore: store,
     remote,
     local,
     root,
@@ -219,6 +226,121 @@ async function fixture() {
   };
 }
 describe("reviewed upload batches over native source and real SFTP", () => {
+  it("saves a running batch through the real queue, restores paused, then continues without repeated bytes", async () => {
+    const f = await fixture(),
+      actor = { userId: "owner" },
+      keys = { load: async () => Buffer.alloc(32, 31) },
+      root = path.join(f.local, "recovery"),
+      windows = new UploadRecoveryCoordinator(
+        f.uploads,
+        new UploadRecoveryStore(root, keys),
+        () => true,
+      ),
+      records = new UploadBatchRecoveryStore(root, keys),
+      token = randomUUID();
+    windows.bind(token);
+    const recovery = new UploadBatchRecoveryService(
+      f.uploads,
+      f.trees,
+      records,
+      windows,
+      {
+        snapshot: async (_t, id) => ({
+          snapshot: JSON.stringify(f.nativeStore.checkpoint(1, id)),
+          selection: f.nativeStore.view(f.nativeStore.owned(1, id)),
+        }),
+        restore: async (_t, id, raw) =>
+          f.nativeStore.restore(1, id, JSON.parse(raw)),
+        forget: async (_t, id) => f.nativeStore.forget(1, id),
+      },
+    );
+    cleanup.push(() => windows.close(token));
+    vi.spyOn(uploadBatchRecoveryApi, "save").mockImplementation((_s, input) =>
+      recovery.save(actor, token, input),
+    );
+    const action = f.files.action;
+    f.files.start = (_s, id, input, signal) =>
+      recovery.start({ ...actor, signal }, id, input);
+    f.files.action = (session, id, op, body, signal) => {
+      const a = { ...actor, signal };
+      if (op === "finish" && recovery.ownsFile(id))
+        return recovery.finish(a, id);
+      if (op === "resume" && recovery.ownsFile(id))
+        return recovery.resume(
+          a,
+          id,
+          session,
+          (body as { takeover?: boolean } | undefined)?.takeover,
+        );
+      return action(session, id, op, body, signal);
+    };
+    f.api.prepare = (session, tree, entry, request, manifest, signal) =>
+      recovery.prepare(
+        { ...actor, signal },
+        tree,
+        entry,
+        session,
+        request,
+        manifest,
+      );
+    f.api.directories = (_s, tree, takeover, signal) =>
+      recovery.directories({ ...actor, signal }, tree, takeover);
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>((r) => {
+        enter = r;
+      }),
+      gate = new Promise<void>((r) => {
+        release = r;
+      }),
+      chunk = f.files.chunk;
+    vi.spyOn(f.files, "chunk").mockImplementationOnce(async (...args) => {
+      enter();
+      await gate;
+      return chunk(...args);
+    });
+    f.queue.setConcurrency(1);
+    const started = await f.start();
+    await entered;
+    const saving = f.batches.save(started.id);
+    await vi.waitFor(() =>
+      expect(f.batches.getSnapshot()[0]?.state).toBe("saving"),
+    );
+    release();
+    const saved = await saving;
+    expect(saved.state).toBe("available");
+    expect(f.queue.getSnapshot()).toEqual([]);
+    const choice = f.nativeStore.select(1, [f.root]);
+    const selected = await choice,
+      restored = await recovery.restore(
+        actor,
+        token,
+        saved.id,
+        "session",
+        selected.id,
+        true,
+        false,
+      );
+    await f.batches.restore(restored);
+    const before = f.remote.writes();
+    expect(f.batches.getSnapshot()[0].state).toBe("paused");
+    await new Promise((r) => setTimeout(r, 10));
+    expect(f.remote.writes()).toBe(before);
+    await f.batches.resumeBatch(saved.id);
+    await f.settle();
+    expect(f.batches.getSnapshot()[0]).toMatchObject({
+      completed: 4,
+      failed: 0,
+      unknown: 0,
+    });
+    expect(f.queue.getSnapshot().every((j) => !j.error)).toBe(true);
+    expect((await records.get(actor.userId, saved.id))?.state).toBe(
+      "completed",
+    );
+    expect(await f.remote.read("/dest/应用/结果 %.txt")).toEqual(
+      Buffer.from([0, 255, 2, 10]),
+    );
+  });
+
   it("keeps completed rows and retries a failed batch receipt before forgetting without retransmitting", async () => {
     const f = await fixture();
     const complete = vi

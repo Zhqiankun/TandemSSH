@@ -24,6 +24,23 @@ interface Binding {
 }
 export class UploadRecoveryCoordinator {
   private windows = new Map<string, WindowScope>();
+  private closeObservers = new Set<(token: string) => Promise<void>>();
+  onWindowClose(close: (token: string) => Promise<void>) {
+    this.closeObservers.add(close);
+    return () => {
+      this.closeObservers.delete(close);
+    };
+  }
+  assertWindow(actor: UploadActor, token: string) {
+    this.scope(actor, token);
+  }
+  withWindow<T>(
+    actor: UploadActor,
+    token: string,
+    work: (actor: UploadActor) => Promise<T>,
+  ) {
+    return this.call(actor, token, work);
+  }
   private active = new Map<string, Binding>();
   private aliases = new Map<string, { userId: string; recordId: string }>();
   private pendingRelease = new Map<
@@ -152,6 +169,7 @@ export class UploadRecoveryCoordinator {
           /* A running commit or failed persistence remains unavailable for another writer. */
         }
       }
+    for (const close of this.closeObservers) await close(token);
     for (const [id, a] of this.aliases)
       if (a.userId === w.userId) this.aliases.delete(id);
     return { closed: true };

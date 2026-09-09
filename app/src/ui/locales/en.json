@@ -6139,5 +6139,84 @@
       "UPLOAD_SOURCE_CHANGED": "The selected file name, timestamp, size or contents do not match the original manifest. Resume was refused.",
       "UPLOAD_RESULT_UNVERIFIED": "The remote destination cannot be confirmed as expected. The commit was not repeated."
     }
+  },
+  "uploadBatchRecovery": {
+    "open": "Recover upload batches",
+    "title": "Saved upload batches",
+    "hint": "Review the saved target plan and select the original source again. Restored batches stay paused until you continue them.",
+    "connect": "Connect to the original server to recover a batch.",
+    "busy": "Checking the batch. Large source selections may take a while.",
+    "failed": "The batch action did not finish. Its existing progress is retained.",
+    "empty": "No saved upload batches.",
+    "progress": "Completed {{completed}} / {{total}} · Paused files {{paused}} · Uncertain results {{unknown}}",
+    "plan": "Original target plan",
+    "target": "Remote target",
+    "result": "Saved result or action",
+    "done": "Completed and verified",
+    "choose": "Choose the original directory again",
+    "chooseFiles": "Or select the original files again",
+    "reviewed": "I have reviewed the original targets and confirm the saved directory merge plan for this recovery.",
+    "overwrite": "Allow overwriting the existing targets in this reviewed batch.",
+    "restore": "Verify and restore to the paused queue",
+    "discard": "Abandon this recovery",
+    "discardHint": "Remove only this batch’s verified temporary upload files. Final files and directories are retained. Uncertain results must be checked first.",
+    "confirmDiscard": "Confirm abandon and clean partial files",
+    "unknown": "Uncertain commits are checked against the remote targets; they are never automatically repeated. Existing directories are recorded as merged after verification.",
+    "takeover": "Allow taking control if cleanup needs to write to this server.",
+    "check": "Check uncertain results",
+    "remove": "Remove this finished recovery record",
+    "save": "Save batch progress",
+    "continue": "Continue batch",
+    "takeoverContinue": "Take control and continue batch",
+    "states": {
+      "preparing": "Saving",
+      "available": "Ready to recover",
+      "claimed": "In use",
+      "interrupted": "Interrupted",
+      "completed": "Completed",
+      "cancelled": "Abandoned"
+    },
+    "batchStates": {
+      "creating": "Preparing directories",
+      "running": "Transferring",
+      "saving": "Pausing and saving progress",
+      "paused": "Paused · Waiting for you to continue",
+      "finished": "Batch ended",
+      "cancelled": "Cancelled"
+    },
+    "entryStates": {
+      "created": "Directory created",
+      "merged": "Directory merged",
+      "skipped": "Skipped",
+      "failed": "Failed",
+      "unknown": "Uncertain"
+    },
+    "actions": {
+      "create": "Create",
+      "merge": "Merge directory",
+      "overwrite": "Overwrite existing file",
+      "skip": "Skip"
+    },
+    "errors": {
+      "UPLOAD_BATCH_BUSY": "This batch is busy or in use by another instance.",
+      "UPLOAD_BATCH_CONFLICT": "The recovery record changed. Refresh the list.",
+      "UPLOAD_BATCH_SOURCE_CHANGED": "The selected source no longer matches the saved batch.",
+      "UPLOAD_SOURCE_CHANGED": "The original source changed. Recovery was stopped.",
+      "UPLOAD_BATCH_REVIEW_REQUIRED": "Review the original target plan first.",
+      "UPLOAD_BATCH_MEMBER_INVALID": "An upload does not belong to this saved batch.",
+      "UPLOAD_BATCH_NOT_AVAILABLE": "This batch cannot be restored in its current state.",
+      "UPLOAD_BATCH_RECONCILE_REQUIRED": "Check the uncertain results before abandoning recovery.",
+      "UPLOAD_BATCH_ENCRYPTION_UNAVAILABLE": "System encryption is unavailable. Existing progress remains in memory.",
+      "UPLOAD_BATCH_KEY_MISSING": "The original system encryption key is unavailable.",
+      "UPLOAD_BATCH_LIMIT": "Saved batch storage is full. Remove finished records first.",
+      "UPLOAD_BATCH_DECRYPT_FAILED": "The saved batch could not be decrypted.",
+      "UPLOAD_BATCH_NOT_FOUND": "This saved batch is no longer available.",
+      "UPLOAD_BATCH_DESKTOP_REQUIRED": "Batch recovery requires the desktop client.",
+      "UPLOAD_BATCH_SOURCE_FAILED": "The native source could not be verified.",
+      "UPLOAD_BATCH_TIMEOUT": "The native source request timed out.",
+      "UPLOAD_BATCH_INVALID": "The saved batch is invalid.",
+      "UPLOAD_BATCH_PATH_INVALID": "The local recovery storage path changed.",
+      "UPLOAD_STATE_INVALID": "Wait for active writes to pause, then save the batch again."
+    }
   }
 }

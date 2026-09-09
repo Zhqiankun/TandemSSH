@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { uploadCheckpointSchema } from "./upload-checkpoint.js";
 import {
   uploadTreeCheckpointSchema,
   type UploadTreeCheckpoint,
@@ -245,7 +246,12 @@ export class UploadTreeService {
     }
   }
   /** Only an authenticated recovery coordinator may supply persisted metadata. */
-  async restore(actor: UploadActor, raw: unknown, sessionId: string) {
+  async restore(
+    actor: UploadActor,
+    raw: unknown,
+    sessionId: string,
+    options: { reconcileDirectories?: boolean } = {},
+  ) {
     const c = uploadTreeCheckpointSchema.parse(raw);
     if (c.userId !== actor.userId) throw Error("UPLOAD_NOT_FOUND");
     z.string().min(1).max(256).parse(sessionId);
@@ -306,6 +312,8 @@ export class UploadTreeService {
       const t = await this.target(actor, r, sessionId);
       release = t.retain?.();
       await this.root(actor, r, t);
+      if (options.reconcileDirectories)
+        await this.reconcileDirectoryEntries(actor, r, t);
       for (const e of [...entries.values()].sort(
         (a, b) => a.names.length - b.names.length,
       )) {
@@ -727,6 +735,131 @@ export class UploadTreeService {
         .map((e) => ({ id: e.id, path: e.path, ...e.result! }));
     } finally {
       releases.reverse().forEach((fn) => fn());
+      r.busy = false;
+    }
+  }
+  /** A durable batch record retains the result; this only releases its in-memory view. */
+  releaseRecovery(actor: UploadActor, id: string) {
+    const r = this.owned(actor, id);
+    if (
+      r.busy ||
+      r.preparingEntries ||
+      [...r.entries.values()].some((e) => e.completion)
+    )
+      throw Error("UPLOAD_BUSY");
+    r.cancelled = true;
+    this.records.delete(id);
+  }
+  private async reconcileDirectoryEntries(
+    actor: UploadActor,
+    r: Tree,
+    t: UploadTarget,
+  ) {
+    const results = [];
+    for (const e of [...r.entries.values()].sort(
+      (a, b) => a.names.length - b.names.length,
+    ))
+      if (e.view.kind === "directory" && e.view.result?.state === "unknown") {
+        await this.parents(actor, r, e, t, false);
+        t.check("write", e.view.path, e.view.path);
+        const stat = await t.io.stat(e.view.path);
+        if (
+          stat.kind !== "directory" ||
+          (await t.io.resolve(e.view.path)) !== e.view.path
+        )
+          throw Error("FILE_TARGET_CHANGED");
+        this.alive(actor, r);
+        await this.ports.audit(actor.userId, "upload.directory.reconciled", {
+          treeId: r.view.id,
+          entryId: e.view.id,
+          path: e.view.path,
+          state: "merged",
+        });
+        e.directory = uploadDirectoryAttributes(stat);
+        e.view.status = "directory";
+        e.view.result = { state: "merged", mode: stat.mode & 0o7777 };
+        results.push({
+          entryId: e.view.id,
+          signature: e.directory,
+          result: e.view.result,
+        });
+      }
+    return results;
+  }
+  directoryReceipts(actor: UploadActor, id: string) {
+    const r = this.owned(actor, id);
+    return structuredClone(
+      [...r.entries.values()]
+        .filter(
+          (e) =>
+            e.directory &&
+            ["created", "merged"].includes(e.view.result?.state ?? ""),
+        )
+        .map((e) => ({
+          entryId: e.view.id,
+          signature: e.directory!,
+          result: e.view.result!,
+        })),
+    );
+  }
+  async reconcileDirectories(actor: UploadActor, id: string) {
+    const r = this.owned(actor, id);
+    this.alive(actor, r);
+    if (r.busy || r.preparingEntries) throw Error("UPLOAD_BUSY");
+    r.busy = true;
+    let release: (() => void) | undefined;
+    try {
+      const t = await this.target(actor, r);
+      release = t.retain?.();
+      return structuredClone(await this.reconcileDirectoryEntries(actor, r, t));
+    } finally {
+      release?.();
+      r.busy = false;
+    }
+  }
+  async reconcileMember(
+    actor: UploadActor,
+    id: string,
+    entryId: string,
+    raw: unknown,
+    takeover: boolean,
+  ) {
+    const r = this.owned(actor, id),
+      e = r.entries.get(entryId);
+    if (r.busy || !e || e.view.kind !== "file")
+      throw Error("UPLOAD_TREE_ENTRY_UNAVAILABLE");
+    const c = uploadCheckpointSchema.parse(raw);
+    if (
+      c.userId !== actor.userId ||
+      c.constraint?.tree?.id !== r.lineageId ||
+      c.constraint?.tree?.entryId !== entryId ||
+      c.targetKey !== r.targetKey ||
+      c.acceptedHostKey !== r.peer ||
+      c.canonicalPath !== e.view.path ||
+      c.manifest.size !== e.view.size
+    )
+      throw Error("UPLOAD_RESULT_UNVERIFIED");
+    r.busy = true;
+    try {
+      const t = await this.target(actor, r);
+      await this.parents(actor, r, e, t, false);
+      const result = await this.uploads.reconcile(
+        actor,
+        c,
+        r.view.sessionId,
+        takeover,
+      );
+      if (!result) throw Error("UPLOAD_RESULT_UNVERIFIED");
+      this.alive(actor, r);
+      e.view.fileResult = {
+        state: "completed",
+        transferId: c.id,
+        bytes: result.bytes,
+        sha256: result.sha256,
+        completedAt: Date.now(),
+      };
+      return structuredClone(e.view.fileResult);
+    } finally {
       r.busy = false;
     }
   }

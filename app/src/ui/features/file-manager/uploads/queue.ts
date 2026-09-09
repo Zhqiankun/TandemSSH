@@ -65,6 +65,7 @@ export interface UploadInput {
   localPath?: string;
 }
 interface Job {
+  frozen?: boolean;
   preserve?: boolean;
   binding?: ManagedUploadBinding;
   released?: boolean;
@@ -250,6 +251,7 @@ export class UploadQueue {
   }
   start(id: string, overwrite: boolean, takeover = false) {
     const j = this.job(id);
+    if (j.frozen) return;
     if (j.view.state !== "awaiting-review") return;
     j.overwrite = j.binding?.kind === "file" ? j.binding.overwrite : overwrite;
     j.takeover = takeover;
@@ -268,6 +270,7 @@ export class UploadQueue {
   }
   resume(id: string, sessionId: string, takeover = false) {
     const j = this.job(id);
+    if (j.frozen) return;
     if (
       !["paused", "failed"].includes(j.view.state) ||
       !j.file ||
@@ -291,6 +294,7 @@ export class UploadQueue {
     takeover = false,
   ) {
     const j = this.job(id);
+    if (j.frozen) throw Error("UPLOAD_BUSY");
     if (j.binding?.kind === "record") {
       if (j.view.state === "failed") await j.binding.retry?.(takeover);
       return;
@@ -379,6 +383,112 @@ export class UploadQueue {
       j.view.error =
         value.error ??
         (value.temporaryPath ? "UPLOAD_CLEANUP_PENDING" : undefined);
+  }
+  async quiesce(ids: string[]) {
+    const jobs = ids.flatMap((id) =>
+        this.jobs.get(id) ? [this.jobs.get(id)!] : [],
+      ),
+      epoch = this.epoch;
+    for (const j of jobs) {
+      j.frozen = true;
+      if (j.view.state === "uploading") {
+        j.pause = true;
+        j.view.state = "pausing";
+      }
+    }
+    this.emit();
+    if (jobs.some((j) => j.controller))
+      await new Promise<void>((resolve) => {
+        const off = this.subscribe(() => {
+          if (
+            jobs.every((j) => !j.controller || this.jobs.get(j.view.id) !== j)
+          ) {
+            off();
+            resolve();
+          }
+        });
+      });
+    if (epoch !== this.epoch) throw Error("UPLOAD_CANCELLED");
+    try {
+      for (const j of jobs) {
+        if (j.view.state === "completed") {
+          await this.forgetTransfer(j);
+          continue;
+        }
+        if (
+          j.view.transfer?.temporaryPath &&
+          !["unknown", "completed", "cancelled"].includes(j.view.transfer.state)
+        ) {
+          const view = await this.api.action(
+            j.view.sessionId,
+            j.view.transfer.id,
+            "pause",
+          );
+          j.view.transfer = view;
+          if (view.state === "completed") {
+            this.cancellationResult(j, view);
+            await this.forgetTransfer(j);
+            continue;
+          }
+          if (view.state !== "paused" && view.state !== "unknown")
+            throw Error(view.error ?? "UPLOAD_STATE_INVALID");
+          j.view.state = view.state;
+          j.work = undefined;
+        }
+      }
+    } catch (error) {
+      this.unfreeze(ids);
+      throw error;
+    }
+    this.emit();
+    return jobs.map((j) => structuredClone(j.view));
+  }
+  unfreeze(ids: string[]) {
+    for (const id of ids) {
+      const j = this.jobs.get(id);
+      if (j) j.frozen = false;
+    }
+    this.emit();
+    this.drain();
+  }
+  releaseSaved(ids: string[]) {
+    for (const id of ids) {
+      const j = this.jobs.get(id);
+      if (j?.controller) throw Error("UPLOAD_BUSY");
+      if (j) {
+        j.preserve = true;
+        j.file = undefined;
+        j.manifest = undefined;
+        this.jobs.delete(id);
+      }
+    }
+    this.emit();
+  }
+  adoptBatch(
+    id: string,
+    recordId: string,
+    state: UploadQueueState,
+    view?: UploadView,
+    manifest?: UploadManifest,
+  ) {
+    const j = this.job(id);
+    j.view.recoveryId = recordId;
+    j.view.state = state;
+    j.view.transfer = view;
+    j.manifest = manifest;
+    j.work = state === "queued" ? "prepare" : undefined;
+    j.pause = state === "paused";
+    j.preserve = true;
+  }
+  completeRecord(id: string, view: UploadView) {
+    const j = this.jobs.get(id);
+    if (!j) return;
+    j.view.state = "completed";
+    j.view.transfer = view;
+    j.view.error = undefined;
+    j.file = undefined;
+    j.manifest = undefined;
+    this.emit();
   }
   async suspend(
     id: string,
@@ -469,6 +579,7 @@ export class UploadQueue {
   }
   async cancel(id: string, skip = false) {
     const j = this.job(id);
+    if (j.frozen) return;
     if (
       [
         "completed",
@@ -536,6 +647,7 @@ export class UploadQueue {
             j.view.state,
           ) ||
           j.controller ||
+          j.frozen ||
           j.view.transfer?.temporaryPath
         )
           continue;
@@ -586,7 +698,10 @@ export class UploadQueue {
   private drain() {
     while (this.active < this.limit) {
       const j = [...this.jobs.values()].find(
-        (j) => j.work && (j.binding?.kind !== "file" || j.binding.ready()),
+        (j) =>
+          j.work &&
+          !j.frozen &&
+          (j.binding?.kind !== "file" || j.binding.ready()),
       );
       if (!j) break;
       const work = j.work!;
@@ -646,6 +761,11 @@ export class UploadQueue {
       }
       if (!j.view.transfer || !j.manifest)
         throw Error("UPLOAD_PREVIEW_REQUIRED");
+      if (j.frozen || (j.binding?.kind === "file" && !j.binding.ready())) {
+        j.work = work === "prepare" ? "upload" : work;
+        j.view.state = j.view.transfer.temporaryPath ? "paused" : "queued";
+        return;
+      }
       j.view.transfer =
         work === "resume"
           ? await this.api.action(

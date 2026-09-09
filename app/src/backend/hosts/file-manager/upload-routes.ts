@@ -1,3 +1,4 @@
+import type { UploadBatchRecoveryService } from "../../files/upload-batch-recovery-service.js";
 import type { UploadRecoveryCoordinator } from "../../files/upload-recovery-coordinator.js";
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
@@ -17,6 +18,7 @@ export function registerUploadRoutes(
   uploads: UploadService,
   trees?: UploadTreeService,
   recovery?: UploadRecoveryCoordinator,
+  batches?: UploadBatchRecoveryService,
 ) {
   const prefix = "/ssh/file_manager/ssh/uploads",
     id = z.string().uuid();
@@ -41,8 +43,12 @@ export function registerUploadRoutes(
       Promise.resolve()
         .then(() => {
           const actor = { userId: user.userId, signal: stop.signal };
-          if (typeof req.params.id === "string")
+          if (typeof req.params.id === "string") {
             recovery?.assertActive(actor, req.params.id);
+            batches?.assertActive(actor, req.params.id);
+          }
+          if (typeof req.params.treeId === "string")
+            batches?.assertTree(actor, req.params.treeId);
           return work(actor, req);
         })
         .then((value) => {
@@ -143,6 +149,92 @@ export function registerUploadRoutes(
       }),
     );
   }
+  if (batches) {
+    const window = z.object({ windowToken: id }).strict(),
+      record = window.extend({ id });
+    app.post(
+      prefix + "/batches/recovery/list",
+      route((a, req) => batches.list(a, window.parse(req.body).windowToken)),
+    );
+    app.post(
+      prefix + "/batches/recovery/detail",
+      route((a, req) => {
+        const p = record.parse(req.body);
+        return batches.detail(a, p.windowToken, p.id);
+      }),
+    );
+    app.post(
+      prefix + "/batches/recovery/save",
+      route((a, req) => {
+        const p = record
+          .extend({
+            treeId: id,
+            sourceId: id,
+            members: z
+              .array(
+                z
+                  .object({
+                    entryId: z.string().min(1).max(128),
+                    uploadId: id.optional(),
+                    cancelled: z.boolean().optional(),
+                  })
+                  .strict(),
+              )
+              .max(4096),
+          })
+          .parse(req.body);
+        return batches.save(a, p.windowToken, p);
+      }),
+    );
+    app.post(
+      prefix + "/batches/recovery/restore",
+      route((a, req) => {
+        const p = record
+          .extend({
+            sessionId: z.string().min(1).max(256),
+            sourceId: id,
+            reviewed: z.boolean(),
+            overwrite: z.boolean(),
+          })
+          .parse(req.body);
+        return batches.restore(
+          a,
+          p.windowToken,
+          p.id,
+          p.sessionId,
+          p.sourceId,
+          p.reviewed,
+          p.overwrite,
+        );
+      }),
+    );
+    for (const operation of ["check", "discard"] as const)
+      app.post(
+        prefix + "/batches/recovery/" + operation,
+        route((a, req) => {
+          const p = record
+            .extend({
+              sessionId: z.string().min(1).max(256),
+              takeover: z.boolean(),
+            })
+            .parse(req.body);
+          return batches[operation](
+            a,
+            p.windowToken,
+            p.id,
+            p.sessionId,
+            p.takeover,
+          );
+        }),
+      );
+    app.post(
+      prefix + "/batches/recovery/remove",
+      route((a, req) => {
+        const p = record.parse(req.body);
+        return batches.remove(a, p.windowToken, p.id);
+      }),
+    );
+  }
   if (trees) {
     app.post(
       prefix + "/trees/preview",
@@ -192,7 +284,7 @@ export function registerUploadRoutes(
           .object({ takeover: z.boolean().default(false) })
           .strict()
           .parse(req.body);
-        return trees.directories(
+        return (batches ?? trees).directories(
           actor,
           id.parse(req.params.treeId),
           p.takeover,
@@ -210,7 +302,11 @@ export function registerUploadRoutes(
           })
           .strict()
           .parse(req.body);
-        return trees.prepareEntry(
+        return (
+          batches
+            ? batches.prepare.bind(batches)
+            : trees.prepareEntry.bind(trees)
+        )(
           actor,
           id.parse(req.params.treeId),
           z.string().min(1).max(128).parse(req.params.entryId),
@@ -224,7 +320,11 @@ export function registerUploadRoutes(
       prefix + "/trees/:treeId/entries/:entryId/complete",
       route((actor, req) => {
         const p = z.object({ uploadId: id }).strict().parse(req.body);
-        return trees.completeEntry(
+        return (
+          batches
+            ? batches.complete.bind(batches)
+            : trees.completeEntry.bind(trees)
+        )(
           actor,
           id.parse(req.params.treeId),
           z.string().min(1).max(128).parse(req.params.entryId),
@@ -234,7 +334,11 @@ export function registerUploadRoutes(
     );
     app.post(
       prefix + "/trees/:treeId/cancel",
-      route((actor, req) => trees.cancel(actor, id.parse(req.params.treeId))),
+      route((actor, req) =>
+        batches
+          ? batches.cancelTree(actor, id.parse(req.params.treeId))
+          : trees.cancel(actor, id.parse(req.params.treeId)),
+      ),
     );
     app.post(
       prefix + "/trees/:treeId/forget",
@@ -262,7 +366,7 @@ export function registerUploadRoutes(
   app.post(
     prefix + "/:id/start",
     route((actor, req) =>
-      uploads.start(
+      (batches ?? uploads).start(
         actor,
         id.parse(req.params.id),
         z
@@ -280,6 +384,7 @@ export function registerUploadRoutes(
         .strict()
         .parse(req.query);
       if (!Buffer.isBuffer(req.body)) throw Error("UPLOAD_CHUNK_INVALID");
+      batches?.assertChunk(actor, id.parse(req.params.id));
       return uploads.chunk(actor, id.parse(req.params.id), q.offset, req.body);
     }),
   );
@@ -297,7 +402,7 @@ export function registerUploadRoutes(
         })
         .strict()
         .parse(req.body);
-      return uploads.resume(
+      return (batches ?? uploads).resume(
         actor,
         id.parse(req.params.id),
         p.sessionId,
@@ -308,9 +413,11 @@ export function registerUploadRoutes(
   app.post(
     prefix + "/:id/finish",
     route((actor, req) =>
-      recovery
-        ? recovery.finish(actor, id.parse(req.params.id))
-        : uploads.finish(actor, id.parse(req.params.id)),
+      batches?.ownsFile(id.parse(req.params.id))
+        ? batches.finish(actor, id.parse(req.params.id))
+        : recovery
+          ? recovery.finish(actor, id.parse(req.params.id))
+          : uploads.finish(actor, id.parse(req.params.id)),
     ),
   );
   app.post(
@@ -324,7 +431,11 @@ export function registerUploadRoutes(
       return uploads
         .cancel(actor, uploadId, p.cleanup)
         .then((view) =>
-          recovery ? recovery.cancelled(actor, uploadId, view) : view,
+          batches?.ownsFile(uploadId)
+            ? batches.cancelled(actor, uploadId, view)
+            : recovery
+              ? recovery.cancelled(actor, uploadId, view)
+              : view,
         );
     }),
   );

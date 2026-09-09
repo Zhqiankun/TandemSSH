@@ -656,6 +656,33 @@ export class UploadService {
       savedAt: Date.now(),
     });
   }
+  assertTreeMember(
+    actor: UploadActor,
+    id: string,
+    treeId: string,
+    entryId: string,
+  ) {
+    const r = this.owned(actor, id);
+    if (
+      r.constraint?.tree?.id !== treeId ||
+      r.constraint?.tree?.entryId !== entryId
+    )
+      throw new DocumentError("UPLOAD_BATCH_MEMBER_INVALID");
+  }
+  captureRecovery(actor: UploadActor, id: string) {
+    const r = this.owned(actor, id);
+    if (
+      r.busy ||
+      r.pending ||
+      r.suspending ||
+      !r.stageCreated ||
+      !r.view.temporaryPath ||
+      !r.acceptedHostKey ||
+      !["uploading", "paused", "failed", "unknown"].includes(r.view.state)
+    )
+      throw new DocumentError("UPLOAD_STATE_INVALID");
+    return this.snapshot(r);
+  }
   async preserve(actor: UploadActor, id: string) {
     const r = this.owned(actor, id);
     r.cancelRequested = true;

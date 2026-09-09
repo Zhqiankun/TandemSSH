@@ -6139,5 +6139,84 @@
       "UPLOAD_SOURCE_CHANGED": "所选文件的名称、时间、大小或内容与原清单不一致，已拒绝续传。",
       "UPLOAD_RESULT_UNVERIFIED": "远端目标尚不能确认与预期一致，未重试提交。"
     }
+  },
+  "uploadBatchRecovery": {
+    "open": "查看可恢复批次",
+    "title": "本机上传批次恢复",
+    "hint": "核对原目标清单并重新选择来源。恢复后先保持暂停，点击“继续整批”才会继续传输。",
+    "connect": "请连接原服务器后恢复批次。",
+    "busy": "正在核对批次，较大的来源清单可能需要一些时间。",
+    "failed": "本次批次操作未完成，已有进度会保留。",
+    "empty": "暂无已保存的上传批次。",
+    "progress": "已完成 {{completed}} / {{total}} 项 · 暂停文件 {{paused}} 项 · 结果待核对 {{unknown}} 项",
+    "plan": "原目标清单",
+    "target": "远端目标",
+    "result": "已保存的结果或操作",
+    "done": "已完成并校验",
+    "choose": "重新选择原上传目录",
+    "chooseFiles": "或重新选择原上传文件",
+    "reviewed": "我已核对原目标清单，并重新同意本批次原有的目录合并计划。",
+    "overwrite": "允许覆盖本次核对清单中的已有目标文件。",
+    "restore": "核验并恢复到暂停队列",
+    "discard": "放弃此批次恢复",
+    "discardHint": "仅清理本批次经核验的上传临时文件，保留最终文件和目录。结果未知的操作需先核对。",
+    "confirmDiscard": "确认放弃并清理部分文件",
+    "unknown": "对未决提交核对实际远端结果，不自动重复提交。目标目录核验存在后按合并结果记录。",
+    "takeover": "若清理需要写入服务器，允许人工接管当前控制权。",
+    "check": "核对未决结果",
+    "remove": "移除已结束的恢复记录",
+    "save": "保存整批进度",
+    "continue": "继续整批",
+    "takeoverContinue": "接管并继续整批",
+    "states": {
+      "preparing": "正在保存",
+      "available": "可恢复",
+      "claimed": "正在使用",
+      "interrupted": "上次运行已中断",
+      "completed": "已完成",
+      "cancelled": "已放弃"
+    },
+    "batchStates": {
+      "creating": "正在准备目录",
+      "running": "正在传输",
+      "saving": "正在暂停并保存进度",
+      "paused": "已暂停，等待你继续",
+      "finished": "本批次已结束",
+      "cancelled": "已取消"
+    },
+    "entryStates": {
+      "created": "目录已创建",
+      "merged": "目录已合并",
+      "skipped": "已跳过",
+      "failed": "执行失败",
+      "unknown": "结果待核对"
+    },
+    "actions": {
+      "create": "创建",
+      "merge": "合并目录",
+      "overwrite": "覆盖已有文件",
+      "skip": "跳过"
+    },
+    "errors": {
+      "UPLOAD_BATCH_BUSY": "此批次正在处理，或被另一个客户端实例使用。",
+      "UPLOAD_BATCH_CONFLICT": "恢复记录已变化，请刷新清单。",
+      "UPLOAD_BATCH_SOURCE_CHANGED": "本次选择的来源与原批次不一致。",
+      "UPLOAD_SOURCE_CHANGED": "原始来源已变化，已停止恢复。",
+      "UPLOAD_BATCH_REVIEW_REQUIRED": "请先核对原目标清单。",
+      "UPLOAD_BATCH_MEMBER_INVALID": "有文件不属于此批次，已停止保存。",
+      "UPLOAD_BATCH_NOT_AVAILABLE": "此批次当前无法恢复，请刷新状态。",
+      "UPLOAD_BATCH_RECONCILE_REQUIRED": "请先核对未知结果，再放弃恢复。",
+      "UPLOAD_BATCH_ENCRYPTION_UNAVAILABLE": "系统加密不可用，当前进度仍保留在内存中。",
+      "UPLOAD_BATCH_KEY_MISSING": "无法取得原系统加密密钥。",
+      "UPLOAD_BATCH_LIMIT": "批次恢复存储已满，请先移除已结束记录。",
+      "UPLOAD_BATCH_DECRYPT_FAILED": "无法解密此批次记录。",
+      "UPLOAD_BATCH_NOT_FOUND": "此批次恢复记录已不存在。",
+      "UPLOAD_BATCH_DESKTOP_REQUIRED": "整批恢复需要使用桌面客户端。",
+      "UPLOAD_BATCH_SOURCE_FAILED": "无法核对原生来源，请重新选择。",
+      "UPLOAD_BATCH_TIMEOUT": "原生来源请求超时，请重试。",
+      "UPLOAD_BATCH_INVALID": "批次记录无效，已停止恢复。",
+      "UPLOAD_BATCH_PATH_INVALID": "本机恢复记录的保存路径已变化。",
+      "UPLOAD_STATE_INVALID": "请等待在途写入暂停，再保存此批次。"
+    }
   }
 }

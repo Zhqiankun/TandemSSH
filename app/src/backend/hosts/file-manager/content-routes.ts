@@ -1,3 +1,4 @@
+import { uploadBatchRecovery } from "../../files/upload-batch-recovery-production.js";
 import { uploadRecovery } from "../../files/upload-recovery-production.js";
 import { registerUploadRoutes } from "./upload-routes.js";
 import { uploadTransfers, uploadTrees } from "../../files/production.js";
@@ -17,7 +18,13 @@ export function registerFileContentRoutes(
   { sshSessions, verifySessionOwnership }: FileContentRoutesDeps,
 ): void {
   registerDocumentRoutes(app, sshSessions);
-  registerUploadRoutes(app, uploadTransfers, uploadTrees, uploadRecovery);
+  registerUploadRoutes(
+    app,
+    uploadTransfers,
+    uploadTrees,
+    uploadRecovery,
+    uploadBatchRecovery,
+  );
   /**
    * @openapi
    * /ssh/file_manager/ssh/identifySymlink:

@@ -85,6 +85,17 @@ function createUploadRecoveryWindow(getBackend) {
       throw Error("UPLOAD_RECOVERY_WINDOW_CLOSED");
     return { windowToken: scope.token };
   }
-  return { identity, reset };
+  async function ownerFor(backend, token) {
+    const entry = [...windows].find(
+      ([, scope]) => scope.backend === backend && scope.token === token,
+    );
+    if (!entry || backend !== getBackend())
+      throw Error("UPLOAD_RECOVERY_WINDOW_CLOSED");
+    await entry[1].ready;
+    if (windows.get(entry[0]) !== entry[1])
+      throw Error("UPLOAD_RECOVERY_WINDOW_CLOSED");
+    return entry[0];
+  }
+  return { identity, reset, ownerFor };
 }
 module.exports = { createUploadRecoveryWindow };

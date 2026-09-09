@@ -1,6 +1,6 @@
 # 目录批次跨重启恢复
 
-状态：2026-09-09 开始实施。完整目标包含人工目录上传/下载及 AI、MCP、保存流程的跨重启续跑，不能以单文件恢复或只读历史替代。
+状态：2026-09-09，人工上传批次的中文加密保存、重启/中断恢复与继续传输已接入，并通过真实 Windows 桌面验收。下文保留早期阶段记录，最新结果见“生产上传批次恢复”。目录下载批次及 AI、MCP、保存流程跨重启续跑仍在完整目标中。
 
 ## 实施边界与文件责任
 
@@ -78,3 +78,37 @@ UploadTreeService.suspend 与 UploadService.suspendBatch 提供组合交接：�
 证据日志：.cache/upload-batch-handoff-final-tests.log、.cache/upload-batch-handoff-regression.log、.cache/upload-batch-handoff-types-final.log、.cache/upload-batch-handoff-lint-final.log、.cache/upload-batch-handoff-localization.log、.cache/upload-batch-handoff-build.log、.cache/upload-batch-handoff-package.log、.cache/upload-batch-handoff-native-probe.log、.cache/upload-batch-handoff-packaged-mcp.log、.cache/upload-batch-handoff-desktop.log。
 
 上一 ab2ebe4 的 CI 34309966755 已全部成功。本轮生产收据已接入人工和自动目录路径；整批恢复按钮、生产加密记录、跨应用重启的批次恢复及 AI/MCP/流程恢复仍待完成，完整 Goal 保持进行中。
+
+
+## 2026-09-09 生产上传批次恢复
+
+中文队列新增“保存整批进度”和“查看可恢复批次”。保存会暂停在途文件、冻结本批后续派发，等待已有提交得到结果，并补齐完成收据后保存。成功才释放旧队列及原生来源，失败保留原进度并允许继续。恢复清单提供原目标分页、重新选择原目录或原文件、重新确认合并/覆盖、未知结果核对、放弃并清理部分文件和移除已结束记录。恢复成功先进入暂停队列，“继续整批”或明确“接管并继续整批”才继续传输。
+
+模块责任与依赖：
+
+- upload-batch-snapshot.ts 校验组合记录、条目唯一性、服务器/路径/原批次归属以及 paused/pending/unknown/committing/completed/cancelled 文件状态。
+- upload-batch-recovery-store.ts 拥有按用户分区的 TUB1 AES-256-GCM 密文、系统凭据库命名空间、容量与进程占用。每条最多 32 MiB，每用户最多 8 条/256 MiB，独立于审计日志的 7 天/100 MiB 留存。先写加密临时文件并 fsync，再原子替换；不提供明文密钥或记录回退。
+- 写入和领取通过用户目录内的独占文件租约串行化，核对存活进程后才回收旧租约；已保存批次在交接中为 preparing，正常可恢复为 available，运行时为 claimed。进程中断后重新核对，不复用旧批准、控制权和窗口标识。
+- upload-batch-recovery-service.ts 负责组合保存/恢复、成员准备与提交记录、窗口关闭保留、取消和核对。已进入恢复管理的新文件在首批数据之前保存检查点，最终提交前先记录 committing；结果未知不重跑。已完成文件依据后台收据保留，取消的未开始文件不会在恢复时重新入队。
+- upload-batch-native-client.ts 与 electron/upload-batch-source-bridge.cjs 只走父子私有 IPC，原生来源归当前可信窗口所有。upload-recovery-window.cjs 提供窗口身份核对；页面发送选择 ID，不提交来源快照或任意本地路径。恢复使用用户新选择的能力核对原成员。
+- upload-recovery-coordinator.ts 的窗口回调供单文件与批次两条真实恢复链路使用；close 会先撤销窗口并等待请求结束，再执行成员保留。核心单文件/目录用例继续负责唯一的传输与校验实现。
+- upload-batch-recovery-production.ts 组合生产依赖；upload-routes.ts 增加受人工身份限制的批次入口，并让恢复成员的准备、开始、继续、结束、取消经过批次状态记录。API Key 无权调用这些人工恢复接口。
+- upload-batch-recovery-api.ts 只转换 HTTP；UploadBatches 负责暂停/恢复编排、容量预留和成员关系；UploadQueue 负责唯一的数据传输；UploadBatchRecoveryDialog 负责中文人工审阅。新增类型位于 types/upload-batch-recovery.ts，没有让通用组件或业务核心反向依赖页面。
+
+显式“核对未决结果”会先核对未知父目录再核对子项；确认目标目录存在后记为 merged，不宣称原 mkdir 已得到成功响应。文件结果核对实际摘要，不能靠跳过或取消抹掉未知提交。窗口关闭先阻止后续请求，等待在途块结束、释放写入占用并保存最新确认偏移；不沿用普通注销的 cleanup=true 删除已保存部分文件。
+
+相关回归 **109 文件 / 718 项全部通过**，覆盖生产加密记录、独占领取、窗口关闭、保存失败、取消不重跑、目录结果核对、真实队列、原生私有通道和中文确认/容量释放，以及既有自动/协作/MCP。类型、改动模块 lint、中文键、前后端构建和 Windows 解包包通过。最终包原生探针通过 13 项依赖及目录恢复能力，打包 stdio/隔离 Codex 3 项通过。
+
+实际 Windows 验收包含 2 个文件和 2 个目录。运行中通过中文按钮保存整批，确认本机写入 TUB1 密文并正常退出；同一配置重启，重新选择原目录、确认原计划，恢复为暂停且没有发送新文件字节；随后故意中断本次自有应用进程树，再重启恢复并点击继续。最终大文件 **12,583,151 字节**、SHA-256 **036f585d20ce07442b2fa4d1f9ea1acb963b7b1bd40dafc8032db221ca21fd79** 完全一致，另一文件和空目录正确，批次显示 4/4 完成。首末正常退出，中间为受控故障注入。
+
+报告：.cache/desktop-observation-report-d4c438fe-739f-475f-823d-44647c62d533/result.json；同目录包含 save/upload-batch-recovery-save.png、interrupt/recovered-batch-paused.png、restore/upload-batch-recovery-restore.png。最终截图已查看。原生选择器由测试主进程提供自有目录，未声称人工操作过系统对话框；没有使用业务服务器或付费模型，测试系统密钥在验收后清理。
+
+首轮已成功保存并退出，第二阶段在来源选择步骤出现观察超时；现场没有产品恢复错误。将验收器改为同一调试调用内确认按钮可用并点击后，完整三阶段通过；未修改产品代码或放宽恢复校验。失败现场保留在 .cache/desktop-observation-report-6bcd6005-1c0a-4b8d-ae90-4d0f3044d003。专项还发现未知父目录阻止子项核对，已调整显式核对的顺序并复测；界面测试断言扩展缺失也已补齐，没有跳过失败场景。
+
+日志：.cache/upload-batch-production-regression.log、.cache/upload-batch-production-types.log、.cache/upload-batch-production-lint.log（其中三条警告已由 upload-batch-production-lint-final.log 所对应代码修正）、.cache/upload-batch-production-localization.log、.cache/upload-batch-production-build.log、.cache/upload-batch-production-package.log、.cache/upload-batch-production-native-probe.log、.cache/upload-batch-production-packaged-mcp.log、.cache/upload-batch-recovery-desktop.log。
+
+上一 0b6025b 的 CI 34312660034 已全部成功。本机包继续复用已验证的原生模块（npmRebuild=false），标准原生重建与安装验收以对应提交的 CI 为准。当前完成的是人工上传批次恢复；目录下载批次、AI/MCP/流程跨重启恢复、更多存储故障/大批次/真实 Linux 矩阵、备份凭据、基础认证/监控/隧道、真实跨版本升级和完整 A01–A37 继续实施。第 32 份文档中的 ConPTY/Bash 兼容性风险也未宣布解决，完整 Goal 保持进行中。
+
+交付前额外验证了不同用户使用相同批次标识时各自的窗口关闭、领取状态互不影响，并在移除已结束记录时释放后台引用。对应专项 9 项和最终完整相关回归 718 项通过；最终日志使用 upload-batch-production-regression-final.log、upload-batch-production-types-final.log、upload-batch-production-isolation-lint.log、upload-batch-production-build-final.log 与 upload-batch-production-package-final.log。
+
+最终多用户隔离版本已重新打包并再次完成上述三阶段桌面验收，日志为 .cache/upload-batch-recovery-desktop-final.log；最终原生和 MCP 复核日志为 .cache/upload-batch-production-native-probe-final.log、.cache/upload-batch-production-packaged-mcp-final.log，均通过。

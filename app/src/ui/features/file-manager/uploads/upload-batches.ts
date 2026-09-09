@@ -1,3 +1,6 @@
+import { uploadBatchRecoveryApi } from "@/api/upload-batch-recovery-api";
+import type { RestoredUploadBatch } from "@/types/upload-batch-recovery";
+import type { UploadView } from "@/types/file-upload";
 import { uploadTreeApi, type UploadTreeApi } from "@/api/upload-tree-api";
 import { uploadErrorCode } from "@/api/file-upload-api";
 import type {
@@ -25,7 +28,8 @@ interface Batch {
   hostLabel: string;
   hostId?: number;
   takeover: boolean;
-  state: "creating" | "running" | "cancelled";
+  state: "creating" | "running" | "saving" | "paused" | "cancelled";
+  pauseRequested?: boolean;
   members: Map<string, string>;
   cleared: Partial<Record<UploadQueueState, number>>;
   results: Map<string, UploadDirectoryResult>;
@@ -38,7 +42,8 @@ export interface UploadBatchView {
   id: string;
   name: string;
   target: string;
-  state: "creating" | "running" | "finished" | "cancelled";
+  state:
+    "creating" | "running" | "saving" | "paused" | "finished" | "cancelled";
   completed: number;
   skipped: number;
   failed: number;
@@ -58,6 +63,7 @@ export class UploadBatches {
     private api: UploadTreeApi = uploadTreeApi,
     private native: () => DesktopUploadSourceApi | undefined = () =>
       window.electronAPI?.uploadSources,
+    private recovery: typeof uploadBatchRecoveryApi = uploadBatchRecoveryApi,
   ) {
     queue.subscribe(() => this.emit());
   }
@@ -332,7 +338,8 @@ export class UploadBatches {
         b,
         results.map((r) => ({ id: r.id, result: r })),
       );
-      if ((b.state as Batch["state"]) !== "cancelled") b.state = "running";
+      if ((b.state as Batch["state"]) !== "cancelled")
+        b.state = b.pauseRequested ? "paused" : "running";
       b.error = undefined;
     } catch (error) {
       if (this.records.get(b.id) !== b) return;
@@ -365,15 +372,252 @@ export class UploadBatches {
           "unknown",
         );
       }
-      if ((b.state as Batch["state"]) !== "cancelled") b.state = "running";
+      if ((b.state as Batch["state"]) !== "cancelled")
+        b.state = b.pauseRequested ? "paused" : "running";
     } finally {
       this.queue.wake();
       this.emit();
     }
   }
+  async save(id: string) {
+    const b = this.records.get(id);
+    if (!b) throw Error("UPLOAD_NOT_FOUND");
+    this.current(b);
+    if (b.state === "saving") throw Error("UPLOAD_BUSY");
+    b.pauseRequested = true;
+    b.state = "saving";
+    this.emit();
+    const ids = [...b.members.values()];
+    try {
+      await b.directoryWork;
+      b.state = "saving";
+      const views = await this.queue.quiesce(ids);
+      this.current(b);
+      const byId = new Map(views.map((j) => [j.id, j]));
+      const members = b.target.entries
+        .filter((e) => e.kind === "file")
+        .map((e) => {
+          const job = byId.get(b.members.get(e.id)!);
+          return {
+            entryId: e.id,
+            uploadId:
+              job?.transfer &&
+              !["completed", "cancelled"].includes(job.transfer.state)
+                ? job.transfer.id
+                : undefined,
+            cancelled: job?.state === "cancelled" || job?.state === "skipped",
+          };
+        });
+      const record = await this.recovery.save(b.target.sessionId, {
+        id: b.id,
+        treeId: b.target.id,
+        sourceId: b.source.id,
+        members,
+      });
+      this.current(b);
+      this.queue.releaseSaved(ids);
+      b.stop.abort();
+      this.records.delete(id);
+      this.emit();
+      return record;
+    } catch (error) {
+      if (this.records.get(id) === b) {
+        b.state = "paused";
+        b.error = uploadErrorCode(error);
+        this.queue.unfreeze(ids);
+        this.emit();
+      }
+      throw error;
+    }
+  }
+  async resumeBatch(id: string, takeover = false) {
+    const b = this.records.get(id);
+    if (!b) throw Error("UPLOAD_NOT_FOUND");
+    this.current(b);
+    if (b.state !== "paused") return;
+    b.pauseRequested = false;
+    b.takeover = takeover;
+    this.queue.unfreeze([...b.members.values()]);
+    await this.directories(b, takeover);
+    for (const job of this.queue.getSnapshot())
+      if (job.batchId === id && ["paused", "failed"].includes(job.state))
+        this.queue.resume(job.id, b.target.sessionId, takeover);
+    this.queue.wake();
+    this.emit();
+  }
+  private receiptView(
+    tree: UploadTreePreview,
+    e: UploadTreePreview["entries"][number],
+  ): UploadView | undefined {
+    const r = e.fileResult;
+    if (!r) return undefined;
+    return {
+      id: r.transferId,
+      name: e.name,
+      path: e.path,
+      canonicalPath: e.path,
+      sessionId: tree.sessionId,
+      hostIdentity: tree.hostIdentity,
+      totalBytes: r.bytes,
+      receivedBytes: r.bytes,
+      chunkBytes: 4194304,
+      state: "completed",
+      verification: "sha256",
+      sha256: r.sha256,
+      createdAt: r.completedAt,
+      expiresAt: r.completedAt,
+    };
+  }
+  reserveRestore(count: number) {
+    return this.queue.reserve(count);
+  }
+  async restore(
+    saved: RestoredUploadBatch,
+    hostId?: number,
+    reserved?: ReturnType<UploadQueue["reserve"]>,
+  ) {
+    const owner = this.owner,
+      native = this.native();
+    if (!owner || owner !== this.queue.getOwner() || !native)
+      throw Error("UPLOAD_OWNER_REQUIRED");
+    const reservation =
+        reserved ?? this.queue.reserve(saved.source.entries.length),
+      b: Batch = {
+        id: saved.summary.id,
+        owner,
+        source: saved.source,
+        target: saved.tree,
+        hostId,
+        hostLabel: saved.tree.hostIdentity ?? "SSH",
+        takeover: false,
+        state: "paused",
+        pauseRequested: true,
+        members: new Map(),
+        cleared: {},
+        results: new Map(),
+        remaining: new Set(saved.source.entries.map((e) => e.id)),
+        stop: new AbortController(),
+      };
+    try {
+      if (this.records.has(b.id)) throw Error("UPLOAD_BUSY");
+      this.records.set(b.id, b);
+      const targets = new Map(b.target.entries.map((e) => [e.id, e])),
+        members = new Map(saved.members.map((m) => [m.entryId, m]));
+      for (const entry of b.source.entries) {
+        const e = targets.get(entry.id),
+          m = members.get(entry.id),
+          completed = e?.fileResult,
+          skip =
+            !!entry.error ||
+            !e ||
+            e.action === "skip" ||
+            m?.state === "cancelled",
+          state: UploadQueueState = completed
+            ? "completed"
+            : skip
+              ? "skipped"
+              : m?.state === "unknown" || m?.state === "committing"
+                ? "unknown"
+                : m?.state === "paused"
+                  ? "paused"
+                  : "queued";
+        const base = {
+            sessionId: b.target.sessionId,
+            path: e?.path ?? b.target.path,
+            name: entry.relativePath,
+            size: entry.size,
+            hostId,
+            hostLabel: b.hostLabel,
+            batchId: b.id,
+            kind:
+              entry.kind === "directory"
+                ? ("directory" as const)
+                : ("file" as const),
+            localPath: entry.path,
+          },
+          release = () => this.release(b, entry.id);
+        const job =
+          entry.kind === "file" && !skip && !completed && state !== "unknown"
+            ? reservation.file(
+                {
+                  ...base,
+                  file: nativeUploadSource(native, b.source.id, entry),
+                },
+                {
+                  kind: "file",
+                  ready: () => b.state === "running" && !b.stop.signal.aborted,
+                  overwrite: e?.action === "overwrite",
+                  takeover: false,
+                  release,
+                  completed: async (uploadId) => {
+                    this.current(b);
+                    await this.api.complete(
+                      b.target.sessionId,
+                      b.target.id,
+                      entry.id,
+                      uploadId,
+                    );
+                  },
+                  prepare: (requestId, sessionId, manifest, signal) => {
+                    this.current(b);
+                    return this.api.prepare(
+                      sessionId,
+                      b.target.id,
+                      entry.id,
+                      requestId,
+                      manifest,
+                      signal,
+                    );
+                  },
+                },
+              )
+            : reservation.record(
+                base,
+                {
+                  kind: "record",
+                  release,
+                  retry:
+                    entry.kind === "directory"
+                      ? (takeover) => this.directories(b, takeover)
+                      : undefined,
+                },
+                state,
+              );
+        b.members.set(entry.id, job);
+        this.queue.adoptBatch(
+          job,
+          b.id,
+          state,
+          completed ? this.receiptView(b.target, e!) : m?.view,
+          m?.manifest,
+        );
+      }
+      this.applyResults(
+        b,
+        b.target.entries.filter((e) => e.kind === "directory"),
+        "queued",
+      );
+      this.emit();
+      return b.id;
+    } finally {
+      reservation.close();
+    }
+  }
+  reconciled(id: string, tree: UploadTreePreview) {
+    const b = this.records.get(id);
+    if (!b) return;
+    b.target = tree;
+    for (const e of tree.entries) {
+      const job = b.members.get(e.id),
+        view = this.receiptView(tree, e);
+      if (job && view) this.queue.completeRecord(job, view);
+    }
+    this.emit();
+  }
   async cancel(id: string) {
     const b = this.records.get(id);
     if (!b) return;
+    if (b.state === "saving") return;
     b.state = "cancelled";
     this.emit();
     // Stop queued/in-flight file writes immediately. The directory request is observed to completion.
@@ -396,6 +640,7 @@ export class UploadBatches {
   }
   private async release(b: Batch, entryId: string) {
     if (this.records.get(b.id) !== b) return;
+    if (b.state === "saving") throw Error("UPLOAD_BUSY");
     if (b.remaining.size === 1 && b.remaining.has(entryId)) {
       if (b.directoryWork) throw Error("UPLOAD_CLEANUP_PENDING");
       try {

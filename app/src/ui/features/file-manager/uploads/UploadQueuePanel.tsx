@@ -1,3 +1,4 @@
+import { UploadBatchRecoveryDialog } from "./UploadBatchRecoveryDialog";
 import { UploadRecoveryDialog } from "./UploadRecoveryDialog";
 import { uploadRecoveryApi } from "@/api/upload-recovery-api";
 import { uploadBatches } from "./upload-batches";
@@ -296,6 +297,13 @@ export function UploadQueuePanel({
   if (!jobs.length)
     return window.electronAPI?.uploadSources?.recoveryIdentity ? (
       <div className="border-t border-border p-2">
+        {queue === uploadQueue && (
+          <UploadBatchRecoveryDialog
+            key={(queue.getOwner() ?? "") + "batch"}
+            sessionId={sessionId}
+            hostId={hostId}
+          />
+        )}
         <UploadRecoveryDialog
           key={queue.getOwner() ?? ""}
           sessionId={sessionId}
@@ -333,6 +341,13 @@ export function UploadQueuePanel({
           >
             {t("tandem.upload.clearFinished")}
           </Button>
+          {queue === uploadQueue && (
+            <UploadBatchRecoveryDialog
+              key={(queue.getOwner() ?? "") + "batch"}
+              sessionId={sessionId}
+              hostId={hostId}
+            />
+          )}
           <UploadRecoveryDialog
             key={queue.getOwner() ?? ""}
             sessionId={sessionId}
@@ -358,14 +373,59 @@ export function UploadQueuePanel({
                   skipped: batch.skipped,
                 })}
               </p>
+              <p>{t("uploadBatchRecovery.batchStates." + batch.state)}</p>
+              {["creating", "running", "paused"].includes(batch.state) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    void uploadBatches
+                      .save(batch.id)
+                      .catch(() => toast.error(t("uploadBatchRecovery.failed")))
+                  }
+                >
+                  {t("uploadBatchRecovery.save")}
+                </Button>
+              )}
+              {batch.state === "paused" && (
+                <>
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      void uploadBatches
+                        .resumeBatch(batch.id)
+                        .catch(() =>
+                          toast.error(t("uploadBatchRecovery.failed")),
+                        )
+                    }
+                  >
+                    {t("uploadBatchRecovery.continue")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      void uploadBatches
+                        .resumeBatch(batch.id, true)
+                        .catch(() =>
+                          toast.error(t("uploadBatchRecovery.failed")),
+                        )
+                    }
+                  >
+                    {t("uploadBatchRecovery.takeoverContinue")}
+                  </Button>
+                </>
+              )}
               {batch.error && (
                 <p role="alert" className="text-amber-500">
-                  {t("tandem.upload.errors." + batch.error, {
-                    defaultValue: t("tandem.upload.failed"),
+                  {t("uploadBatchRecovery.errors." + batch.error, {
+                    defaultValue: t("tandem.upload.errors." + batch.error, {
+                      defaultValue: t("tandem.upload.failed"),
+                    }),
                   })}
                 </p>
               )}
-              {(["creating", "running"].includes(batch.state) ||
+              {(["creating", "running", "paused"].includes(batch.state) ||
                 (batch.state === "finished" && batch.failed > 0)) && (
                 <Button
                   size="sm"

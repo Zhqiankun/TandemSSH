@@ -17,6 +17,12 @@ function registerUploadSourceIpc({
         getBackend,
       )
     : undefined;
+  const batchSources = recovery
+    ? require("./upload-batch-source-bridge.cjs").createUploadBatchSourceBridge(
+        sources,
+        recovery.ownerFor,
+      )
+    : undefined;
   const resetOwner = async (id) => {
     sources.reset(id);
     await recovery?.reset(id);
@@ -57,6 +63,7 @@ function registerUploadSourceIpc({
       if (operation === "recovery-identity") {
         if (!recovery) throw Error("UPLOAD_RECOVERY_DESKTOP_REQUIRED");
         value = await recovery.identity(id);
+        batchSources?.attach(getBackend());
       } else if (operation === "choose-directory") {
         if (choosing.has(id)) throw Error("UPLOAD_BUSY");
         choosing.add(id);
@@ -95,6 +102,7 @@ function registerUploadSourceIpc({
     sources,
     dispose: () => {
       for (const owner of owners) void resetOwner(owner);
+      batchSources?.dispose();
     },
   };
 }
