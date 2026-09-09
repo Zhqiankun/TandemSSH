@@ -72,6 +72,7 @@
 | [任务历史与归档](docs/37-task-history-and-retention.md) | 操作分页、重启后脱敏历史、已结束任务资源释放与验证 |
 | [本机加密文件草稿](docs/38-encrypted-file-drafts.md) | 加密快照、重启后三份内容审阅、人工恢复与实际桌面验证 |
 | [下载重启恢复](docs/39-download-recovery.md) | 加密检查点、中文恢复清单、重新确认与真实应用重启/中断验收 |
+| [上传重启恢复](docs/40-upload-recovery.md) | 已验证的上传检查点/加密存储、新进程续传与待接入的中文界面 |
 
 ## 产品主线
 

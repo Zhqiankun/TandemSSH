@@ -1,9 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
 import { posix } from "node:path";
-import { z } from "zod";
+import {
+  prepareUploadSchema,
+  uploadManifestSchema,
+} from "./upload-contracts.js";
+export {
+  prepareUploadSchema,
+  uploadManifestSchema,
+} from "./upload-contracts.js";
+import {
+  uploadCheckpointSchema,
+  type UploadCheckpoint,
+} from "./upload-checkpoint.js";
 import {
   UPLOAD_CHUNK_BYTES,
-  UPLOAD_MAX_CHUNKS,
   type UploadView,
   type UploadManifest,
   type PrepareUpload,
@@ -35,35 +45,6 @@ export interface UploadPorts {
   ): Promise<void>;
   locks: FilePathLocks;
 }
-const pathSchema = z
-  .string()
-  .min(1)
-  .max(4096)
-  .startsWith("/")
-  .refine(
-    (p) => !/[\x00-\x1f\x7f]/.test(p) && !!posix.basename(p) && p !== "/",
-  );
-export const uploadManifestSchema = z
-  .object({
-    name: z.string().min(1).max(4096),
-    size: z
-      .number()
-      .int()
-      .min(0)
-      .max(UPLOAD_CHUNK_BYTES * UPLOAD_MAX_CHUNKS),
-    lastModified: z.number().int().min(0),
-    hashes: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(UPLOAD_MAX_CHUNKS),
-  })
-  .strict()
-  .refine((m) => m.hashes.length === Math.ceil(m.size / UPLOAD_CHUNK_BYTES));
-export const prepareUploadSchema = z
-  .object({
-    requestId: z.string().min(1).max(128),
-    sessionId: z.string().min(1).max(256),
-    path: pathSchema,
-    manifest: uploadManifestSchema,
-  })
-  .strict();
 export const uploadDirectoryAttributes = (s: RemoteFileStat) =>
   JSON.stringify([s.kind, s.mode, s.uid, s.gid]);
 export interface UploadConstraint {
@@ -78,6 +59,7 @@ interface Baseline {
   sha256: string;
 }
 interface RecordState {
+  suspending?: boolean;
   constraint?: UploadConstraint;
   requestKey: string;
   pending: number;
@@ -106,6 +88,7 @@ const code = (e: unknown) =>
     : "UPLOAD_FAILED";
 const idleTime = 30 * 60 * 1000;
 export class UploadService {
+  private stopped = false;
   private readonly records = new Map<string, RecordState>();
   private readonly reservations = new Map<
     symbol,
@@ -126,6 +109,7 @@ export class UploadService {
     this.timer.unref?.();
   }
   dispose() {
+    this.stopped = true;
     clearInterval(this.timer);
     for (const r of this.records.values()) {
       r.cancelRequested = true;
@@ -133,6 +117,7 @@ export class UploadService {
     }
     this.records.clear();
     this.requests.clear();
+    this.reservations.clear();
   }
   private prune() {
     const now = Date.now();
@@ -164,9 +149,11 @@ export class UploadService {
     return structuredClone(this.owned(actor, id).view);
   }
   private alive(actor: UploadActor, r?: RecordState) {
+    if (this.stopped) throw new DocumentError("UPLOAD_CANCELLED");
     if (actor.signal?.aborted)
       throw new DocumentError("UPLOAD_REQUEST_CANCELLED");
     if (r?.cancelRequested) throw new DocumentError("UPLOAD_CANCELLED");
+    if (r?.suspending) throw new DocumentError("UPLOAD_BUSY");
   }
   private guard(actor: UploadActor, r: RecordState, target: UploadTarget) {
     return () => {
@@ -467,6 +454,7 @@ export class UploadService {
     work: (r: RecordState) => Promise<void>,
   ): Promise<UploadView> {
     const r = this.owned(actor, id);
+    if (r.suspending) throw new DocumentError("UPLOAD_BUSY");
     const run = async () => {
       if (!states.includes(r.view.state))
         throw new DocumentError("UPLOAD_STATE_INVALID");
@@ -580,6 +568,7 @@ export class UploadService {
   }
   pause(actor: UploadActor, id: string) {
     const r = this.owned(actor, id);
+    if (r.suspending) throw new DocumentError("UPLOAD_BUSY");
     if (
       !["uploading", "verifying", "paused", "failed", "completed"].includes(
         r.view.state,
@@ -604,6 +593,186 @@ export class UploadService {
         });
       },
     );
+  }
+  checkpoint(actor: UploadActor, id: string): UploadCheckpoint {
+    const r = this.owned(actor, id);
+    this.alive(actor, r);
+    if (
+      r.busy ||
+      r.pending ||
+      r.view.state !== "paused" ||
+      r.release ||
+      !r.stageCreated ||
+      !r.creationAttempted ||
+      !r.view.temporaryPath ||
+      r.view.commitMayHaveOccurred
+    )
+      throw new DocumentError("UPLOAD_STATE_INVALID");
+    if (!r.acceptedHostKey)
+      throw new DocumentError("UPLOAD_HOST_IDENTITY_UNVERIFIED");
+    return uploadCheckpointSchema.parse({
+      schemaVersion: 1,
+      id: r.view.id,
+      userId: r.owner,
+      targetKey: r.targetKey,
+      acceptedHostKey: r.acceptedHostKey,
+      path: r.view.path,
+      canonicalPath: r.view.canonicalPath,
+      hostIdentity: r.view.hostIdentity,
+      temporaryPath: r.view.temporaryPath,
+      manifest: r.manifest,
+      baseline: r.baseline,
+      constraint: r.constraint,
+      receivedBytes: r.view.receivedBytes,
+      createdAt: r.view.createdAt,
+      savedAt: Date.now(),
+    });
+  }
+  async suspend(
+    actor: UploadActor,
+    id: string,
+    persist: (checkpoint: UploadCheckpoint) => Promise<void>,
+  ) {
+    const checkpoint = this.checkpoint(actor, id),
+      r = this.owned(actor, id);
+    r.suspending = true;
+    try {
+      await persist(checkpoint);
+      r.cancelRequested = true;
+      r.release?.();
+      r.release = undefined;
+      this.records.delete(id);
+      return { id, receivedBytes: r.view.receivedBytes };
+    } finally {
+      r.suspending = false;
+    }
+  }
+  /** Only an owned, decrypted checkpoint may enter here. No old write lease is restored. */
+  async restore(
+    actor: UploadActor,
+    raw: unknown,
+    sessionId: string,
+    manifestInput: unknown,
+    overwrite = false,
+  ): Promise<UploadView> {
+    const c = uploadCheckpointSchema.parse(raw),
+      manifest = uploadManifestSchema.parse(manifestInput);
+    this.alive(actor);
+    if (c.userId !== actor.userId) throw new DocumentError("UPLOAD_NOT_FOUND");
+    if (JSON.stringify(manifest) !== JSON.stringify(c.manifest))
+      throw new DocumentError("UPLOAD_SOURCE_CHANGED");
+    if (c.baseline && !overwrite)
+      throw new DocumentError("UPLOAD_OVERWRITE_REQUIRED");
+    const duplicate = () =>
+      [...this.records.values()].some(
+        (r) =>
+          r.targetKey === c.targetKey &&
+          r.view.temporaryPath === c.temporaryPath,
+      );
+    if (duplicate()) throw new DocumentError("UPLOAD_RECOVERY_IN_USE");
+    const reservation = Symbol(),
+      bytes = c.manifest.hashes.length * 64;
+    if (
+      this.records.size + this.reservations.size >= 128 ||
+      [...this.records.values()].filter(
+        (r) => r.owner === actor.userId && !terminal(r.view.state),
+      ).length +
+        [...this.reservations.values()].filter((r) => r.userId === actor.userId)
+          .length >=
+        64 ||
+      [...this.records.values()].reduce(
+        (n, r) => n + r.manifest.hashes.length * 64,
+        0,
+      ) +
+        [...this.reservations.values()].reduce((n, r) => n + r.bytes, 0) +
+        bytes >
+        8 * 1024 * 1024
+    )
+      throw new DocumentError("UPLOAD_LIMIT");
+    this.reservations.set(reservation, { userId: actor.userId, bytes });
+    try {
+      const t = await this.ports.target(actor.userId, sessionId),
+        view: UploadView = {
+          id: randomUUID(),
+          sessionId,
+          path: c.path,
+          canonicalPath: c.canonicalPath,
+          hostIdentity: t.hostScope?.identity,
+          name: c.manifest.name,
+          totalBytes: c.manifest.size,
+          receivedBytes: c.receivedBytes,
+          chunkBytes: UPLOAD_CHUNK_BYTES,
+          state: "paused",
+          existing: c.baseline
+            ? {
+                size: c.baseline.stat.size,
+                mtime: c.baseline.stat.mtime,
+                mode: c.baseline.stat.mode & 0o7777,
+              }
+            : undefined,
+          temporaryPath: c.temporaryPath,
+          createdAt: Date.now(),
+          expiresAt: Date.now() + idleTime,
+        };
+      const r: RecordState = {
+        owner: actor.userId,
+        targetKey: c.targetKey,
+        acceptedHostKey: c.acceptedHostKey,
+        connection: t.connection,
+        manifest: structuredClone(c.manifest),
+        baseline: c.baseline ? structuredClone(c.baseline) : undefined,
+        constraint: c.constraint ? structuredClone(c.constraint) : undefined,
+        requestKey: JSON.stringify([actor.userId, randomUUID()]),
+        view,
+        pending: 0,
+        busy: false,
+        stageCreated: true,
+        creationAttempted: true,
+        cancelRequested: false,
+        pauseRequested: false,
+        tail: Promise.resolve(),
+      };
+      this.verifyTarget(r, t, true);
+      if (r.constraint) await this.constrainedParents(actor, t, r.constraint);
+      const guard = this.guard(actor, r, t);
+      await this.unchanged(actor, r, t);
+      if (
+        (await t.io.resolve(c.temporaryPath)) !== c.temporaryPath ||
+        (await t.io.stat(c.temporaryPath)).kind !== "file"
+      )
+        throw new DocumentError("UPLOAD_CHECKPOINT_CHANGED");
+      const prefix = await t.io.inspectFile(
+        c.temporaryPath,
+        guard,
+        c.receivedBytes,
+      );
+      if (
+        prefix.stat.size < c.receivedBytes ||
+        prefix.stat.size > c.manifest.size ||
+        JSON.stringify(prefix.hashes) !==
+          JSON.stringify(
+            c.manifest.hashes.slice(
+              0,
+              Math.ceil(c.receivedBytes / UPLOAD_CHUNK_BYTES),
+            ),
+          )
+      )
+        throw new DocumentError("UPLOAD_CHECKPOINT_CHANGED");
+      guard();
+      if (duplicate()) throw new DocumentError("UPLOAD_RECOVERY_IN_USE");
+      await this.ports.audit(actor.userId, "upload.recovery_verified", {
+        id: view.id,
+        checkpointId: c.id,
+        path: c.canonicalPath,
+        receivedBytes: c.receivedBytes,
+      });
+      guard();
+      if (duplicate()) throw new DocumentError("UPLOAD_RECOVERY_IN_USE");
+      this.records.set(view.id, r);
+      return structuredClone(view);
+    } finally {
+      this.reservations.delete(reservation);
+    }
   }
   resume(actor: UploadActor, id: string, sessionId: string, takeover = false) {
     return this.mutate(actor, id, ["paused", "failed"], async (r) => {
@@ -703,6 +872,7 @@ export class UploadService {
   }
   cancel(actor: UploadActor, id: string, cleanup = false) {
     const r = this.owned(actor, id);
+    if (r.suspending) throw new DocumentError("UPLOAD_BUSY");
     if (["completed", "unknown", "committing"].includes(r.view.state))
       return Promise.resolve(structuredClone(r.view));
     r.cancelRequested = true;

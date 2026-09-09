@@ -1,12 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createHash, randomUUID } from "node:crypto";
 import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  randomBytes,
-  randomUUID,
-} from "node:crypto";
+  sealRecord,
+  openRecord,
+} from "../../privacy/encrypted-record-codec.js";
 import { z } from "zod";
 import type { FileDraftSnapshot } from "../../../types/file-draft.js";
 export interface DraftBinding {
@@ -147,22 +145,8 @@ export class FileDraftStore {
   }
   private decode(bytes: Buffer, key: Buffer, id: string): FileDraftSnapshot {
     try {
-      if (bytes.length < 32 || bytes.subarray(0, 4).toString() !== "TDF1")
-        throw Error();
-      const cipher = createDecipheriv(
-        "aes-256-gcm",
-        key,
-        bytes.subarray(4, 16),
-      );
-      cipher.setAAD(Buffer.from("TandemSSH draft v1:" + id));
-      cipher.setAuthTag(bytes.subarray(16, 32));
       return snapshotSchema.parse(
-        JSON.parse(
-          Buffer.concat([
-            cipher.update(bytes.subarray(32)),
-            cipher.final(),
-          ]).toString("utf8"),
-        ),
+        JSON.parse(openRecord(bytes, key, "TDF1", "TandemSSH draft v1:" + id)),
       );
     } catch {
       throw Error("FILE_DRAFT_DECRYPT_FAILED");
@@ -224,19 +208,12 @@ export class FileDraftStore {
         path: binding.path,
         canonicalPath: binding.canonicalPath,
       });
-      const iv = randomBytes(12),
-        cipher = createCipheriv("aes-256-gcm", key, iv);
-      cipher.setAAD(Buffer.from("TandemSSH draft v1:" + id));
-      const encrypted = Buffer.concat([
-        cipher.update(JSON.stringify(next), "utf8"),
-        cipher.final(),
-      ]);
-      const bytes = Buffer.concat([
-        Buffer.from("TDF1"),
-        iv,
-        cipher.getAuthTag(),
-        encrypted,
-      ]);
+      const bytes = sealRecord(
+        JSON.stringify(next),
+        key,
+        "TDF1",
+        "TandemSSH draft v1:" + id,
+      );
       let total = 0;
       for (const name of [...entries, ...temporaryEntries])
         total += (await fs.lstat(path.join(directory!, name))).size;
