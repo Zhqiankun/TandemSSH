@@ -1,3 +1,4 @@
+import { tunnelHostVerifier } from "./connection-trust.js";
 import { getErrorMessage } from "../../utils/error-message.js";
 import { type Response } from "express";
 import {
@@ -192,7 +193,8 @@ export function broadcastTunnelStatus(
   } else if (
     (nextStatus.status === CONNECTION_STATES.CONNECTING ||
       nextStatus.status === CONNECTION_STATES.RETRYING ||
-      nextStatus.status === CONNECTION_STATES.WAITING) &&
+      nextStatus.status === CONNECTION_STATES.WAITING ||
+      nextStatus.status === CONNECTION_STATES.FAILED) &&
     !nextStatus.reason
   ) {
     nextStatus.reason = lastTunnelErrors.get(tunnelName);
@@ -306,7 +308,7 @@ export async function cleanupTunnelResources(
     }
     activeTunnelRuntimes.delete(tunnelName);
     cleanupInProgress.delete(tunnelName);
-  } else if (tunnelConfig) {
+  } else if (tunnelConfig && activeTunnelProcesses.has(tunnelName)) {
     await new Promise<void>((resolve) => {
       killRemoteTunnelByMarker(tunnelConfig, tunnelName, (err) => {
         cleanupInProgress.delete(tunnelName);
@@ -630,7 +632,12 @@ export async function connectEndpointThroughSource(
   };
 
   applyAuthOptions(endpointOptions, endpointCredentials);
-  return connectClient(endpointOptions, tunnelConfig.name, "endpoint");
+  return connectClient(
+    endpointOptions,
+    tunnelConfig.name,
+    "endpoint",
+    tunnelConfig,
+  );
 }
 
 export function resolveS2SLocalTargetHost(tunnelConfig: TunnelConfig): string {
@@ -1068,13 +1075,13 @@ export async function connectSSHTunnel(
     authMethod: tunnelConfig.endpointAuthMethod,
   };
 
-  if (tunnelConfig.endpointCredentialId && tunnelConfig.endpointUserId) {
+  if (tunnelConfig.endpointCredentialId && effectiveUserId) {
     try {
-      if (DataCrypto.getUserDataKey(tunnelConfig.endpointUserId) !== null) {
+      if (DataCrypto.getUserDataKey(effectiveUserId) !== null) {
         const credential =
           await createCurrentHostResolutionRepository().findCredentialByIdForUser(
             tunnelConfig.endpointCredentialId,
-            tunnelConfig.endpointUserId,
+            effectiveUserId,
           );
 
         if (credential) {
@@ -1104,7 +1111,7 @@ export async function connectSSHTunnel(
       operation: "tunnel_connect",
       tunnelName,
       credentialId: tunnelConfig.endpointCredentialId,
-      hasUserId: !!tunnelConfig.endpointUserId,
+      hasUserId: !!effectiveUserId,
     });
   }
 
@@ -1151,6 +1158,21 @@ export async function connectSSHTunnel(
   }
 
   const conn = new Client();
+  let trustRefused = false;
+  let sourceVerifier;
+  try {
+    sourceVerifier = await tunnelHostVerifier(conn, tunnelConfig, "source");
+  } catch (error) {
+    conn.destroy();
+    tunnelConnecting.delete(tunnelName);
+    broadcastTunnelStatus(tunnelName, {
+      connected: false,
+      status: CONNECTION_STATES.FAILED,
+      errorType: "CONNECTION_FAILED",
+      reason: getErrorMessage(error),
+    });
+    return;
+  }
 
   const connectionTimeout = setTimeout(() => {
     if (conn) {
@@ -1193,6 +1215,7 @@ export async function connectSSHTunnel(
     clearTimeout(connectionTimeout);
 
     const errorType = classifyTunnelError(err.message);
+    trustRefused = /host denied|host_trust_|tunnel_trust_/i.test(err.message);
 
     tunnelLogger.error(`Tunnel connection failed for '${tunnelName}'`, err, {
       operation: "tunnel_connect_error",
@@ -1235,6 +1258,7 @@ export async function connectSSHTunnel(
 
   conn.on("close", () => {
     clearTimeout(connectionTimeout);
+    if (trustRefused) return;
 
     tunnelConnecting.delete(tunnelName);
 
@@ -1327,6 +1351,7 @@ export async function connectSSHTunnel(
     } catch (error) {
       const message = getErrorMessage(error, "Failed to create tunnel");
       const errorType = classifyTunnelError(message);
+      trustRefused = /host denied|host_trust_|tunnel_trust_/i.test(message);
       tunnelLogger.error("Failed to create managed tunnel", error, {
         operation: "managed_tunnel_create_failed",
         tunnelName,
@@ -1355,6 +1380,7 @@ export async function connectSSHTunnel(
   });
 
   const connOptions: Record<string, unknown> = {
+    hostVerifier: sourceVerifier,
     host:
       tunnelConfig.sourceIP?.replace(/^\[|\]$/g, "") || tunnelConfig.sourceIP,
     port: tunnelConfig.sourceSSHPort,
@@ -1739,12 +1765,7 @@ export async function killRemoteTunnelByMarker(
       await resolveSshConnectConfigHost(connOptions);
     }
 
-    return new Promise<Client>((resolve, reject) => {
-      const conn = new Client();
-      conn.on("ready", () => resolve(conn));
-      conn.on("error", (err) => reject(err));
-      conn.connect(connOptions);
-    });
+    return connectClient(connOptions, tunnelName, "source", tunnelConfig);
   };
 
   const execCommand = (client: Client, cmd: string): Promise<string> =>

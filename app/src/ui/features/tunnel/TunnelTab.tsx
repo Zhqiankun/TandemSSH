@@ -135,7 +135,11 @@ function TunnelCard({
         {isError && status?.reason && (
           <div className="flex items-start gap-2 p-2 bg-destructive/5 border border-destructive/20 text-destructive text-[10px]">
             <AlertCircle className="size-3 mt-0.5 shrink-0" />
-            <span>{status.reason}</span>
+            <span>
+              {/host denied|host_trust_|tunnel_trust_/i.test(status.reason)
+                ? t("tandem.tunnelTrustRejected")
+                : status.reason}
+            </span>
           </div>
         )}
 

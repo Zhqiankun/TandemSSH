@@ -1,3 +1,5 @@
+import type { TunnelConfig } from "../../../types/index.js";
+import { tunnelHostVerifier } from "./connection-trust.js";
 import { Client, type ClientChannel } from "ssh2";
 import type { Duplex } from "stream";
 import { SSH_ALGORITHMS } from "../../utils/ssh-algorithms.js";
@@ -67,20 +69,44 @@ export function applyAuthOptions(
   }
 }
 
-export function connectClient(
+export async function connectClient(
   connOptions: Record<string, unknown>,
   tunnelName: string,
   role: "source" | "endpoint",
+  config: TunnelConfig,
 ): Promise<Client> {
+  const client = new Client();
+  const closeSocket = () => {
+    (connOptions.sock as { destroy?: () => void } | undefined)?.destroy?.();
+  };
+  try {
+    connOptions = {
+      ...connOptions,
+      hostVerifier: await tunnelHostVerifier(client, config, role),
+    };
+  } catch (error) {
+    closeSocket();
+    client.destroy();
+    throw error;
+  }
   return new Promise((resolve, reject) => {
-    const client = new Client();
     let settled = false;
     client.once("ready", () => {
       settled = true;
       resolve(client);
     });
-    client.once("error", (error) => {
+    client.once("close", () => {
       if (!settled) {
+        settled = true;
+        closeSocket();
+        reject(Error("TUNNEL_CONNECTION_CLOSED"));
+      }
+    });
+    client.on("error", (error) => {
+      if (!settled) {
+        settled = true;
+        closeSocket();
+        client.destroy();
         reject(error);
         return;
       }
@@ -90,7 +116,14 @@ export function connectClient(
         role,
       });
     });
-    client.connect(connOptions);
+    try {
+      client.connect(connOptions);
+    } catch (error) {
+      settled = true;
+      closeSocket();
+      client.destroy();
+      reject(error);
+    }
   });
 }
 
@@ -161,20 +194,36 @@ export function pipeTunnelStreams(
   outboundPromise: Promise<Duplex>,
   tunnelName: string,
 ): void {
+  let outbound: Duplex | undefined,
+    closed = false;
+  const close = () => {
+    closed = true;
+    outbound?.destroy();
+  };
+  inbound.once("close", close);
+  inbound.once("error", () => {
+    close();
+    inbound.destroy();
+  });
   outboundPromise
-    .then((outbound) => {
-      inbound.pipe(outbound).pipe(inbound);
-      inbound.on("error", () => outbound.destroy());
-      outbound.on("error", () => inbound.destroy());
+    .then((stream) => {
+      outbound = stream;
+      if (closed || inbound.destroyed) {
+        stream.destroy();
+        return;
+      }
+      stream.once("error", () => {
+        inbound.destroy();
+        stream.destroy();
+      });
+      stream.once("close", () => inbound.destroy());
+      inbound.pipe(stream).pipe(inbound);
     })
     .catch((error) => {
       tunnelLogger.error(
         "Failed to open managed tunnel outbound stream",
         error,
-        {
-          operation: "managed_tunnel_outbound_failed",
-          tunnelName,
-        },
+        { operation: "managed_tunnel_outbound_failed", tunnelName },
       );
       inbound.destroy();
     });

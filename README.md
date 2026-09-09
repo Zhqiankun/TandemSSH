@@ -81,6 +81,7 @@
 | [在线更新验收](docs/46-online-update-acceptance.md) | 真实下载校验、跨版本安装验收与当前失败证据 |
 | [任务目录恢复](docs/47-task-directory-recovery.md) | 上传目录条目边界、原来源重新授权与真实双模式重启验证 |
 | [任务下载目录恢复](docs/48-task-download-directory-recovery.md) | 固定来源、本地完成收据、异步快照与双模式重启验证 |
+| [隧道身份与生命周期](docs/49-tunnel-trust-and-lifecycle.md) | 源/端点信任、认证前阻断、真实转发与资源释放 |
 
 ## 产品主线
 

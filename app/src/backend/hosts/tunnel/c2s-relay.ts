@@ -154,7 +154,7 @@ async function connectC2SSourceClient(
     }
   }
 
-  return connectClient(connOptions, tunnelConfig.name, "source");
+  return connectClient(connOptions, tunnelConfig.name, "source", tunnelConfig);
 }
 
 async function handleC2SRemoteRelayOpen(

@@ -66,3 +66,11 @@ CI 和 Release 的安装步骤纳入升级检查，任何环节失败均阻止�
 提交 2b52fcf 的 CI 34367768095 已越过旧版退出检查并启动新版，失败推进至数据保留断言。检查实际接口发现 `/tandem/workflows` 返回 SavedWorkflow，名称位于 `definition.name`；脚本错误地读取 `name`，使流程保留检查必定失败。这不构成数据库丢失的证据。
 
 现按实际 SavedWorkflow 契约检查记录 ID 与 `definition.name`，并分别记录 workflow/file/ui 三项布尔结果。旧版退出、真实安装、新版身份和三项数据保留仍全部要求通过，不删除断言或放宽成功条件。此次构建/原生/安装链路的前置进展保留，完整升级仍待修正后的云端结果。
+
+## 真实在线升级验收通过
+
+提交 cd933c9 的 [CI 34372828543](https://github.com/Zhqiankun/TandemSSH/actions/runs/34372828543) 已完成且结论为 success。`upgrade.json` 验证旧版 0.1.0-alpha.0 → 新版 0.1.1：检查、下载、取消保留旧版、原生确认、新版自动启动、数据保留与正常退出均为 true，旧进程退出码 0；workflow/file/ui 三项保留均为 true。`installation.json` 的 installed/native/desktop/upgraded/uninstalled/dataPreserved 均为 true，failures 为空。
+
+安装证据 ZIP SHA-256 `3dbd546d897dec7fd848ed64243427a79bb943889b72780bc4293ac5382503d3` 已下载核验至 `.cache/upgrade-success-evidence.zip`，解压证据 `.cache/upgrade-ci-34372828543`。新版中文更新面板截图已查看，当前版本显示 0.1.1。实际 NSIS 安装和自动启动不是模拟返回值，正式包构建保持原生重编译与 Spectre 门槛。
+
+该证据证明同一源码、两个实际包版本在隔离 runner 上通过真实更新服务/NSIS 升级，并保留所测数据库流程记录、文件及界面标记。更新 HTTP 使用固定仓库路径的本机夹具；没有发布该 0.1.1 fixture、没有验证公开 GitHub Release 的实际下载渠道，也不证明所有历史版本数据库迁移或在途任务跨版本恢复。此前失败证据继续保留，完整产品目标仍未完成。

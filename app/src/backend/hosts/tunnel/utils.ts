@@ -5,6 +5,12 @@ export function classifyTunnelError(errorMessage: string): ErrorType {
   if (!errorMessage) return "UNKNOWN";
 
   const message = errorMessage.toLowerCase();
+  if (
+    message.includes("host denied") ||
+    message.includes("host_trust_") ||
+    message.includes("tunnel_trust_")
+  )
+    return "CONNECTION_FAILED";
 
   if (
     message.includes("closed by remote host") ||

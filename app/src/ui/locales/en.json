@@ -5941,7 +5941,8 @@
       "archive": "Archive and release resources",
       "archiveHint": "Keep local redacted operation logs and a task summary. Release task memory, temporary chat state and local grants without deleting transferred files.",
       "archiveBlocked": "Unknown results, audit gaps or cleanup work must be resolved before archiving."
-    }
+    },
+    "tunnelTrustRejected": "Server identity verification did not succeed. Review the address and fingerprint in Host Trust, then reconnect the tunnel manually."
   },
   "fileDocument": {
     "review": "Review file changes",
