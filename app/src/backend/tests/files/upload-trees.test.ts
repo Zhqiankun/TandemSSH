@@ -315,6 +315,42 @@ describe("reviewed directory uploads over real SFTP", () => {
         })
       ).status,
     ).toBe(409);
+    await f.confirm(p);
+    await f.trees.directories(actor, p.id);
+    const bytes = Buffer.from("data"),
+      file = await f.trees.prepareEntry(
+        actor,
+        p.id,
+        "file",
+        "session",
+        randomUUID(),
+        manifest(bytes),
+      );
+    await f.uploads.start(actor, file.id, { overwrite: false });
+    await f.uploads.chunk(actor, file.id, 0, bytes);
+    await f.uploads.finish(actor, file.id);
+    const endpoint = base + "/trees/" + p.id + "/entries/file/complete";
+    const request = (
+      extra: Record<string, string> = {},
+      data: object = { uploadId: file.id },
+    ) =>
+      fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...extra },
+        body: JSON.stringify(data),
+      });
+    expect((await request({ "x-key": "api" })).status).toBe(403);
+    expect((await request({ "x-user": "other" })).status).toBe(404);
+    expect(
+      (await request({}, { uploadId: file.id, sha256: "forged" })).status,
+    ).toBe(409);
+    const receipt = await request();
+    expect(receipt.status).toBe(200);
+    expect(await receipt.json()).toMatchObject({
+      state: "completed",
+      bytes: 4,
+      transferId: file.id,
+    });
   });
   it("requires human takeover before directory creation when automation controls the host", async () => {
     const f = await fixture(),

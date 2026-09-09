@@ -5,6 +5,7 @@ interface UploadLifecycle {
 export interface ManagedFileUpload extends UploadLifecycle {
   kind: "file";
   ready(): boolean;
+  completed?(uploadId: string): Promise<void>;
   overwrite: boolean;
   takeover: boolean;
   prepare(

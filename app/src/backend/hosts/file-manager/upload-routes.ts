@@ -221,6 +221,18 @@ export function registerUploadRoutes(
       }),
     );
     app.post(
+      prefix + "/trees/:treeId/entries/:entryId/complete",
+      route((actor, req) => {
+        const p = z.object({ uploadId: id }).strict().parse(req.body);
+        return trees.completeEntry(
+          actor,
+          id.parse(req.params.treeId),
+          z.string().min(1).max(128).parse(req.params.entryId),
+          p.uploadId,
+        );
+      }),
+    );
+    app.post(
       prefix + "/trees/:treeId/cancel",
       route((actor, req) => trees.cancel(actor, id.parse(req.params.treeId))),
     );

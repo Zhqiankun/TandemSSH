@@ -508,6 +508,17 @@ export class UploadQueue {
       j.view.transfer.temporaryPath
     )
       throw Error("UPLOAD_CLEANUP_PENDING");
+    if (
+      j.view.transfer.state === "completed" &&
+      j.binding?.kind === "file" &&
+      j.binding.completed
+    ) {
+      try {
+        await j.binding.completed(j.view.transfer.id);
+      } catch (error) {
+        throw Error("UPLOAD_TREE_RECEIPT_PENDING", { cause: error });
+      }
+    }
     try {
       await this.api.action(j.view.sessionId, j.view.transfer.id, "forget");
     } catch (error) {

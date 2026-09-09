@@ -15,6 +15,7 @@ import {
   type UploadTreeEntry,
   type UploadTreePreview,
   type UploadTreeAction,
+  type UploadFileResult,
   type PrepareUploadTree,
 } from "../../types/upload-tree.js";
 import {
@@ -67,12 +68,15 @@ export const uploadTreeSchema = z
   })
   .strict();
 interface TreeEntry {
+  completion?: { uploadId: string; work: Promise<UploadFileResult> };
   view: UploadTreeEntry;
   names: string[];
   directory?: string;
   baseline?: { stat: RemoteFileStat; sha256: string };
 }
 interface Tree {
+  lineageId: string;
+  preparingEntries?: number;
   owner: string;
   targetKey: string;
   peer?: string;
@@ -195,12 +199,18 @@ export class UploadTreeService {
   checkpoint(actor: UploadActor, id: string): UploadTreeCheckpoint {
     const r = this.owned(actor, id);
     this.alive(actor, r);
-    if (r.busy || r.view.state !== "confirmed")
+    if (
+      r.busy ||
+      !!r.preparingEntries ||
+      r.view.state !== "confirmed" ||
+      [...r.entries.values()].some((e) => e.completion)
+    )
       throw Error("UPLOAD_STATE_INVALID");
     if (!r.peer) throw Error("UPLOAD_HOST_IDENTITY_UNVERIFIED");
     return uploadTreeCheckpointSchema.parse({
       schemaVersion: 1,
       id,
+      lineageId: r.lineageId,
       userId: r.owner,
       targetKey: r.targetKey,
       peer: r.peer,
@@ -215,6 +225,24 @@ export class UploadTreeService {
       })),
       savedAt: Date.now(),
     });
+  }
+  async suspend(
+    actor: UploadActor,
+    id: string,
+    persist: (checkpoint: UploadTreeCheckpoint) => Promise<void>,
+  ) {
+    const checkpoint = this.checkpoint(actor, id),
+      r = this.owned(actor, id);
+    if (typeof persist !== "function") throw Error("UPLOAD_REQUEST_INVALID");
+    r.busy = true;
+    try {
+      await persist(checkpoint);
+      r.cancelled = true;
+      this.records.delete(id);
+      return { id };
+    } finally {
+      r.busy = false;
+    }
   }
   /** Only an authenticated recovery coordinator may supply persisted metadata. */
   async restore(actor: UploadActor, raw: unknown, sessionId: string) {
@@ -265,6 +293,7 @@ export class UploadTreeService {
       }
       view.entries = [...entries.values()].map((e) => e.view);
       const r: Tree = {
+        lineageId: c.lineageId ?? c.id,
         owner: actor.userId,
         targetKey: c.targetKey,
         peer: c.peer,
@@ -296,6 +325,23 @@ export class UploadTreeService {
         };
         this.alive(actor, r);
       }
+      for (const e of entries.values())
+        if (e.view.fileResult) {
+          await this.parents(actor, r, e, t, false);
+          t.check("write", e.view.path, e.view.path);
+          if ((await t.io.resolve(e.view.path)) !== e.view.path)
+            throw Error("FILE_TARGET_CHANGED");
+          const current = await t.io.inspectFile(e.view.path, () => {
+            this.alive(actor, r);
+            t.check("write", e.view.path, e.view.path);
+          });
+          if (
+            current.bytes !== e.view.fileResult.bytes ||
+            current.sha256 !== e.view.fileResult.sha256
+          )
+            throw Error("UPLOAD_RESULT_UNVERIFIED");
+          await this.parents(actor, r, e, t, false);
+        }
       await this.root(actor, r, t);
       await this.ports.audit(actor.userId, "upload.tree.restored", {
         id: view.id,
@@ -346,6 +392,7 @@ export class UploadTreeService {
         expiresAt: Date.now() + lifetime,
       };
       const r: Tree = {
+        lineageId: view.id,
         owner: actor.userId,
         targetKey: t.key,
         peer: t.acceptedHostKey,
@@ -503,7 +550,8 @@ export class UploadTreeService {
       (a, b) => a.names.length - b.names.length,
     )) {
       const action =
-        e.view.parentId && actions.get(e.view.parentId) === "skip"
+        e.view.fileResult ||
+        (e.view.parentId && actions.get(e.view.parentId) === "skip")
           ? "skip"
           : choices.get(e.view.id)!;
       if (
@@ -682,6 +730,62 @@ export class UploadTreeService {
       r.busy = false;
     }
   }
+  async completeEntry(
+    actor: UploadActor,
+    id: string,
+    entryId: string,
+    uploadId: string,
+  ) {
+    const r = this.owned(actor, id),
+      e = r.entries.get(entryId);
+    this.alive(actor, r);
+    if (r.busy || r.view.state !== "confirmed" || !e || e.view.kind !== "file")
+      throw Error("UPLOAD_TREE_ENTRY_UNAVAILABLE");
+    if (e.view.fileResult) {
+      if (e.view.fileResult.transferId !== uploadId)
+        throw Error("UPLOAD_RESULT_UNVERIFIED");
+      return structuredClone(e.view.fileResult);
+    }
+    if (e.view.action === "skip") throw Error("UPLOAD_TREE_ENTRY_UNAVAILABLE");
+    const result = this.uploads.completion(actor, uploadId);
+    if (
+      result.tree?.id !== r.lineageId ||
+      result.tree?.entryId !== entryId ||
+      result.targetKey !== r.targetKey ||
+      result.peer !== r.peer ||
+      result.canonicalPath !== e.view.path ||
+      result.bytes !== e.view.size ||
+      result.lastModified !== e.view.lastModified
+    )
+      throw Error("UPLOAD_RESULT_UNVERIFIED");
+    if (e.completion) {
+      if (e.completion.uploadId !== uploadId) throw Error("UPLOAD_BUSY");
+      return e.completion.work;
+    }
+    const work = (async () => {
+      const receipt = {
+        state: "completed" as const,
+        transferId: uploadId,
+        bytes: result.bytes,
+        sha256: result.sha256,
+        completedAt: Date.now(),
+      };
+      await this.ports.audit(actor.userId, "upload.tree.file_completed", {
+        treeId: id,
+        entryId,
+        ...receipt,
+      });
+      this.alive(actor, r);
+      e.view.fileResult = receipt;
+      return structuredClone(receipt);
+    })();
+    e.completion = { uploadId, work };
+    try {
+      return await work;
+    } finally {
+      e.completion = undefined;
+    }
+  }
   async prepareEntry(
     actor: UploadActor,
     id: string,
@@ -698,35 +802,44 @@ export class UploadTreeService {
       r.view.state !== "confirmed" ||
       !e ||
       e.view.kind !== "file" ||
+      !!e.view.fileResult ||
+      !!e.completion ||
       e.view.action === "skip" ||
       e.view.size !== manifest.size ||
       e.view.lastModified !== manifest.lastModified
     )
       throw Error("UPLOAD_TREE_ENTRY_UNAVAILABLE");
-    const t = await this.target(actor, r, sessionId);
-    await this.parents(actor, r, e, t, true);
-    const parents: UploadConstraint["parents"] = [
-      { path: r.view.canonicalRoot, signature: r.rootSignature },
-    ];
-    let parent = e.view.parentId ? r.entries.get(e.view.parentId) : undefined;
-    while (parent) {
-      parents.push({ path: parent.view.path, signature: parent.directory! });
-      parent = parent.view.parentId
-        ? r.entries.get(parent.view.parentId)
-        : undefined;
+    r.preparingEntries = (r.preparingEntries ?? 0) + 1;
+    try {
+      const t = await this.target(actor, r, sessionId);
+      await this.parents(actor, r, e, t, true);
+      const parents: UploadConstraint["parents"] = [
+        { path: r.view.canonicalRoot, signature: r.rootSignature },
+      ];
+      let parent = e.view.parentId ? r.entries.get(e.view.parentId) : undefined;
+      while (parent) {
+        parents.push({ path: parent.view.path, signature: parent.directory! });
+        parent = parent.view.parentId
+          ? r.entries.get(parent.view.parentId)
+          : undefined;
+      }
+      return await this.uploads.prepare(
+        actor,
+        { sessionId, requestId, path: e.view.path, manifest },
+        {
+          tree: { id: r.lineageId, entryId },
+          targetKey: r.targetKey,
+          acceptedHostKey: r.peer,
+          canonicalPath: e.view.path,
+          baseline: e.baseline,
+          parents,
+        },
+      );
+    } finally {
+      r.preparingEntries!--;
     }
-    return this.uploads.prepare(
-      actor,
-      { sessionId, requestId, path: e.view.path, manifest },
-      {
-        targetKey: r.targetKey,
-        acceptedHostKey: r.peer,
-        canonicalPath: e.view.path,
-        baseline: e.baseline,
-        parents,
-      },
-    );
   }
+
   cancel(actor: UploadActor, id: string) {
     const r = this.owned(actor, id);
     r.cancelled = true;
@@ -735,7 +848,12 @@ export class UploadTreeService {
   }
   forget(actor: UploadActor, id: string) {
     const r = this.owned(actor, id);
-    if (r.busy || r.view.entries.some((e) => e.result?.state === "unknown"))
+    if (
+      r.busy ||
+      !!r.preparingEntries ||
+      [...r.entries.values()].some((e) => e.completion) ||
+      r.view.entries.some((e) => e.result?.state === "unknown")
+    )
       throw Error("UPLOAD_CLEANUP_PENDING");
     r.cancelled = true;
     this.records.delete(id);

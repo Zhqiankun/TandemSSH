@@ -5564,6 +5564,7 @@
         "UPLOAD_SOURCE_CHANNEL_PRIVATE": "上传来源通道仅接受受限的原生来源接口。",
         "FILE_DIRECTORY_WRITE_UNAVAILABLE": "当前文件连接不支持受控目录创建。",
         "UPLOAD_OWNER_REQUIRED": "请先登录再启动本批次。",
+        "UPLOAD_TREE_RECEIPT_PENDING": "上传已完成，但批次结果尚未保存。清理已结束记录时会重试保存结果，不会重新上传。",
         "UPLOAD_TREE_REVIEW_REQUIRED": "请在新的批次预览中修改目标名称。",
         "UPLOAD_DESKTOP_REQUIRED": "目录上传需要使用桌面客户端。"
       },

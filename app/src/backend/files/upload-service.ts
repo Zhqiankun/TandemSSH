@@ -48,6 +48,7 @@ export interface UploadPorts {
 export const uploadDirectoryAttributes = (s: RemoteFileStat) =>
   JSON.stringify([s.kind, s.mode, s.uid, s.gid]);
 export interface UploadConstraint {
+  tree?: { id: string; entryId: string };
   targetKey: string;
   acceptedHostKey?: string;
   canonicalPath: string;
@@ -122,7 +123,7 @@ export class UploadService {
   private prune() {
     const now = Date.now();
     for (const [id, r] of this.records) {
-      if (r.busy) continue;
+      if (r.busy || r.suspending) continue;
       if (now > r.view.expiresAt) {
         r.release?.();
         r.release = undefined;
@@ -594,6 +595,30 @@ export class UploadService {
       },
     );
   }
+  completion(actor: UploadActor, id: string) {
+    const r = this.owned(actor, id);
+    if (
+      r.view.state !== "completed" ||
+      r.view.verification !== "sha256" ||
+      !r.view.sha256 ||
+      r.view.receivedBytes !== r.manifest.size ||
+      r.view.commitMayHaveOccurred ||
+      r.view.temporaryPath
+    )
+      throw new DocumentError("UPLOAD_RESULT_UNVERIFIED");
+    if (!r.acceptedHostKey)
+      throw new DocumentError("UPLOAD_HOST_IDENTITY_UNVERIFIED");
+    return {
+      id,
+      targetKey: r.targetKey,
+      peer: r.acceptedHostKey,
+      canonicalPath: r.view.canonicalPath,
+      bytes: r.manifest.size,
+      lastModified: r.manifest.lastModified,
+      tree: r.constraint?.tree,
+      sha256: r.view.sha256,
+    };
+  }
   checkpoint(actor: UploadActor, id: string): UploadCheckpoint {
     const r = this.owned(actor, id);
     this.alive(actor, r);
@@ -753,6 +778,69 @@ export class UploadService {
       { checkpointId: c.id, path: c.canonicalPath },
     );
     return result;
+  }
+  /** Persist all selected member snapshots once, before releasing any upload runtime. */
+  async suspendBatch(
+    actor: UploadActor,
+    ids: string[],
+    persist: (
+      members: Array<{
+        id: string;
+        state: "pending" | "paused" | "unknown";
+        checkpoint?: UploadCheckpoint;
+      }>,
+    ) => Promise<void>,
+  ) {
+    this.alive(actor);
+    if (
+      !Array.isArray(ids) ||
+      ids.length > 128 ||
+      new Set(ids).size !== ids.length ||
+      typeof persist !== "function"
+    )
+      throw new DocumentError("UPLOAD_REQUEST_INVALID");
+    const records = ids.map((id) => this.owned(actor, id));
+    const members = records.map((r) => {
+      if (r.busy || r.pending || r.suspending)
+        throw new DocumentError("UPLOAD_BUSY");
+      if (
+        r.view.state === "preview" &&
+        !r.creationAttempted &&
+        !r.view.temporaryPath
+      )
+        return { id: r.view.id, state: "pending" as const };
+      if (r.view.state === "paused")
+        return {
+          id: r.view.id,
+          state: "paused" as const,
+          checkpoint: this.checkpoint(actor, r.view.id),
+        };
+      if (
+        r.view.state === "unknown" &&
+        r.stageCreated &&
+        r.view.temporaryPath &&
+        r.acceptedHostKey
+      )
+        return {
+          id: r.view.id,
+          state: "unknown" as const,
+          checkpoint: this.snapshot(r),
+        };
+      throw new DocumentError("UPLOAD_STATE_INVALID");
+    });
+    for (const r of records) r.suspending = true;
+    try {
+      await persist(members);
+      for (const r of records) {
+        r.cancelRequested = true;
+        r.release?.();
+        r.release = undefined;
+        this.records.delete(r.view.id);
+      }
+      return members.map(({ id, state }) => ({ id, state }));
+    } finally {
+      for (const r of records) r.suspending = false;
+    }
   }
   async suspend(
     actor: UploadActor,

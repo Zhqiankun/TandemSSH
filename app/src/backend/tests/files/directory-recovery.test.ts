@@ -417,3 +417,399 @@ it("applies download preview capacity and abort checks to recovery", async () =>
   );
   expect(f.held()).toBe(0);
 });
+
+it("records verified upload receipts before cleanup and preserves them across directory restore", async () => {
+  const f = await fixture(),
+    bytes = Buffer.from("done"),
+    trees = f.first.uploadTrees;
+  const p = await trees.preview(actor, {
+    sessionId: "old",
+    path: "/dest",
+    entries: mapping(4),
+  });
+  await confirm(trees, p);
+  await trees.directories(actor, p.id);
+  const file = await trees.prepareEntry(
+    actor,
+    p.id,
+    "file",
+    "old",
+    randomUUID(),
+    manifest(bytes),
+  );
+  await expect(
+    trees.completeEntry(actor, p.id, "file", file.id),
+  ).rejects.toThrow("UPLOAD_RESULT_UNVERIFIED");
+  await f.first.uploads.start(actor, file.id, { overwrite: false });
+  await f.first.uploads.chunk(actor, file.id, 0, bytes);
+  await f.first.uploads.finish(actor, file.id);
+  const receipt = await trees.completeEntry(actor, p.id, "file", file.id);
+  const unrelated = await f.first.uploads.prepare(actor, {
+    sessionId: "old",
+    path: "/dest/unrelated.bin",
+    requestId: randomUUID(),
+    manifest: manifest(bytes),
+  });
+  await f.first.uploads.start(actor, unrelated.id, { overwrite: false });
+  await f.first.uploads.chunk(actor, unrelated.id, 0, bytes);
+  await f.first.uploads.finish(actor, unrelated.id);
+  const otherTree = await trees.preview(actor, {
+    sessionId: "old",
+    path: "/dest",
+    entries: [
+      {
+        id: "file",
+        name: "unrelated.bin",
+        kind: "file",
+        size: 4,
+        lastModified: 100,
+      },
+    ],
+  });
+  await confirm(trees, otherTree);
+  await expect(
+    trees.completeEntry(actor, otherTree.id, "file", unrelated.id),
+  ).rejects.toThrow("UPLOAD_RESULT_UNVERIFIED");
+  expect(receipt).toMatchObject({
+    state: "completed",
+    bytes: 4,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  });
+  f.first.uploads.forget(actor, file.id);
+  expect(await trees.completeEntry(actor, p.id, "file", file.id)).toEqual(
+    receipt,
+  );
+  const cp = trees.checkpoint(actor, p.id);
+  f.first.dispose();
+  await f.reconnect();
+  const next = f.create(),
+    r = await next.uploadTrees.restore(actor, cp, "new");
+  expect(r.entries.find((e) => e.id === "file")?.fileResult).toEqual(receipt);
+  await confirm(next.uploadTrees, r);
+  expect(
+    next.uploadTrees.get(actor, r.id).entries.find((e) => e.id === "file")
+      ?.action,
+  ).toBe("skip");
+  await expect(
+    next.uploadTrees.prepareEntry(
+      actor,
+      r.id,
+      "file",
+      "new",
+      randomUUID(),
+      manifest(bytes),
+    ),
+  ).rejects.toThrow("UPLOAD_TREE_ENTRY_UNAVAILABLE");
+  await f.remote.write("/dest/应用/数据.bin", "evil");
+  await expect(next.uploadTrees.restore(actor, cp, "new")).rejects.toThrow(
+    "UPLOAD_RESULT_UNVERIFIED",
+  );
+});
+it("retains the completed upload after receipt audit failure and retries metadata without another write", async () => {
+  const f = await fixture(),
+    bytes = Buffer.from("done"),
+    trees = f.first.uploadTrees,
+    p = await trees.preview(actor, {
+      sessionId: "old",
+      path: "/dest",
+      entries: mapping(4),
+    });
+  await confirm(trees, p);
+  await trees.directories(actor, p.id);
+  const file = await trees.prepareEntry(
+    actor,
+    p.id,
+    "file",
+    "old",
+    randomUUID(),
+    manifest(bytes),
+  );
+  await f.first.uploads.start(actor, file.id, { overwrite: false });
+  await f.first.uploads.chunk(actor, file.id, 0, bytes);
+  await f.first.uploads.finish(actor, file.id);
+  const before = f.remote.writes();
+  vi.mocked(f.ports.audit).mockRejectedValueOnce(Error("AUDIT_UNAVAILABLE"));
+  await expect(
+    trees.completeEntry(actor, p.id, "file", file.id),
+  ).rejects.toThrow("AUDIT_UNAVAILABLE");
+  expect(
+    trees.get(actor, p.id).entries.find((e) => e.id === "file")?.fileResult,
+  ).toBeUndefined();
+  expect(f.first.uploads.get(actor, file.id).state).toBe("completed");
+  await trees.completeEntry(actor, p.id, "file", file.id);
+  expect(f.remote.writes()).toBe(before);
+});
+it("does not serialize unrelated uploads behind a pending receipt and rejects cross-user or wrong-entry completion", async () => {
+  const f = await fixture(),
+    bytes = Buffer.from("done"),
+    trees = f.first.uploadTrees,
+    p = await trees.preview(actor, {
+      sessionId: "old",
+      path: "/dest",
+      entries: [
+        ...mapping(4),
+        {
+          id: "second",
+          parentId: "dir",
+          name: "other.bin",
+          kind: "file",
+          size: 4,
+          lastModified: 100,
+        },
+      ],
+    });
+  await confirm(trees, p);
+  await trees.directories(actor, p.id);
+  const file = await trees.prepareEntry(
+    actor,
+    p.id,
+    "file",
+    "old",
+    randomUUID(),
+    manifest(bytes),
+  );
+  await f.first.uploads.start(actor, file.id, { overwrite: false });
+  await f.first.uploads.chunk(actor, file.id, 0, bytes);
+  await f.first.uploads.finish(actor, file.id);
+  await expect(
+    trees.completeEntry({ userId: "other" }, p.id, "file", file.id),
+  ).rejects.toThrow("UPLOAD_NOT_FOUND");
+  await expect(
+    trees.completeEntry(actor, p.id, "second", file.id),
+  ).rejects.toThrow("UPLOAD_RESULT_UNVERIFIED");
+  let release!: () => void;
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  vi.mocked(f.ports.audit).mockImplementationOnce(async () => gate);
+  const save = trees.completeEntry(actor, p.id, "file", file.id),
+    same = trees.completeEntry(actor, p.id, "file", file.id);
+  try {
+    expect(() => trees.checkpoint(actor, p.id)).toThrow("UPLOAD_STATE_INVALID");
+    expect(
+      (
+        await trees.prepareEntry(
+          actor,
+          p.id,
+          "second",
+          "old",
+          randomUUID(),
+          manifest(bytes),
+        )
+      ).state,
+    ).toBe("preview");
+  } finally {
+    release();
+  }
+  expect(await same).toEqual(await save);
+});
+
+it("persists a directory and paused/pending upload members together before releasing any runtime", async () => {
+  const f = await fixture(),
+    old = f.first,
+    bytes = Buffer.alloc(4194304 + 7, 41),
+    entries = [
+      ...mapping(bytes.length),
+      {
+        id: "second",
+        parentId: "dir",
+        name: "pending.bin",
+        kind: "file" as const,
+        size: 4,
+        lastModified: 100,
+      },
+    ];
+  const p = await old.uploadTrees.preview(actor, {
+    sessionId: "old",
+    path: "/dest",
+    entries,
+  });
+  await confirm(old.uploadTrees, p);
+  await old.uploadTrees.directories(actor, p.id);
+  const partial = await old.uploadTrees.prepareEntry(
+      actor,
+      p.id,
+      "file",
+      "old",
+      randomUUID(),
+      manifest(bytes),
+    ),
+    pending = await old.uploadTrees.prepareEntry(
+      actor,
+      p.id,
+      "second",
+      "old",
+      randomUUID(),
+      manifest(Buffer.from("next")),
+    );
+  await old.uploads.start(actor, partial.id, { overwrite: false });
+  await old.uploads.chunk(actor, partial.id, 0, bytes.subarray(0, 4194304));
+  await old.uploads.pause(actor, partial.id);
+  const snapshots: Array<
+    Parameters<Parameters<UploadService["suspendBatch"]>[2]>[0]
+  > = [];
+  await expect(
+    old.uploadTrees.suspend(actor, p.id, (tree) =>
+      old.uploads
+        .suspendBatch(actor, [partial.id, pending.id], async (members) => {
+          snapshots.push(members);
+          expect(tree.id).toBe(p.id);
+          expect(() => old.uploads.cancel(actor, partial.id, true)).toThrow(
+            "UPLOAD_BUSY",
+          );
+          throw Error("DISK_FULL");
+        })
+        .then(() => {}),
+    ),
+  ).rejects.toThrow("DISK_FULL");
+  expect(old.uploadTrees.get(actor, p.id).state).toBe("confirmed");
+  expect(old.uploads.get(actor, partial.id).state).toBe("paused");
+  expect(old.uploads.get(actor, pending.id).state).toBe("preview");
+  const { sealRecord, openRecord } =
+      await import("../../privacy/encrypted-record-codec"),
+    key = Buffer.alloc(32, 73),
+    file = f.remote.localPathForTest("/owned-checkpoint.bin");
+  const fs = await import("node:fs/promises");
+  await old.uploadTrees.suspend(actor, p.id, (tree) =>
+    old.uploads
+      .suspendBatch(actor, [partial.id, pending.id], async (members) => {
+        const encrypted = sealRecord(
+          JSON.stringify({ tree, members }),
+          key,
+          "TUB1",
+          p.id,
+        );
+        expect(encrypted.includes(Buffer.from("/dest"))).toBe(false);
+        const handle = await fs.open(file, "wx");
+        try {
+          await handle.writeFile(encrypted);
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+      })
+      .then(() => {}),
+  );
+  expect(() => old.uploadTrees.get(actor, p.id)).toThrow("UPLOAD_NOT_FOUND");
+  expect(() => old.uploads.get(actor, partial.id)).toThrow("UPLOAD_NOT_FOUND");
+  expect(() => old.uploads.get(actor, pending.id)).toThrow("UPLOAD_NOT_FOUND");
+  const recovered = JSON.parse(
+    openRecord(await fs.readFile(file), key, "TUB1", p.id),
+  );
+  expect(recovered.members.map((m: { state: string }) => m.state)).toEqual([
+    "paused",
+    "pending",
+  ]);
+  old.dispose();
+  await f.reconnect();
+  const next = f.create(),
+    r = await next.uploadTrees.restore(actor, recovered.tree, "new");
+  await confirm(next.uploadTrees, r);
+  await next.uploadTrees.directories(actor, r.id);
+  const restored = await next.uploads.restore(
+    actor,
+    recovered.members[0].checkpoint,
+    "new",
+    manifest(bytes),
+    false,
+  );
+  await next.uploads.resume(actor, restored.id, "new");
+  await next.uploads.chunk(
+    actor,
+    restored.id,
+    4194304,
+    bytes.subarray(4194304),
+  );
+  expect((await next.uploads.finish(actor, restored.id)).state).toBe(
+    "completed",
+  );
+  expect(
+    (await next.uploadTrees.completeEntry(actor, r.id, "file", restored.id))
+      .state,
+  ).toBe("completed");
+  const second = await next.uploadTrees.prepareEntry(
+    actor,
+    r.id,
+    "second",
+    "new",
+    randomUUID(),
+    manifest(Buffer.from("next")),
+  );
+  await next.uploads.start(actor, second.id, { overwrite: false });
+  await next.uploads.chunk(actor, second.id, 0, Buffer.from("next"));
+  await next.uploads.finish(actor, second.id);
+  expect((await f.remote.read("/dest/应用/数据.bin")).equals(bytes)).toBe(true);
+  expect((await f.remote.read("/dest/应用/pending.bin")).toString()).toBe(
+    "next",
+  );
+  expect(snapshots).toHaveLength(1);
+});
+it("exports uncertain members as unknown and never retries their commit during batch handoff", async () => {
+  const f = await fixture(),
+    bytes = Buffer.from("done"),
+    p = await f.first.uploads.prepare(actor, {
+      sessionId: "old",
+      path: "/dest/uncertain.bin",
+      requestId: randomUUID(),
+      manifest: manifest(bytes),
+    });
+  await f.first.uploads.start(actor, p.id, { overwrite: false });
+  await f.first.uploads.chunk(actor, p.id, 0, bytes);
+  const replace = f.remote.io.replace.bind(f.remote.io);
+  vi.spyOn(f.remote.io, "replace").mockImplementationOnce(async (...args) => {
+    await replace(...args);
+    throw Error("LOST_REPLY");
+  });
+  expect((await f.first.uploads.finish(actor, p.id)).state).toBe("unknown");
+  const renames = f.remote.renames(),
+    persist = vi.fn(
+      async (
+        members: Parameters<Parameters<UploadService["suspendBatch"]>[2]>[0],
+      ) => {
+        expect(members[0].state).toBe("unknown");
+        expect(members[0].checkpoint?.canonicalPath).toBe(
+          "/dest/uncertain.bin",
+        );
+      },
+    );
+  await f.first.uploads.suspendBatch(actor, [p.id], persist);
+  expect(persist).toHaveBeenCalledOnce();
+  expect(f.remote.renames()).toBe(renames);
+  expect((await f.remote.read("/dest/uncertain.bin")).equals(bytes)).toBe(true);
+});
+it("rejects a directory snapshot while a member prepare request is still in flight", async () => {
+  const f = await fixture(),
+    p = await f.first.uploadTrees.preview(actor, {
+      sessionId: "old",
+      path: "/dest",
+      entries: mapping(4),
+    });
+  await confirm(f.first.uploadTrees, p);
+  await f.first.uploadTrees.directories(actor, p.id);
+  const original = f.ports.target;
+  let release!: () => void;
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  f.ports.target = async (...args) => {
+    await gate;
+    return original(...args);
+  };
+  const prepare = f.first.uploadTrees.prepareEntry(
+    actor,
+    p.id,
+    "file",
+    "old",
+    randomUUID(),
+    manifest(Buffer.from("data")),
+  );
+  try {
+    expect(() => f.first.uploadTrees.checkpoint(actor, p.id)).toThrow(
+      "UPLOAD_STATE_INVALID",
+    );
+  } finally {
+    release();
+  }
+  await prepare;
+  expect(f.first.uploadTrees.checkpoint(actor, p.id).id).toBe(p.id);
+});

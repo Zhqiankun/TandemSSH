@@ -4,6 +4,7 @@ import type {
   UploadTreePreview,
   UploadTreeAction,
   UploadDirectoryResult,
+  UploadFileResult,
 } from "@/types/upload-tree";
 import type { UploadManifest, UploadView } from "@/types/file-upload";
 const prefix = "/ssh/uploads/trees/";
@@ -35,6 +36,12 @@ export interface UploadTreeApi {
     manifest: UploadManifest,
     signal: AbortSignal,
   ): Promise<UploadView>;
+  complete(
+    session: string,
+    tree: string,
+    entry: string,
+    uploadId: string,
+  ): Promise<UploadFileResult>;
   cancel(session: string, tree: string): Promise<UploadTreePreview>;
   forget(session: string, tree: string): Promise<unknown>;
 }
@@ -73,6 +80,10 @@ export const uploadTreeApi: UploadTreeApi = {
       { sessionId: session, requestId, manifest },
       signal,
     ),
+  complete: (session, tree, entry, uploadId) =>
+    post(session, enc(tree) + "/entries/" + enc(entry) + "/complete", {
+      uploadId,
+    }),
   cancel: (session, tree) => post(session, enc(tree) + "/cancel"),
   forget: (session, tree) => post(session, enc(tree) + "/forget"),
 };

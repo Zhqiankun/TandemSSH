@@ -217,6 +217,15 @@ export class UploadBatches {
                   overwrite: target?.action === "overwrite",
                   takeover: b.takeover,
                   release,
+                  completed: async (uploadId) => {
+                    this.current(b);
+                    await this.api.complete(
+                      b.target.sessionId,
+                      b.target.id,
+                      entry.id,
+                      uploadId,
+                    );
+                  },
                   prepare: async (requestId, sessionId, manifest, signal) => {
                     this.current(b);
                     let parent = entry.parentId;

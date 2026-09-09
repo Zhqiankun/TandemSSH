@@ -52,6 +52,29 @@
 
 ## 下一步保持完整范围
 
-仍需接入批次级加密记录、已完成上传收据、暂停/结束成员与目录清单的持久化事务、退出保留、窗口及账号占用、中文整批保存/恢复/核对与实际桌面重启验收。本轮检查点仅为内部格式和用例，尚未对用户开放整批跨重启恢复。随后继续 AI/MCP/保存流程的恢复授权和自动/协作双模式验收；旧权限、能力 ID、预算和确认不能从保存数据复活。
+仍需接入批次级生产加密存储、退出保留、窗口及账号占用、中文整批保存/恢复/核对与实际桌面重启验收。已完成上传收据和一次交接的用例已由下节接入；生产持久化协调仍继续。本轮检查点仅为内部格式和用例，尚未对用户开放整批跨重启恢复。随后继续 AI/MCP/保存流程的恢复授权和自动/协作双模式验收；旧权限、能力 ID、预算和确认不能从保存数据复活。
 
 SFTP 的目录属性无法提供原子 inode/CAS；下载清单的文件属性约束也不等于全部未准备来源内容已经固定。真实 Linux/OpenSSH、权限/断线/大批次矩阵与完整 A01–A37 保持待验收，不因本轮局部通过而缩减原目标。
+
+
+## 2026-09-09 上传完成收据与整批交接
+
+UploadService.completion 只从已验证完成、无临时文件/未知提交的内部记录生成结果，包含本批次及条目归属。UploadTreeService.completeEntry 核对用户、批次来源标识、条目、服务器公钥、规范目标、字节数和来源版本后记录完成结果。同一路径的独立上传不能冒充本批成功，HTTP 仅接收 uploadId，拒绝用户自行提交摘要、API Key 和跨用户请求。重复登记在原上传运行记录已释放后仍返回原收据。
+
+人工 UploadQueue 的托管文件在释放上传记录前调用该接口；自动目录执行器也先登记再释放。记录失败保留已完成事实和运行证据，人工队列显示中文“上传已完成，但批次结果尚未保存”，清理完成项时只重试记录，不重新上传。每个条目单独协调登记，其他文件的准备不会被一个收据写入阻塞。
+
+上传目录检查点包含这些完成结果，恢复时重新核对远端内容；核验成功的完成项保留，确认时不重新派发。批次来源标识用于追踪实际上传归属，不恢复旧授权、控制权或会话。
+
+UploadTreeService.suspend 与 UploadService.suspendBatch 提供组合交接：先固定目录和所有指定成员，再执行一次持久化回调，成功后才释放各运行记录。暂停成员包含确认偏移，未开始预览标为 pending，已有未决提交标为 unknown。持久化期间暂停记录不能被取消、续写或定时清理；正在准备文件或登记收据时不能保存目录快照。持久化失败保留原目录和成员。生产协调器仍须维护持久化占用、写入状态和窗口生命周期，不能直接把回调通过等同于生产恢复入口已完成。
+
+新增 7 项用例，最终专项 3 文件 / 32 项通过；人工队列/真实 SFTP 验证登记失败重试无额外写入，HTTP 验证拒绝越权与伪造摘要，完成收据验证新连接复原及内容变化拒绝。组合交接用例实际把目录与暂停/pending 成员加密写入测试文件、fsync 后释放，在新 SSH 连接继续两项上传并验证全部字节。该加密联测使用注入的测试密钥和持久化回调，尚未接入生产批次记录库。
+
+最终相关回归 **106 文件 / 703 项全部通过**，类型、模块 lint、中文键及构建/Windows 解包通过。最终包原生探针验证 13 项依赖和目录恢复能力，打包 stdio/隔离 Codex 3 项通过。已有 34 项 MCP 工具保持可用。
+
+当前 Windows 包实际完成 automatic/collaborative 两种目录上传 → 共享 SSH 校验上传文件 SHA-256 → 目录下载，均保持 3 个逻辑步骤、13 次成功操作；协作中途接管后续跑没有重复成功条目。最终内容、空目录、空文件、同一 SSH 连接及可复用导出通过，应用正常退出。报告：.cache/desktop-observation-report-60e89bf2-22ac-42b9-80e4-2f4686b6f0dd/workflow-directory-result.json；该目录含完成/授权/接管截图和终端输入输出记录。原生选择器由测试主进程提供专用测试目录，未使用用户服务器或付费模型。
+
+桌面首轮复核在首次终端核对处失败：测试 SSH 收到完整 if 探测，本地 ConPTY/Bash 执行时缺少首字符，应用返回 SHELL_CONTEXT_TIMEOUT 并停止步骤。增加有界终端输出/尺寸记录后复验通过，没有过滤输入或改动应用探测。失败报告 .cache/desktop-observation-report-d18e31bb-77ea-4cab-a9e1-1b068e1960f8 必须保留；便携新版 Bash 仍出现过该现象，不能声称兼容性问题彻底解决，见第 32 份文档。启动器先前的 Windows ESM 文件 URL 错误也已修复，失败日志单独保留，未把启动器失败归因于产品。
+
+证据日志：.cache/upload-batch-handoff-final-tests.log、.cache/upload-batch-handoff-regression.log、.cache/upload-batch-handoff-types-final.log、.cache/upload-batch-handoff-lint-final.log、.cache/upload-batch-handoff-localization.log、.cache/upload-batch-handoff-build.log、.cache/upload-batch-handoff-package.log、.cache/upload-batch-handoff-native-probe.log、.cache/upload-batch-handoff-packaged-mcp.log、.cache/upload-batch-handoff-desktop.log。
+
+上一 ab2ebe4 的 CI 34309966755 已全部成功。本轮生产收据已接入人工和自动目录路径；整批恢复按钮、生产加密记录、跨应用重启的批次恢复及 AI/MCP/流程恢复仍待完成，完整 Goal 保持进行中。

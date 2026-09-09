@@ -676,12 +676,18 @@ export class DirectoryTransfers {
       };
       if (result.status === "succeeded" && result.result?.transfer) {
         try {
-          if (a.direction === "upload")
+          if (a.direction === "upload") {
+            await r.uploadTrees.completeEntry(
+              { userId: s.context.userId },
+              r.upload!.id,
+              e.sourceId,
+              result.result.transfer.transferId,
+            );
             r.uploads.forget(
               { userId: s.context.userId },
               result.result.transfer.transferId,
             );
-          else
+          } else
             r.downloads.forget(
               { userId: s.context.userId },
               result.result.transfer.transferId,

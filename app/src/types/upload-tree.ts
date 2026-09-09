@@ -13,7 +13,15 @@ export interface UploadDirectoryResult {
   error?: string;
   mode?: number;
 }
+export interface UploadFileResult {
+  state: "completed";
+  transferId: string;
+  bytes: number;
+  sha256: string;
+  completedAt: number;
+}
 export interface UploadTreeEntry extends UploadTreeMapping {
+  fileResult?: UploadFileResult;
   path: string;
   relativePath: string;
   status: "new" | "directory" | "conflict" | "blocked";

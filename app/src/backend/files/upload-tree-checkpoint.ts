@@ -54,6 +54,16 @@ const entry = z
           .optional(),
         error: z.string().max(128).optional(),
         action: z.enum(["create", "merge", "overwrite", "skip"]).optional(),
+        fileResult: z
+          .object({
+            state: z.literal("completed"),
+            transferId: z.string().uuid(),
+            bytes: z.number().int().nonnegative(),
+            sha256: z.string().regex(/^[a-f0-9]{64}$/),
+            completedAt: z.number().int().nonnegative(),
+          })
+          .strict()
+          .optional(),
         result: z
           .object({
             state: z.enum([
@@ -82,6 +92,7 @@ export const uploadTreeCheckpointSchema = z
   .object({
     schemaVersion: z.literal(1),
     id: z.string().uuid(),
+    lineageId: z.string().uuid().optional(),
     userId: z.string().min(1).max(256),
     targetKey: z.string().min(1).max(8192),
     peer: z.string().min(1).max(256),
@@ -138,6 +149,11 @@ export const uploadTreeCheckpointSchema = z
             Buffer.byteLength(n, "utf8") > 255,
         ) ||
           e.view.path.length > 4096)
+      )
+        fail();
+      if (
+        e.view.fileResult &&
+        (e.view.kind !== "file" || e.view.fileResult.bytes !== e.view.size)
       )
         fail();
       if ((e.directory || e.view.result) && e.view.kind !== "directory") fail();

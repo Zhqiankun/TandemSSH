@@ -119,6 +119,8 @@ async function fixture() {
         request,
         manifest,
       ),
+    complete: (_s, id, entry, uploadId) =>
+      trees.completeEntry(actor, id, entry, uploadId),
     cancel: async (_s, id) => trees.cancel(actor, id),
     forget: vi.fn(async (_s, id) => trees.forget(actor, id)),
   };
@@ -217,6 +219,31 @@ async function fixture() {
   };
 }
 describe("reviewed upload batches over native source and real SFTP", () => {
+  it("keeps completed rows and retries a failed batch receipt before forgetting without retransmitting", async () => {
+    const f = await fixture();
+    const complete = vi
+      .spyOn(f.api, "complete")
+      .mockRejectedValueOnce(Error("AUDIT_UNAVAILABLE"));
+    await f.start();
+    await f.settle();
+    await vi.waitFor(() =>
+      expect(
+        f.queue
+          .getSnapshot()
+          .some(
+            (j) =>
+              j.error === "UPLOAD_TREE_RECEIPT_PENDING" &&
+              j.state === "completed",
+          ),
+      ).toBe(true),
+    );
+    const writes = f.remote.writes();
+    await f.queue.removeFinished();
+    expect(complete.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(f.remote.writes()).toBe(writes);
+    expect(f.queue.getSnapshot()).toEqual([]);
+  });
+
   it("uploads binary bytes and empty directories through the shared queue, then releases all records", async () => {
     const f = await fixture();
     const target = await f.preview();
@@ -242,6 +269,12 @@ describe("reviewed upload batches over native source and real SFTP", () => {
         .getSnapshot()
         .filter((j) => j.kind === "file")
         .every((j) => j.transfer?.verification === "sha256"),
+    ).toBe(true);
+    expect(
+      f.trees
+        .get({ userId: "owner" }, b.target.id)
+        .entries.filter((e) => e.kind === "file")
+        .every((e) => e.fileResult?.state === "completed"),
     ).toBe(true);
     await f.queue.removeFinished();
     expect(f.queue.getSnapshot()).toEqual([]);

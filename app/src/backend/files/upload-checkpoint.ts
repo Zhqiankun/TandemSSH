@@ -37,6 +37,13 @@ export const uploadCheckpointSchema = z
     baseline: baseline.optional(),
     constraint: z
       .object({
+        tree: z
+          .object({
+            id: z.string().uuid(),
+            entryId: z.string().min(1).max(128),
+          })
+          .strict()
+          .optional(),
         targetKey: z.string().min(1).max(8192),
         acceptedHostKey: z.string().min(1).max(256).optional(),
         canonicalPath: uploadPathSchema,

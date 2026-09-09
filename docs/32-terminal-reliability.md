@@ -1,6 +1,6 @@
 # 终端协议异常与桌面流程可靠性
 
-状态：终端协议异常处理已实现并通过回归；Windows 旧版 Git Bash 的输入兼容性仍需继续验证。完整产品目标不变。
+状态：终端协议异常处理已实现并通过回归；Windows 本机回环 SSH 中 ConPTY/Git Bash 的输入兼容性仍需继续验证。完整产品目标不变。
 
 ## 发现的问题与证据
 
@@ -52,3 +52,12 @@
 最终实际桌面报告 .cache/desktop-observation-report-047a516e-702b-44a1-a7b2-80a1f0ba7d6f 再次通过损坏探测保护及 automatic/collaborative 两种混合流程，.cache/pty-protocol-final-desktop.log 记录 cleanExit=true。验收额外断言切换新任务后旧超时错误已消失、两个本地绑定的完整路径可见；最终授权截图已人工视读核对。采用同样的本地文件、回环 SSH/SFTP、实际 stdio、中文按钮和专用原生选择器测试路径；没有使用用户服务器或付费模型。
 
 第 31 份实现提交 2923fc9 的 [CI 34241705102](https://github.com/Zhqiankun/TandemSSH/actions/runs/34241705102/job/102113252342) 已通过全部步骤，包括标准 Spectre 原生工具链、Windows 安装包、安装/启动/卸载。它证明该提交的 CI 结果，不能替代本轮后续提交的构建状态。
+
+
+## 2026-09-09 新版便携 Bash 的再次复现
+
+上传批次收据改动的实际桌面复核在首次终端状态探测失败，任务尚未开始文件步骤。测试 SSH 原始输入记录包含完整的 if command printf，界面中的 Bash 错误却从 f command printf 开始，随后报告 unexpected token then。该次仍使用 .cache/PortableGit/bin/bash.exe；因此此前新版便携环境中的 12 次未复现，不能作为所有新版场景已解决的证明。
+
+失败记录：.cache/desktop-observation-report-d18e31bb-77ea-4cab-a9e1-1b068e1960f8/fixture-pty-input.jsonl、desktop-failure-state.json、desktop-failure.json。应用返回 SHELL_CONTEXT_TIMEOUT，未继续运行流程步骤；验收器已结束并清理自有进程。
+
+在测试夹具增加有界原始输出和尺寸事件记录后，未过滤输入、未延长/绕过产品探测，再次完成自动和协作目录三步流程及协作接管，正常退出。通过报告 .cache/desktop-observation-report-60e89bf2-22ac-42b9-80e4-2f4686b6f0dd，包含 fixture-pty-input.jsonl、fixture-pty-output.jsonl、fixture-pty-events.jsonl 与 workflow-directory-result.json。新增记录可能改变时序；本次成功证明当前流程的正向场景，不能证明偶发丢字已消除。具体 ConPTY/MSYS 层根因、真实 Linux/OpenSSH 及尺寸/焦点压力矩阵继续保留。
