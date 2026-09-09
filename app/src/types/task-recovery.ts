@@ -1,3 +1,4 @@
+import type { DirectoryStepCheckpoint } from "./directory-step-recovery.js";
 import type { AiExecutionCheckpoint } from "./ai-task-recovery.js";
 import type {
   TaskMode,
@@ -12,6 +13,7 @@ export interface WorkflowExecutionCheckpoint {
   runs: Array<{ summary: TaskWorkflowRun; steps: TaskPlanStep[] }>;
 }
 export interface TaskExecutionCheckpoint {
+  directoryState?: DirectoryStepCheckpoint;
   completed?: boolean;
   workflowState?: WorkflowExecutionCheckpoint;
   workflowCwd?: string;
@@ -36,6 +38,7 @@ export interface TaskExecutionCheckpoint {
   savedAt: number;
 }
 export interface TaskRecoverySummary {
+  directoryProgress?: { completed: number; entries: number };
   activeWorkflowName?: string;
   resourceRecoveryRequired: boolean;
   id: string;

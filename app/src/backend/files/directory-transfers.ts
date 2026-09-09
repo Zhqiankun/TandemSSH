@@ -1,3 +1,5 @@
+import type { DirectoryStepCheckpoint } from "../../types/directory-step-recovery.js";
+import { readDirectoryStepCheckpoint } from "./directory-step-checkpoint.js";
 import { randomUUID, createHash } from "node:crypto";
 import { posix } from "node:path";
 import {
@@ -67,6 +69,7 @@ interface Record {
   download?: DownloadTreePreview;
   local?: LocalDownloadTreePreview;
   choicesDigest?: string;
+  recoveryChoices?: DirectoryStepCheckpoint["choices"];
 }
 const code = (e: unknown) =>
   e instanceof Error && /^[A-Z][A-Z0-9_]{1,80}$/.test(e.message)
@@ -77,12 +80,187 @@ const identity = (a: FileTaskContext, b: FileTaskContext) =>
 /** Directory previews own immutable mappings; every execution receives a fresh, bounded gateway scope. */
 export class DirectoryTransfers {
   private records = new Map<string, Record>();
+  private recovery = new Map<
+    string,
+    {
+      action: DirectoryAction;
+      checkpoint: DirectoryStepCheckpoint;
+      token: object;
+    }
+  >();
   private preparing = 0;
   private closed = false;
   constructor(
     private grants: LocalFileGrants,
     private ports: Omit<AutomatedTransferPorts, "local" | "directoryServices">,
   ) {}
+  private recoveryKey(c: FileTaskContext) {
+    return JSON.stringify([c.userId, c.taskId, c.sessionId]);
+  }
+  prepareRecovery(
+    c: FileTaskContext,
+    action: Extract<DirectoryAction, { type: "file.directory.preview" }>,
+    raw: DirectoryStepCheckpoint,
+  ) {
+    const checkpoint = readDirectoryStepCheckpoint(raw),
+      key = this.recoveryKey(c);
+    if (
+      checkpoint.remoteTree.userId !== c.userId ||
+      action.direction !== "upload" ||
+      checkpoint.remoteTree.path !== action.path
+    )
+      throw Error("DIRECTORY_RECOVERY_INVALID");
+    if (this.closed || this.recovery.has(key) || this.recovery.size >= 128)
+      throw Error("DIRECTORY_OPERATION_IN_PROGRESS");
+    const value = { action: structuredClone(action), checkpoint, token: {} };
+    this.recovery.set(key, value);
+    return () => {
+      if (this.recovery.get(key) === value) this.recovery.delete(key);
+    };
+  }
+  checkpoint(
+    c: FileTaskContext,
+    id: string,
+    stepId: string,
+  ): DirectoryStepCheckpoint | undefined {
+    const r = this.owned(c, id);
+    if (
+      r.busy ||
+      !r.upload ||
+      r.view.state !== "confirmed" ||
+      [...r.entries.values()].some(
+        (e) =>
+          e.binary ||
+          e.resultData?.status === "unknown" ||
+          e.resultData?.result?.transfer?.cleanupRequired,
+      )
+    )
+      return undefined;
+    const local = this.grants.directory(
+      c,
+      r.action,
+      () => {},
+      new AbortController().signal,
+    );
+    if (!local.uploadCheckpoint) return undefined;
+    return readDirectoryStepCheckpoint({
+      schemaVersion: 1,
+      stepId,
+      direction: "upload",
+      remoteTree: r.uploadTrees.checkpoint({ userId: c.userId }, r.upload.id),
+      nativeSource: local.uploadCheckpoint(),
+      entries: r.entries.size,
+      completedEntryIds: [...r.entries.values()]
+        .filter((e) => e.resultData?.status === "succeeded")
+        .map((e) => e.id),
+      choices: [...r.entries.values()].map((e) => ({
+        id: e.id,
+        action: e.action,
+      })),
+    });
+  }
+  recoveryChoices(c: FileTaskContext, id: string) {
+    const r = this.owned(c, id);
+    return r.recoveryChoices ? structuredClone(r.recoveryChoices) : undefined;
+  }
+  private async restorePreview(r: Record, raw: DirectoryStepCheckpoint) {
+    const saved = readDirectoryStepCheckpoint(raw),
+      s = this.current(r),
+      local = this.grants.directory(
+        s.context,
+        r.action,
+        () => s.guard(),
+        s.signal,
+      );
+    if (
+      !local.restoreUpload ||
+      saved.remoteTree.canonicalRoot !== r.rootCanonical
+    )
+      throw Error("DIRECTORY_RECOVERY_INVALID");
+    local.restoreUpload(saved.nativeSource);
+    const source = local.uploadEntries();
+    r.upload = await r.uploadTrees.restore(
+      { userId: s.context.userId, signal: s.signal },
+      saved.remoteTree,
+      s.context.sessionId,
+    );
+    const completed = new Set(saved.completedEntryIds);
+    for (const entry of r.upload.entries) {
+      const original = source.find((e) => e.id === entry.id);
+      if (!original || original.kind !== entry.kind)
+        throw Error("UPLOAD_SOURCE_CHANGED");
+      const e: Entry = {
+        id: entry.id,
+        parentId: entry.parentId,
+        relativePath: entry.relativePath,
+        sourceRelativePath: original.relativePath,
+        path: entry.path,
+        kind: entry.kind,
+        size: entry.size,
+        status: entry.status,
+        error: entry.error,
+        sourceId: entry.id,
+        lastModified: original.lastModified,
+      };
+      if (completed.has(e.id)) {
+        e.resultData = {
+          status: "succeeded",
+          result: {
+            directoryTransfer: {
+              ...this.result(r, "entry", e),
+              entryState: e.kind === "directory" ? "merged" : "succeeded",
+            },
+          },
+        };
+        e.result = {
+          status: "succeeded",
+          state: e.kind === "directory" ? "merged" : "succeeded",
+        };
+      }
+      r.entries.set(e.id, e);
+    }
+    for (const e of source.filter(
+      (e) => e.error || !["file", "directory"].includes(e.kind),
+    ))
+      r.entries.set(e.id, {
+        id: e.id,
+        parentId: e.parentId,
+        relativePath: e.relativePath,
+        sourceRelativePath: e.relativePath,
+        path: posix.join(r.rootCanonical, e.relativePath),
+        kind: "excluded",
+        size: 0,
+        status: "blocked",
+        error: e.error ?? "UPLOAD_SOURCE_LINK_OR_SPECIAL",
+        sourceId: e.id,
+        lastModified: e.lastModified,
+      });
+    if (r.entries.size !== saved.entries)
+      throw Error("DIRECTORY_RECOVERY_INVALID");
+    r.recoveryChoices = saved.choices.map((choice) => ({
+      id: choice.id,
+      action:
+        completed.has(choice.id) &&
+        r.entries.get(choice.id)?.kind === "directory"
+          ? "merge"
+          : choice.action,
+    }));
+    for (const e of r.entries.values())
+      if (e.kind !== "excluded") s.target.check("write", e.path, e.path);
+    this.recount(r);
+    for (const e of r.entries.values())
+      if (e.resultData?.result?.directoryTransfer)
+        e.resultData.result.directoryTransfer = {
+          ...this.result(r, "entry", e),
+          entryState: e.resultData.result.directoryTransfer.entryState,
+        };
+    s.guard();
+    r.previewFinished = true;
+    return {
+      status: "succeeded" as const,
+      result: { directoryTransfer: this.result(r, "preview") },
+    };
+  }
   private owned(ctx: FileTaskContext, id: string, execute = false) {
     const r = this.records.get(id);
     if (!r || !identity(ctx, r.context))
@@ -776,7 +954,47 @@ export class DirectoryTransfers {
                   action,
                   guard,
                   stop,
-                  () => this.preview(r),
+                  () => {
+                    const pending = this.recovery.get(this.recoveryKey(c));
+                    if (!pending) return this.preview(r);
+                    const fingerprint = (
+                      a: Extract<
+                        DirectoryAction,
+                        { type: "file.directory.preview" }
+                      >,
+                    ) =>
+                      JSON.stringify([
+                        a.type,
+                        a.direction,
+                        a.path,
+                        a.localGrantId,
+                        a.localVersion,
+                        a.overwrite,
+                        a.timeoutMs ?? null,
+                        a.renames ?? null,
+                      ]);
+                    if (
+                      pending.action.type !== "file.directory.preview" ||
+                      fingerprint(pending.action) !== fingerprint(action)
+                    )
+                      throw Error("DIRECTORY_RECOVERY_INVALID");
+                    return this.restorePreview(r, pending.checkpoint).catch(
+                      (error) => {
+                        const reason = code(error);
+                        if (
+                          [
+                            "UPLOAD_SOURCE_CHANGED",
+                            "UPLOAD_RESULT_UNVERIFIED",
+                            "FILE_TARGET_CHANGED",
+                            "UPLOAD_HOST_IDENTITY_CHANGED",
+                            "DIRECTORY_RECOVERY_INVALID",
+                          ].includes(reason)
+                        )
+                          return { status: "failed" as const, error: reason };
+                        throw error;
+                      },
+                    );
+                  },
                   operation,
                 );
               } catch (error) {
@@ -902,7 +1120,12 @@ export class DirectoryTransfers {
     const r = this.owned(c, id, true);
     if (r.view.state !== "confirmed") throw Error("DIRECTORY_NOT_CONFIRMED");
     return [...r.entries.values()]
-      .filter((e) => e.action !== "skip" && e.kind !== "excluded")
+      .filter(
+        (e) =>
+          e.action !== "skip" &&
+          e.kind !== "excluded" &&
+          e.resultData?.status !== "succeeded",
+      )
       .sort(
         (a, b) =>
           a.relativePath.split("/").length - b.relativePath.split("/").length,
@@ -959,6 +1182,7 @@ export class DirectoryTransfers {
   }
   dispose() {
     this.closed = true;
+    this.recovery.clear();
     for (const r of this.records.values()) this.disposeRecord(r);
     this.records.clear();
   }

@@ -162,6 +162,21 @@ class TaskLocalDirectories {
         throw Error("FILE_LOCAL_DIRECTORY_REQUIRED");
     };
     return {
+      uploadCheckpoint: () => {
+        direction("upload");
+        if (r.pending || r.uploads.size) throw Error("FILE_LOCAL_GRANT_BUSY");
+        return this.sources.checkpoint(r.owner, r.source.id, guard);
+      },
+      restoreUpload: (checkpoint) => {
+        direction("upload");
+        if (r.pending || r.uploads.size) throw Error("FILE_LOCAL_GRANT_BUSY");
+        r.source = this.sources.restore(
+          r.owner,
+          r.source.id,
+          checkpoint,
+          guard,
+        );
+      },
       uploadEntries: () => {
         direction("upload");
         return r.source.entries.map(

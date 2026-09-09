@@ -5007,7 +5007,9 @@
         "TASK_ARCHIVE_IN_PROGRESS": "Task archival is in progress.",
         "TASK_ARCHIVE_RECONCILIATION_REQUIRED": "Unknown results or pending cleanup prevent archival.",
         "AI_TASK_BUSY": "The AI runner has not finished yet.",
-        "AI_TASK_ARCHIVED": "AI task archived. The old request will not restart it."
+        "AI_TASK_ARCHIVED": "AI task archived. The old request will not restart it.",
+        "DIRECTORY_RECOVERY_INVALID": "Directory progress does not match the original plan or source. Recovery stopped.",
+        "UPLOAD_RESULT_UNVERIFIED": "A completed remote file does not match its saved verification receipt. Recovery stopped."
       },
       "allowedPrograms": "Programs allowed for this task (one per line)",
       "operationProgress": "{{done}} / {{total}} commands completed",
@@ -6354,6 +6356,9 @@
     "parentWorkflows": "Workflows within this task",
     "parentHint": "The original version, results and step position are retained. Authorize again to finish remaining steps and return results to the parent task.",
     "parentRestored": "This workflow was restored with completed steps and results retained.",
-    "parentScope": "These program scopes also apply after the workflow returns to its parent task. The workflow commands are reviewed as this plan; old authorization is not restored."
+    "parentScope": "These program scopes also apply after the workflow returns to its parent task. The workflow commands are reviewed as this plan; old authorization is not restored.",
+    "directoryTitle": "Upload directory progress",
+    "directoryProgress": "Completed {{done}} / {{total}} entries",
+    "directoryHint": "Select the original upload directory and authorize again. The source and completed remote contents will be verified before remaining entries continue. Completed entries will not be written again."
   }
 }

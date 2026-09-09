@@ -1,3 +1,4 @@
+import type { DirectoryStepCheckpoint } from "../../../types/directory-step-recovery.js";
 import type { AiExecutionCheckpoint } from "../../../types/ai-task-recovery.js";
 import type { TaskExecutionCheckpoint } from "../../../types/task-recovery.js";
 import type {
@@ -125,6 +126,7 @@ export interface AttachWorkflow {
 type RuntimeStep = TaskPlanStep & {
   operationId?: string;
   directoryCursor?: DirectoryStepCursor;
+  directoryRecovery?: DirectoryStepCheckpoint;
 };
 interface RecordTask {
   recoveryAgent?: () => AiExecutionCheckpoint;
@@ -1118,6 +1120,10 @@ export class TaskRuntime {
     while (nextStep < task.steps.length) {
       const step = task.steps[nextStep],
         op = operations.find((op) => op.id === step.operationId);
+      if (step.directoryCursor?.done) {
+        nextStep++;
+        continue;
+      }
       if (
         !op ||
         op.status !== "succeeded" ||
@@ -1135,15 +1141,25 @@ export class TaskRuntime {
     const uncertain = (op: TaskOperation) =>
       (["unknown", "failed", "running"].includes(op.status) && !op.reviewed) ||
       !!op.auditGap;
+    const directoryState = current?.directoryCursor
+      ? current.directoryCursor.checkpoint?.()
+      : current?.directoryRecovery;
     const resourceRecoveryRequired =
+      (operation?.action.type === "file.directory.entry" &&
+        ["unknown", "running"].includes(operation.status)) ||
       (!!current?.directoryCursor &&
         !current.directoryCursor.canRestart &&
-        !current.directoryCursor.done) ||
+        !current.directoryCursor.done &&
+        !directoryState) ||
       !!operation?.fileResult?.temporaryPath ||
       !!operation?.fileResult?.transfer?.cleanupRequired;
     const steps = task.steps.map(
-      ({ operationId: _id, directoryCursor: _cursor, ...step }) =>
-        structuredClone(step),
+      ({
+        operationId: _id,
+        directoryCursor: _cursor,
+        directoryRecovery: _recovery,
+        ...step
+      }) => structuredClone(step),
     );
     const workflowState = task.workflowRuns.size
       ? {
@@ -1160,6 +1176,7 @@ export class TaskRuntime {
       : undefined;
     return {
       schemaVersion: 1,
+      directoryState,
       completed: ["completed", "completed-with-errors"].includes(
         task.view.state,
       ),
@@ -1364,6 +1381,10 @@ export class TaskRuntime {
           active.summary.hasFailures = true;
       }
     }
+    if (checkpoint.directoryState && task.view.nextStep === checkpoint.nextStep)
+      task.steps[task.view.nextStep].directoryRecovery = structuredClone(
+        checkpoint.directoryState,
+      );
     if (checkpoint.reconciliationRequired && input.reconciliation)
       this.recordRecoveryReview(task, input.reconciliation);
     try {
@@ -1394,7 +1415,10 @@ export class TaskRuntime {
   }
   private directoryCursor(
     task: RecordTask,
-    step: TaskFileStep & { directoryCursor?: DirectoryStepCursor },
+    step: TaskFileStep & {
+      directoryCursor?: DirectoryStepCursor;
+      directoryRecovery?: DirectoryStepCheckpoint;
+    },
   ): DirectoryStepCursor {
     if (!this.ports.directorySteps)
       throw Error("WORKFLOW_DIRECTORY_EXECUTOR_REQUIRED");
@@ -1403,6 +1427,7 @@ export class TaskRuntime {
       task.view.id,
       step,
       task.fileBindings,
+      step.directoryRecovery,
     ));
   }
   private validateBindings(

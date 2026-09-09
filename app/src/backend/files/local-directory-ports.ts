@@ -21,6 +21,8 @@ export interface DirectoryGrantReference {
 }
 /** Private filesystem capability. The task adapter owns policy and identity; native code rechecks its callback at I/O boundaries. */
 export interface NativeTaskDirectoryAccess {
+  uploadCheckpoint?(): unknown;
+  restoreUpload?(checkpoint: unknown): void;
   uploadEntries(): Array<Omit<NativeUploadEntry, "path">>;
   uploadFile(entryId: string): Promise<LocalUploadAccess>;
   previewDownload(

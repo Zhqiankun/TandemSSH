@@ -1,3 +1,4 @@
+import type { DirectoryStepCheckpoint } from "../../../types/directory-step-recovery.js";
 import type {
   DirectoryStepCursor,
   DirectoryStepPort,
@@ -38,6 +39,7 @@ export class DirectoryWorkflowSteps implements DirectoryStepPort {
     taskId: string,
     step: TaskFileStep,
     bindings: TaskFileBindings,
+    recovery?: DirectoryStepCheckpoint,
   ): DirectoryStepCursor {
     this.validate(userId, taskId, step, bindings);
     const preview = directoryStepAction(step, bindings),
@@ -52,6 +54,9 @@ export class DirectoryWorkflowSteps implements DirectoryStepPort {
       index = 0,
       closed = false,
       unlock: (() => void) | undefined;
+    const releaseRecovery = recovery
+      ? directories.prepareRecovery(context(), preview, recovery)
+      : undefined;
     const accepted = new Set<string>();
     const next = (): DirectoryAction | undefined => {
       if (closed) throw Error("WORKFLOW_DIRECTORY_CLOSED");
@@ -59,11 +64,16 @@ export class DirectoryWorkflowSteps implements DirectoryStepPort {
       if (phase === "preview") return structuredClone(preview);
       if (phase === "entries") return structuredClone(entries[index]);
       const choices: Array<{ id: string; action: DirectoryChoice }> = [];
+      const recoveredChoices = directories.recoveryChoices(
+        context(),
+        previewId!,
+      );
       for (let offset = 0; ;) {
         const page = directories.page(context(), previewId!, offset);
         for (const e of page.items) {
           const action: DirectoryChoice =
-            e.kind === "excluded" || e.status === "blocked"
+            recoveredChoices?.find((c) => c.id === e.id)?.action ??
+            (e.kind === "excluded" || e.status === "blocked"
               ? "skip"
               : e.status === "new"
                 ? "create"
@@ -71,7 +81,7 @@ export class DirectoryWorkflowSteps implements DirectoryStepPort {
                   ? "merge"
                   : source.onConflict === "overwrite"
                     ? "overwrite"
-                    : "skip";
+                    : "skip");
           choices.push({ id: e.id, action });
         }
         if (page.nextOffset === null) break;
@@ -84,6 +94,13 @@ export class DirectoryWorkflowSteps implements DirectoryStepPort {
       };
     };
     return {
+      checkpoint() {
+        return phase === "done"
+          ? undefined
+          : phase === "entries"
+            ? directories.checkpoint(context(), previewId!, step.stepId)
+            : recovery;
+      },
       get done() {
         return phase === "done";
       },
@@ -130,6 +147,7 @@ export class DirectoryWorkflowSteps implements DirectoryStepPort {
           previewId = result.previewId;
           unlock = directories.retain(context(), previewId);
           phase = "confirm";
+          releaseRecovery?.();
         } else if (action.type === "file.directory.confirm") {
           if (
             result.phase !== "confirmed" ||
@@ -155,6 +173,7 @@ export class DirectoryWorkflowSteps implements DirectoryStepPort {
       close() {
         if (closed) return;
         closed = true;
+        releaseRecovery?.();
         unlock?.();
         unlock = undefined;
       },

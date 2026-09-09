@@ -5007,7 +5007,9 @@
         "TASK_ARCHIVE_IN_PROGRESS": "任务正在归档，请稍后重试。",
         "TASK_ARCHIVE_RECONCILIATION_REQUIRED": "任务仍有未知结果或待清理文件，暂时不能归档。",
         "AI_TASK_BUSY": "AI 执行器尚未结束，请稍后归档。",
-        "AI_TASK_ARCHIVED": "AI 任务已归档，旧创建请求不会重新执行。"
+        "AI_TASK_ARCHIVED": "AI 任务已归档，旧创建请求不会重新执行。",
+        "DIRECTORY_RECOVERY_INVALID": "目录进度与原计划或来源不一致，已停止恢复。",
+        "UPLOAD_RESULT_UNVERIFIED": "已完成的远端文件与原校验收据不一致，已停止恢复。"
       },
       "allowedPrograms": "本次允许的程序（每行一个）",
       "operationProgress": "已完成 {{done}} / {{total}} 条命令",
@@ -6354,6 +6356,9 @@
     "parentWorkflows": "父任务中的流程",
     "parentHint": "保留原版本、已完成结果和步骤位置。重新授权后完成剩余步骤，再将结果交回原任务。",
     "parentRestored": "此流程从执行检查点恢复，已完成步骤和结果已保留。",
-    "parentScope": "以上程序范围也用于流程结束后的父任务。原流程的确切命令仍按本次计划审核，旧授权不会恢复。"
+    "parentScope": "以上程序范围也用于流程结束后的父任务。原流程的确切命令仍按本次计划审核，旧授权不会恢复。",
+    "directoryTitle": "上传目录进度",
+    "directoryProgress": "已完成 {{done}} / {{total}} 项",
+    "directoryHint": "重新选择原上传目录并授权后，将核验来源与远端已完成内容，再继续剩余条目。已完成项不会重新写入。"
   }
 }

@@ -266,3 +266,16 @@ it("lets the user choose parent program scopes without requiring broader permiss
     ],
   });
 });
+
+it("shows saved upload directory progress and requires a new source selection", async () => {
+  api.detail.mockResolvedValueOnce({
+    summary: { ...summary, directoryProgress: { completed: 2, entries: 3 } },
+    steps: [],
+    operations: [],
+  });
+  render(<TaskRecovery sessionId="new-session" onRestored={vi.fn()} />);
+  await open();
+  expect(screen.getByText("上传目录进度")).toBeInTheDocument();
+  expect(screen.getByText("已完成 2 / 3 项")).toBeInTheDocument();
+  expect(screen.getByText(/重新选择原上传目录并授权后/)).toBeInTheDocument();
+});

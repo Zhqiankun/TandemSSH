@@ -1,3 +1,5 @@
+import { readCheckpoint } from "../collaboration/recovery/schema";
+import type { TaskExecutionCheckpoint } from "../../types/task-recovery";
 import { DirectoryWorkflowSteps } from "../collaboration/files/directory-workflow";
 import { DirectoryAutomation } from "../collaboration/files/directories";
 import { DirectoryTransfers } from "../files/directory-transfers";
@@ -52,7 +54,11 @@ export async function transferToolsFixture() {
     () => {},
   );
   const policy: CommandPolicySnapshot = { revision: 1, sets: [] };
+  const checkpoints: TaskExecutionCheckpoint[] = [];
   const runtime = new TaskRuntime({
+    persistRecovery: async (c) => {
+      checkpoints.push(readCheckpoint(c));
+    },
     directorySteps: {
       validate: (...args) => directoryWorkflowSteps.validate(...args),
       open: (...args) => directoryWorkflowSteps.open(...args),
@@ -74,6 +80,7 @@ export async function transferToolsFixture() {
             userId,
             hostId: 7,
             hostName: "fixture",
+            acceptedHostKey: remote.peerKey(),
             groups: () => [],
             control,
             files: {
@@ -235,6 +242,7 @@ export async function transferToolsFixture() {
     await fs.rm(actual, { recursive: true, force: true });
   };
   return {
+    checkpoints,
     remote,
     directoryTransfers,
     directoryAutomation,

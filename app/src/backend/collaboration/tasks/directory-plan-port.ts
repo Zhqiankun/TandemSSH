@@ -1,3 +1,4 @@
+import type { DirectoryStepCheckpoint } from "../../../types/directory-step-recovery.js";
 import type {
   TaskFileStep,
   TaskFileBindings,
@@ -5,6 +6,7 @@ import type {
 import type { DirectoryAction } from "../../../types/directory-transfer.js";
 import type { OperationView } from "../operations/gateway.js";
 export interface DirectoryStepCursor {
+  checkpoint?(): DirectoryStepCheckpoint | undefined;
   readonly done: boolean;
   readonly requestIndex: number;
   readonly canRestart: boolean;
@@ -26,5 +28,6 @@ export interface DirectoryStepPort {
     taskId: string,
     step: TaskFileStep,
     bindings: TaskFileBindings,
+    recovery?: DirectoryStepCheckpoint,
   ): DirectoryStepCursor;
 }

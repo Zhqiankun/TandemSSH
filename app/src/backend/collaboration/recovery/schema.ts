@@ -1,3 +1,5 @@
+import type { TaskExecutionCheckpoint } from "../../../types/task-recovery.js";
+import { directoryStepCheckpointSchema } from "../../files/directory-step-checkpoint.js";
 import {
   workflowStateSchema,
   workflowReferenceSchema,
@@ -5,13 +7,13 @@ import {
 import { aiRecoverySchema } from "../../ai/tasks/recovery-state.js";
 import { z } from "zod";
 import { validateTaskPlan } from "../tasks/plan.js";
-import type { TaskExecutionCheckpoint } from "../../../types/task-recovery.js";
 import type { TaskOperation } from "../../../types/collaboration-task.js";
 import type { TaskPlanStep } from "../../../types/task-plan.js";
 export const checkpointSchema = z
   .object({
     ai: aiRecoverySchema.optional(),
     completed: z.boolean().optional(),
+    directoryState: directoryStepCheckpointSchema.optional(),
     workflowState: workflowStateSchema.optional(),
     workflowCwd: z.string().startsWith("/").max(4096).optional(),
     schemaVersion: z.literal(1),
@@ -66,6 +68,21 @@ export const checkpointSchema = z
         : !v.ai),
   )
   .superRefine((v, ctx) => {
+    if (v.directoryState) {
+      const d = v.directoryState,
+        step = v.steps[v.nextStep];
+      if (
+        !step ||
+        !("kind" in step) ||
+        step.kind !== "directory-transfer" ||
+        step.direction !== d.direction ||
+        step.stepId !== d.stepId ||
+        step.path !== d.remoteTree.path ||
+        d.remoteTree.userId !== v.userId ||
+        d.remoteTree.peer !== v.host.peer
+      )
+        ctx.addIssue({ code: "custom", message: "DIRECTORY_RECOVERY_INVALID" });
+    }
     const w = v.workflowState;
     if (!w) {
       if (v.ai?.waitingWorkflow)
@@ -130,7 +147,7 @@ export const recordSchema = z
     schemaVersion: z.literal(1),
     id: z.string().uuid(),
     userId: z.string().min(1).max(256),
-    checkpoint: checkpointSchema,
+    checkpoint: checkpointSchema.transform((v) => v as TaskExecutionCheckpoint),
     state: z.enum(["available", "live", "claimed", "consumed"]),
     updatedAt: z.number().int().nonnegative(),
     claim: z

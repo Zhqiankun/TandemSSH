@@ -58,3 +58,5 @@
 最终中文文案区分单文件一次性目标与可复用的目录授权，并再次运行了完整桌面自动/协作目录流程。最终证据目录为 .cache/desktop-observation-report-0200dc8f-2e79-43c0-923f-5569f33f9cb2，日志 .cache/workflow-directory-final-desktop.log；两种模式均保持 3 个逻辑步骤、13 次成功操作，真实命令校验上传文件 SHA-256，协作接管恢复通过，应用正常退出。
 
 最终构建与解包包日志为 .cache/workflow-directory-final-build.log、workflow-directory-final-package.log；打包 MCP stdio 与真实 Codex 发现复核 2 文件 / 3 项通过，.cache/workflow-directory-packaged-mcp.log，工具数保持 34。最终源码类型检查通过，.cache/workflow-directory-delivery-types.log。
+
+后续上传目录的完整条目边界已接入任务恢复，并通过真实 Windows 自动/协作重启验证；下载目录及部分传输资源仍需继续，见 [第 47 份文档](47-task-directory-recovery.md)。

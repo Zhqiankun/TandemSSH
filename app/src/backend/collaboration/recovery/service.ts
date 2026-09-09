@@ -30,6 +30,12 @@ export class TaskRecoveryService {
   private summary(row: TaskRecoveryRecord): TaskRecoverySummary {
     const c = row.checkpoint;
     return {
+      directoryProgress: c.directoryState
+        ? {
+            completed: c.directoryState.completedEntryIds.length,
+            entries: c.directoryState.entries,
+          }
+        : undefined,
       id: row.id,
       title: c.title,
       hostId: c.host.id,

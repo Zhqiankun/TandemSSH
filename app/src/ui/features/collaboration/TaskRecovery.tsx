@@ -227,6 +227,18 @@ export function TaskRecovery({
                   ))}
                 </div>
               )}
+              {row.directoryProgress && (
+                <div className="rounded border border-border p-3 text-sm space-y-2">
+                  <h3>{t("taskRecovery.directoryTitle")}</h3>
+                  <p>
+                    {t("taskRecovery.directoryProgress", {
+                      done: row.directoryProgress.completed,
+                      total: row.directoryProgress.entries,
+                    })}
+                  </p>
+                  <p>{t("taskRecovery.directoryHint")}</p>
+                </div>
+              )}
               <h3>{t("taskRecovery.plan")}</h3>
               <ol className="space-y-2">
                 {detail.steps.map((step, i) => (
