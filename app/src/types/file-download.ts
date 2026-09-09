@@ -46,6 +46,11 @@ export interface LocalDownloadView {
 export type DownloadNativeResult<T> =
   { ok: true; value: T } | { ok: false; error: string };
 export interface DesktopDownloadApi {
+  recovery?(
+    operation: string,
+    ticketId?: string,
+    args?: Record<string, unknown>,
+  ): Promise<DownloadNativeResult<unknown>>;
   choose(
     spec: LocalDownloadSpec,
   ): Promise<DownloadNativeResult<LocalDownloadView | null>>;

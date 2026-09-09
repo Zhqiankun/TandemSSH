@@ -1,3 +1,4 @@
+import type { DownloadRecoveryTickets } from "../../files/download-recovery-tickets.js";
 import type { Express, Request, Response } from "express";
 import {
   scanDownloadTreeSchema,
@@ -14,6 +15,7 @@ export function registerDownloadTransferRoutes(
   app: Express,
   service: DownloadService,
   trees?: DownloadTreeService,
+  recovery?: DownloadRecoveryTickets,
 ) {
   const prefix = "/ssh/file_manager/ssh/downloads",
     uuid = z.string().uuid();
@@ -61,6 +63,11 @@ export function registerDownloadTransferRoutes(
         });
     };
   }
+  if (recovery)
+    app.post(
+      prefix + "/recovery/ticket",
+      route((actor, req) => recovery.issue(actor.userId, req.body)),
+    );
   if (trees) {
     app.post(
       prefix + "/trees/:treeId/touch",

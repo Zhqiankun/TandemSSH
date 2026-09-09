@@ -79,6 +79,7 @@ async function probe(root) {
     "task-upload-access.cjs",
     "upload-sources.cjs",
     "download-sink.cjs",
+    "download-checkpoint.cjs",
     "download-directory-targets.cjs",
   ]) {
     const file = fs.realpathSync(path.join(filesRoot, name));

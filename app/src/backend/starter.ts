@@ -1,3 +1,5 @@
+import { registerDownloadRecoveryBridge } from "./files/download-recovery-bridge.js";
+import { downloadRecoveryTickets } from "./files/download-recovery-production.js";
 import { registerLocalFileBridge } from "./files/local-file-bridge.js";
 import {
   localFileGrants,
@@ -406,6 +408,13 @@ async function provisionLocalDesktopUserIfNeeded(): Promise<void> {
 
     if (localFilesAvailable())
       registerLocalFileBridge(localFileGrants, {
+        on: (event, listener) => process.on(event, listener),
+        removeListener: (event, listener) =>
+          process.removeListener(event, listener),
+        send: (message, callback) => process.send!(message as object, callback),
+      });
+    if (localFilesAvailable())
+      registerDownloadRecoveryBridge(downloadRecoveryTickets, {
         on: (event, listener) => process.on(event, listener),
         removeListener: (event, listener) =>
           process.removeListener(event, listener),

@@ -1,3 +1,5 @@
+import { DownloadRecoveryDialog } from "./DownloadRecoveryDialog";
+import { downloadRecoveryApi } from "@/api/download-recovery-api";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -126,6 +128,23 @@ function DownloadRow({
               {t("tandem.download.resume")}
             </Button>
           )}
+        {job.state === "paused" &&
+          !job.batchId &&
+          window.electronAPI?.downloads?.recovery && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                action(() =>
+                  queue.suspend(job.id, (sourceId, localId) =>
+                    downloadRecoveryApi.save(job.sessionId, sourceId, localId),
+                  ),
+                )
+              }
+            >
+              {t("downloadRecovery.save")}
+            </Button>
+          )}
         {job.state === "failed" && (
           <Button
             size="sm"
@@ -145,6 +164,8 @@ function DownloadRow({
           "finalizing",
           "cancelled",
           "skipped",
+          "suspended",
+          "suspending",
         ].includes(job.state) && (
           <Button
             size="sm"
@@ -199,7 +220,18 @@ export function DownloadQueuePanel({
   const [page, setPage] = useState(0);
   const pages = Math.max(1, Math.ceil(jobs.length / 100)),
     currentPage = Math.min(page, pages - 1);
-  if (!jobs.length) return null;
+  if (!jobs.length && !window.electronAPI?.downloads?.recovery) return null;
+  if (!jobs.length)
+    return (
+      <div className="border-t border-border p-2">
+        <DownloadRecoveryDialog
+          key={queue.getOwner() ?? ""}
+          sessionId={sessionId}
+          hostId={hostId}
+          queue={queue}
+        />
+      </div>
+    );
   return (
     <section
       className="max-h-80 shrink-0 overflow-auto border-t border-border bg-background p-3"
@@ -229,6 +261,12 @@ export function DownloadQueuePanel({
           >
             {t("tandem.upload.clearFinished")}
           </Button>
+          <DownloadRecoveryDialog
+            key={queue.getOwner() ?? ""}
+            sessionId={sessionId}
+            hostId={hostId}
+            queue={queue}
+          />
           <p>{t("tandem.download.memoryHint")}</p>
         </div>
         {queue === downloadQueue &&

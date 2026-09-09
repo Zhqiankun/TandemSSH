@@ -11,15 +11,23 @@ function registerDownloadIpc({
   getWindow,
   appRoot,
   isDev,
+  recoveryOptions,
 }) {
   const sink = new DownloadSink(),
     lifetimes = new Map();
   const directories = new DownloadDirectoryTargets(sink);
+  const recovery = recoveryOptions
+    ? require("./download-recovery-controller.cjs").createDownloadRecovery({
+        sink,
+        ...recoveryOptions,
+      })
+    : undefined;
   async function resetOwner(id) {
     try {
       await directories.reset(id);
     } finally {
       await sink.reset(id);
+      await recovery?.reset(id);
     }
   }
   const acceptedUrl = pathToFileURL(
@@ -63,7 +71,10 @@ function registerDownloadIpc({
       const scoped = owner(event),
         id = scoped.id;
       let value;
-      if (operation === "choose") {
+      if (operation === "recovery") {
+        if (!recovery) throw Error("DOWNLOAD_DESKTOP_REQUIRED");
+        value = await recovery.handle(scoped, args[0], args[1], args[2]);
+      } else if (operation === "choose") {
         if (scoped.life.choosing) throw Error("DOWNLOAD_BUSY");
         scoped.life.choosing = true;
         const epoch = scoped.life.epoch;
@@ -99,9 +110,19 @@ function registerDownloadIpc({
           ["pause", "resume", "finish", "cancel", "forget", "touch"].includes(
             operation,
           )
-        )
-          value = await sink[operation](id, args[0]);
-        else if (operation === "show") {
+        ) {
+          if (operation === "finish") await recovery?.beforeFinish(id, args[0]);
+          try {
+            value = await sink[operation](id, args[0]);
+          } catch (e) {
+            if (operation === "finish") recovery?.finishFailed(id, args[0]);
+            throw e;
+          }
+          if (operation === "finish")
+            await recovery?.afterFinish(id, args[0], value);
+          if (operation === "cancel")
+            await recovery?.afterCancel(id, args[0], value);
+        } else if (operation === "show") {
           const r = sink.owned(id, args[0]);
           if (r.view.state !== "completed") throw Error("DOWNLOAD_NOT_READY");
           shell.showItemInFolder(r.view.path);

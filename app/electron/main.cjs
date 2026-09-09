@@ -2940,6 +2940,11 @@ const uploadSourceIpc =
     isDev,
   });
 const downloadIpc = require("./download-ipc.cjs").registerDownloadIpc({
+  recoveryOptions: {
+    getBackend: () => backendProcess,
+    root: path.join(app.getPath("userData"), "download-recovery"),
+    crypto: safeStorage,
+  },
   ipcMain,
   dialog,
   shell,

@@ -16,6 +16,7 @@ import { SftpFileIO } from "../files/sftp-io.js";
 export async function fileSftpFixture(
   options: {
     attachShell?: (session: ServerSession) => void | (() => void);
+    beforeRead?: () => Promise<void>;
   } = {},
 ) {
   const shellClosers = new Set<() => void>();
@@ -204,6 +205,7 @@ export async function fileSftpFixture(
             "READ",
             (id: number, h: Buffer, offset: number, length: number) =>
               run(id, async () => {
+                await options.beforeRead?.();
                 const b = Buffer.alloc(Math.min(length, 32768));
                 const r = await get(h).file.read(b, 0, b.length, offset);
                 if (r.bytesRead) stream.data(id, b.subarray(0, r.bytesRead));

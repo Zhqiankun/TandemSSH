@@ -131,6 +131,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
     reset: () => ipcRenderer.invoke("tandem-upload-source", "reset"),
   },
   downloads: {
+    recovery: (operation, ticketId, args) =>
+      ipcRenderer.invoke(
+        "tandem-download",
+        "recovery",
+        operation,
+        ticketId,
+        args,
+      ),
     choose: (spec) => ipcRenderer.invoke("tandem-download", "choose", spec),
     start: (id, overwrite) =>
       ipcRenderer.invoke("tandem-download", "start", id, overwrite),

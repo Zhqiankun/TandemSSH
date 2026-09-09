@@ -5620,7 +5620,7 @@
       "retry": "Choose destination again",
       "show": "Show in folder",
       "unknown": "Local commit outcome is unverified. Check the destination; overwriting will not be retried automatically.",
-      "memoryHint": "Checkpoints are available during this app run; restarting does not automatically resume.",
+      "memoryHint": "The live queue stays in memory. Paused single-file downloads can explicitly save encrypted recovery progress.",
       "failed": "Download incomplete. Check the connection and local destination.",
       "completedNotice": "Downloaded and verified: {{name}}",
       "attentionNotice": "Download needs attention: {{name}}",
@@ -5637,7 +5637,9 @@
         "failed": "Failed",
         "unknown": "Outcome unverified",
         "cancelled": "Cancelled",
-        "skipped": "Skipped"
+        "skipped": "Skipped",
+        "suspending": "Saving recovery progress",
+        "suspended": "Progress saved for restart recovery"
       },
       "errors": {
         "DOWNLOAD_DESKTOP_REQUIRED": "download desktop required",
@@ -6043,5 +6045,51 @@
       "FILE_DRAFT_RESPONSE_UNKNOWN": "The draft result could not be confirmed. Check again before retrying.",
       "FILE_DRAFT_BUSY": "Draft storage is busy. Try again shortly."
     }
+  },
+  "downloadRecovery": {
+    "open": "View recoverable downloads",
+    "title": "Local download recovery",
+    "hint": "Verify the source and destination using the current connected server. Recovery returns to a paused queue and requires a new confirmation to continue.",
+    "connectFirst": "Connect the file manager before checking or restoring downloads.",
+    "busy": "Checking or saving recovery records…",
+    "failed": "The recovery result could not be confirmed. Refresh to check the record.",
+    "empty": "No local recovery records. Pause a download and save its progress for recovery after restarting.",
+    "unreadable": "Unreadable recovery record",
+    "progress": "Saved progress: {{bytes}} / {{total}} bytes",
+    "overwrite": "Confirm overwrite again; the existing destination must still match its saved baseline",
+    "restore": "Verify and restore to paused queue",
+    "save": "Save progress for restart recovery",
+    "unknown": "The previous commit result is uncertain. Verify the final file and clean up the owned temporary file when it matches; do not resume blindly.",
+    "check": "Verify result and clean up temporary file",
+    "remove": "Clear finished recovery record",
+    "states": {
+      "available": "Recoverable",
+      "interrupted": "Interrupted; ready to verify",
+      "claimed": "In use by a recovery task",
+      "committing": "Commit needs reconciliation",
+      "unknown": "Result needs reconciliation",
+      "completed": "Completed",
+      "cancelled": "Cancelled",
+      "unreadable": "Unreadable"
+    },
+    "errors": {
+      "DOWNLOAD_RECOVERY_ENCRYPTION_UNAVAILABLE": "System encryption is unavailable. Recovery data will not be stored as plaintext.",
+      "DOWNLOAD_RECOVERY_BUSY": "The record is in use. Wait for the current operation.",
+      "DOWNLOAD_RECOVERY_DECRYPT_FAILED": "The recovery record could not be decrypted. The original file is retained.",
+      "DOWNLOAD_RECOVERY_CORRUPT": "The record is corrupt or unsupported. Nothing was resumed.",
+      "DOWNLOAD_RECOVERY_CONFLICT": "The record changed. Check it again.",
+      "DOWNLOAD_RECOVERY_RECONCILE_REQUIRED": "This record needs reconciliation or is still in use.",
+      "DOWNLOAD_RECOVERY_NOT_FOUND": "The recovery record was not found. Refresh the list.",
+      "DOWNLOAD_RECOVERY_LIMIT": "Local recovery storage is full. Clear finished records.",
+      "DOWNLOAD_RECOVERY_TICKET_INVALID": "The recovery request expired. Check again before retrying.",
+      "DOWNLOAD_RECOVERY_TICKET_USED": "This request was already processed. Refresh to check its result.",
+      "DOWNLOAD_RECOVERY_TIMEOUT": "The response timed out. Refresh and reconcile before continuing.",
+      "DOWNLOAD_CHECKPOINT_SOURCE_MISMATCH": "The server source does not match the saved local progress. Resume was refused.",
+      "DOWNLOAD_CHECKPOINT_IN_USE": "Another recovery task is using this partial file.",
+      "DOWNLOAD_RECOVERY_AUTHORIZATION_REQUIRED": "Recovery requires fresh confirmation in this window."
+    },
+    "discard": "Abandon recovery",
+    "discardHint": "Confirmation deletes only this download’s owned partial file. The existing destination will not be modified.",
+    "confirmDiscard": "Confirm and delete partial file"
   }
 }

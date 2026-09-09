@@ -1,3 +1,4 @@
+import { downloadRecoveryTickets } from "../../files/download-recovery-production.js";
 import { downloadTransfers, downloadTrees } from "../../files/production.js";
 import { registerDownloadTransferRoutes } from "./download-transfer-routes.js";
 import { captureAcceptedHostKey } from "../accepted-host-key.js";
@@ -2459,7 +2460,12 @@ registerFileOperationRoutes(app, {
   verifySessionOwnership,
 });
 
-registerDownloadTransferRoutes(app, downloadTransfers, downloadTrees);
+registerDownloadTransferRoutes(
+  app,
+  downloadTransfers,
+  downloadTrees,
+  downloadRecoveryTickets,
+);
 registerFileDownloadRoutes(app, {
   sshSessions,
   scheduleSessionCleanup,

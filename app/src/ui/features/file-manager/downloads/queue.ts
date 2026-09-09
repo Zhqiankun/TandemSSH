@@ -1,4 +1,8 @@
 import type {
+  DownloadRecoverySummary,
+  RestoredDownload,
+} from "@/types/download-recovery";
+import type {
   ManagedDownloadBinding,
   ManagedFileDownload,
   ManagedDownloadRecord,
@@ -23,6 +27,8 @@ export type DownloadJobState =
   | "downloading"
   | "pausing"
   | "paused"
+  | "suspending"
+  | "suspended"
   | "finalizing"
   | "completed"
   | "failed"
@@ -30,6 +36,7 @@ export type DownloadJobState =
   | "cancelled"
   | "skipped";
 export interface DownloadJobView {
+  recoveryId?: string;
   id: string;
   name: string;
   path: string;
@@ -232,9 +239,124 @@ export class DownloadQueue {
     this.emit();
     this.drain();
   }
+  async suspend(
+    id: string,
+    persist: (
+      sourceId: string,
+      localId: string,
+    ) => Promise<DownloadRecoverySummary>,
+  ) {
+    const j = this.job(id);
+    if (
+      j.binding ||
+      j.view.state !== "paused" ||
+      j.stop ||
+      !j.source ||
+      !j.view.local
+    )
+      throw Error("DOWNLOAD_NOT_READY");
+    j.view.state = "suspending";
+    this.emit();
+    try {
+      const result = await persist(j.source.id, j.view.local.id);
+      this.guard(j);
+      const source = j.source;
+      j.view.state = "suspended";
+      j.view.recoveryId = result.id;
+      j.view.localPath = j.view.local.path;
+      j.view.local = undefined;
+      j.source = undefined;
+      j.view.error = undefined;
+      try {
+        await this.api.action(j.view.sessionId, source.id, "cancel");
+        await this.api.action(j.view.sessionId, source.id, "forget");
+      } catch {
+        /* The durable checkpoint no longer needs the old source lease. */
+      }
+    } catch (error) {
+      if (this.jobs.get(id) === j) {
+        j.view.state = "paused";
+        j.view.error = downloadErrorCode(error);
+      }
+      throw error;
+    } finally {
+      this.emit();
+    }
+  }
+  reserveRecovery() {
+    this.admit(1);
+    this.reserved++;
+    const epoch = this.ownerEpoch;
+    let used = false;
+    const close = () => {
+      if (!used) {
+        used = true;
+        if (epoch === this.ownerEpoch) this.reserved--;
+      }
+    };
+    return {
+      close,
+      accept: (result: RestoredDownload, hostId?: number) => {
+        if (used || epoch !== this.ownerEpoch)
+          throw Error("DOWNLOAD_CANCELLED");
+        close();
+        return this.restoreCheckpoint(result, hostId);
+      },
+    };
+  }
+  restoreCheckpoint(result: RestoredDownload, hostId?: number) {
+    this.admit(1);
+    if (
+      result.local.state !== "paused" ||
+      result.local.writtenBytes > result.source.size
+    )
+      throw Error("DOWNLOAD_PROGRESS_INVALID");
+    const id = this.create(
+        {
+          sessionId: result.source.sessionId,
+          name: result.source.path.split("/").pop() || "download",
+          path: result.source.path,
+          hostLabel:
+            result.source.hostIdentity ?? result.summary.hostLabel ?? "SSH",
+          hostId,
+        },
+        undefined,
+        "paused",
+      ),
+      j = this.job(id);
+    j.source = result.source;
+    j.view.local = result.local;
+    j.view.size = result.source.size;
+    j.view.writtenBytes = result.local.writtenBytes;
+    j.view.recoveryId = result.summary.id;
+    this.emit();
+    return id;
+  }
+  reconcileRecovery(id: string, local?: LocalDownloadView) {
+    if (!local || local.state !== "completed") return;
+    const j = [...this.jobs.values()].find(
+      (j) => j.view.recoveryId === id && j.view.local?.id === local.id,
+    );
+    if (j) {
+      j.view.local = local;
+      j.view.state = "completed";
+      j.view.writtenBytes = local.writtenBytes;
+      j.view.error = undefined;
+      this.emit();
+    }
+  }
   async cancel(id: string) {
     const j = this.job(id);
-    if (["completed", "unknown", "finalizing"].includes(j.view.state)) return;
+    if (
+      [
+        "completed",
+        "unknown",
+        "finalizing",
+        "suspending",
+        "suspended",
+      ].includes(j.view.state)
+    )
+      return;
     j.cancel = true;
     j.work = undefined;
     j.stop?.abort();
@@ -290,7 +412,9 @@ export class DownloadQueue {
     try {
       for (const [id, j] of [...this.jobs]) {
         if (
-          !["completed", "cancelled", "skipped"].includes(j.view.state) ||
+          !["completed", "cancelled", "skipped", "suspended"].includes(
+            j.view.state,
+          ) ||
           j.stop ||
           j.view.local?.temporaryPath
         )

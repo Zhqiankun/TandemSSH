@@ -5620,7 +5620,7 @@
       "retry": "重新选择目标",
       "show": "打开所在目录",
       "unknown": "本地提交结果尚未核实。请检查目标文件，当前操作不会自动重试覆盖。",
-      "memoryHint": "当前检查点在本次应用运行期间有效，退出后不能自动续传。",
+      "memoryHint": "当前队列保留在内存；单文件下载暂停后可显式保存加密恢复进度。",
       "failed": "下载未完成，请检查连接与目标文件。",
       "completedNotice": "下载完成并校验：{{name}}",
       "attentionNotice": "下载需要处理：{{name}}",
@@ -5637,7 +5637,9 @@
         "failed": "失败",
         "unknown": "结果待核实",
         "cancelled": "已取消",
-        "skipped": "已跳过"
+        "skipped": "已跳过",
+        "suspending": "正在保存恢复进度",
+        "suspended": "进度已保存，可重启恢复"
       },
       "errors": {
         "DOWNLOAD_DESKTOP_REQUIRED": "请在桌面客户端中选择本地下载目标。",
@@ -6043,5 +6045,51 @@
       "FILE_DRAFT_RESPONSE_UNKNOWN": "未能确认草稿处理结果，请重新检查后再操作。",
       "FILE_DRAFT_BUSY": "草稿存储繁忙，请稍后重试。"
     }
+  },
+  "downloadRecovery": {
+    "open": "查看可恢复下载",
+    "title": "本机下载恢复",
+    "hint": "使用当前已连接服务器核对来源和目标。恢复先回到暂停队列，重新确认继续；不会复用旧连接授权。",
+    "connectFirst": "请先连接文件管理器，再检查和恢复下载。",
+    "busy": "正在核对或保存恢复记录…",
+    "failed": "恢复操作未能确认，请刷新记录核对结果。",
+    "empty": "没有本机下载恢复记录。暂停下载后可保存进度供重启恢复。",
+    "unreadable": "无法读取的恢复记录",
+    "progress": "已保存进度 {{bytes}} / {{total}} 字节",
+    "overwrite": "重新确认允许覆盖此已有目标（仍会核对其内容没有变化）",
+    "restore": "核对并恢复到暂停队列",
+    "save": "保存进度供重启恢复",
+    "unknown": "上次提交结果不明确，不能直接续传。可核对最终文件，匹配后清理本任务的临时文件。",
+    "check": "核对结果并清理临时文件",
+    "remove": "清除已结束的恢复记录",
+    "states": {
+      "available": "可恢复",
+      "interrupted": "中断后待恢复",
+      "claimed": "正在被恢复任务使用",
+      "committing": "提交结果待核对",
+      "unknown": "结果待核对",
+      "completed": "已完成",
+      "cancelled": "已取消",
+      "unreadable": "无法读取"
+    },
+    "errors": {
+      "DOWNLOAD_RECOVERY_ENCRYPTION_UNAVAILABLE": "系统加密不可用，不能保存恢复记录；不会改用明文。",
+      "DOWNLOAD_RECOVERY_BUSY": "恢复记录正在被使用，请等待当前操作完成。",
+      "DOWNLOAD_RECOVERY_DECRYPT_FAILED": "恢复记录无法解密，已保留原文件。",
+      "DOWNLOAD_RECOVERY_CORRUPT": "恢复记录损坏或格式不受支持，未执行续传。",
+      "DOWNLOAD_RECOVERY_CONFLICT": "恢复记录已变化，请重新检查。",
+      "DOWNLOAD_RECOVERY_RECONCILE_REQUIRED": "当前记录需要核对结果或仍被任务占用，不能直接重试。",
+      "DOWNLOAD_RECOVERY_NOT_FOUND": "恢复记录不存在，请刷新清单。",
+      "DOWNLOAD_RECOVERY_LIMIT": "本机恢复记录达到容量限制，请清除已结束的记录。",
+      "DOWNLOAD_RECOVERY_TICKET_INVALID": "恢复请求已失效，请重新检查后再操作。",
+      "DOWNLOAD_RECOVERY_TICKET_USED": "此恢复请求已经处理，请先刷新记录核对结果。",
+      "DOWNLOAD_RECOVERY_TIMEOUT": "操作响应超时，请刷新记录核对，不要盲目重复继续。",
+      "DOWNLOAD_CHECKPOINT_SOURCE_MISMATCH": "服务器来源与本地保存进度不一致，已拒绝续传。",
+      "DOWNLOAD_CHECKPOINT_IN_USE": "该部分文件已被另一恢复任务使用。",
+      "DOWNLOAD_RECOVERY_AUTHORIZATION_REQUIRED": "恢复需要本次窗口重新确认。"
+    },
+    "discard": "放弃此恢复",
+    "discardHint": "确认放弃后，只删除本任务的已下载部分；已有目标文件不会被修改。",
+    "confirmDiscard": "确认放弃并删除部分文件"
   }
 }

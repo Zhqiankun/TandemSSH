@@ -536,6 +536,7 @@ class DownloadSink {
       await this.stage(r);
       await this.targetUnchanged(r);
       this.guard(r);
+      r.recoveryCheckpoint = checkpoint;
       r.view.recovery = {
         verifiedBytes: checkpoint.writtenBytes,
         unconfirmedBytes: checked.stat.size - checkpoint.writtenBytes,
@@ -684,14 +685,110 @@ class DownloadSink {
     this.records.delete(id);
     return this.view(r);
   }
+  async preserveRecovered(owner, id) {
+    const r = this.owned(owner, id);
+    if (!r.recoveryCheckpoint) throw Error("DOWNLOAD_NOT_READY");
+    r.cancelled = true;
+    await r.tail.catch(() => {});
+    if (r.handle) {
+      await r.handle.close();
+      r.handle = undefined;
+    }
+    this.records.delete(id);
+    return this.view(r);
+  }
+  async discardCheckpoint(raw, authorize) {
+    if (typeof authorize !== "function")
+      throw Error("DOWNLOAD_RECOVERY_AUTHORIZATION_REQUIRED");
+    const c = readDownloadCheckpoint(raw);
+    if (
+      c.platform !== process.platform ||
+      !path.isAbsolute(c.parent) ||
+      path.dirname(c.stagePath) !== c.parent ||
+      c.destination === c.stagePath ||
+      !/^\.tandem-download-[a-f0-9-]{36}\.part$/.test(
+        path.basename(c.stagePath),
+      )
+    )
+      throw Error("DOWNLOAD_CHECKPOINT_INVALID");
+    const r = { parent: c.parent, parentIdentity: c.parentIdentity, authorize };
+    await this.parent(r);
+    try {
+      const stat = await fs.lstat(c.stagePath);
+      if (
+        !stat.isFile() ||
+        stat.isSymbolicLink() ||
+        stat.nlink !== 1 ||
+        identity(stat) !== c.stageIdentity
+      )
+        throw Error("DOWNLOAD_CLEANUP_PENDING");
+      await this.parent(r);
+      authorize();
+      await fs.unlink(c.stagePath);
+    } catch (e) {
+      if (e.code !== "ENOENT") throw e;
+    }
+  }
+  async reconcileCheckpoint(raw, authorize) {
+    if (typeof authorize !== "function")
+      throw Error("DOWNLOAD_RECOVERY_AUTHORIZATION_REQUIRED");
+    const checkpoint = readDownloadCheckpoint(raw);
+    authorize();
+    if (
+      checkpoint.platform !== process.platform ||
+      !path.isAbsolute(checkpoint.parent) ||
+      checkpoint.destination === checkpoint.stagePath ||
+      path.dirname(checkpoint.destination) !== checkpoint.parent ||
+      path.dirname(checkpoint.stagePath) !== checkpoint.parent ||
+      !/^\.tandem-download-[a-f0-9-]{36}\.part$/.test(
+        path.basename(checkpoint.stagePath),
+      )
+    )
+      throw Error("DOWNLOAD_CHECKPOINT_INVALID");
+    const r = {
+      parent: checkpoint.parent,
+      parentIdentity: checkpoint.parentIdentity,
+      authorize,
+    };
+    await this.parent(r);
+    const target = await baseline(checkpoint.destination, authorize);
+    if (
+      !target ||
+      target.sha256 !== checkpoint.spec.sha256 ||
+      target.stat.size !== checkpoint.spec.size
+    )
+      throw Error("DOWNLOAD_RESULT_UNVERIFIED");
+    try {
+      const stage = await fs.lstat(checkpoint.stagePath);
+      if (
+        !stage.isFile() ||
+        stage.isSymbolicLink() ||
+        stage.nlink !== 1 ||
+        identity(stage) !== checkpoint.stageIdentity
+      )
+        throw Error("DOWNLOAD_CLEANUP_PENDING");
+      await this.parent(r);
+      authorize();
+      await fs.unlink(checkpoint.stagePath);
+    } catch (e) {
+      if (e.code !== "ENOENT") throw e;
+    }
+    return { sha256: target.sha256, size: target.stat.size };
+  }
   async reset(owner) {
     const records = [...this.records.values()].filter((r) => r.owner === owner);
     for (const r of records) r.cancelled = true;
     for (const r of records) {
       try {
         await r.tail;
-        if (this.records.get(r.view.id) === r)
-          await this.cancel(owner, r.view.id);
+        if (this.records.get(r.view.id) === r) {
+          if (
+            r.recoveryCheckpoint &&
+            !["completed", "cancelled"].includes(r.view.state)
+          )
+            await this.preserveRecovered(owner, r.view.id);
+          else await this.cancel(owner, r.view.id);
+        }
       } catch {
         /* Unknown or substituted files are preserved for explicit recovery. */
       } finally {
@@ -710,7 +807,9 @@ class DownloadSink {
         (r) => r.owner === owner && Date.now() - r.touched > 30 * 60 * 1000,
       )) {
         try {
-          await this.cancel(owner, r.view.id);
+          if (r.recoveryCheckpoint)
+            await this.preserveRecovered(owner, r.view.id);
+          else await this.cancel(owner, r.view.id);
         } catch {}
         if (!r.view.temporaryPath) this.records.delete(r.view.id);
       }
