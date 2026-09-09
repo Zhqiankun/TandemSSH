@@ -61,3 +61,9 @@
 失败记录：.cache/desktop-observation-report-d18e31bb-77ea-4cab-a9e1-1b068e1960f8/fixture-pty-input.jsonl、desktop-failure-state.json、desktop-failure.json。应用返回 SHELL_CONTEXT_TIMEOUT，未继续运行流程步骤；验收器已结束并清理自有进程。
 
 在测试夹具增加有界原始输出和尺寸事件记录后，未过滤输入、未延长/绕过产品探测，再次完成自动和协作目录三步流程及协作接管，正常退出。通过报告 .cache/desktop-observation-report-60e89bf2-22ac-42b9-80e4-2f4686b6f0dd，包含 fixture-pty-input.jsonl、fixture-pty-output.jsonl、fixture-pty-events.jsonl 与 workflow-directory-result.json。新增记录可能改变时序；本次成功证明当前流程的正向场景，不能证明偶发丢字已消除。具体 ConPTY/MSYS 层根因、真实 Linux/OpenSSH 及尺寸/焦点压力矩阵继续保留。
+
+## 2026-09-09 任务恢复复验中的兼容性复现
+
+独立任务双模式重启恢复曾完整通过（93aba7d6-7133-481e-b530-bd2877736352）。后续补录界面状态时，测试 SSH 服务的 ssh-input.jsonl 包含完整 if command printf；桌面终端显示 f command printf 并由 Bash 报 then 语法错误。应用随后按 SHELL_CONTEXT_TIMEOUT 暂停，业务步骤未派发。此证据再次表明 Windows ConPTY/Bash 测试链路的首字母丢失风险仍在，没有通过过滤输入、关闭上下文探测或宣称重试成功来消除它。失败现场记录在 task-execution-recovery-desktop-final.log 对应的 desktop-observation 报告。
+
+上述任务恢复的首字母丢失失败现场为 .cache/desktop-observation-report-88c76a0e-1903-4342-be7a-abacc0647d48。最终包在等待真实 Shell 提示符并保留原始输出后，双模式恢复与界面完成状态通过（6d033345-0cf6-40e3-9997-52473331e9e0）；这只增加通过证据，不宣称原兼容问题消失。上一 dc27429 的云端终端组失败 4 项，本轮把交互 PTY 组独立运行，保留全部门禁，本地按同样顺序 3279 项应用测试与 10 项终端测试通过，4 项按既有条件跳过。

@@ -1,3 +1,5 @@
+import { taskRecoveryStore } from "../recovery/store-production.js";
+import { acceptedHostKeyFor } from "../../hosts/accepted-host-key.js";
 import { DirectoryWorkflowSteps } from "../files/directory-workflow.js";
 import { directoryTransfers } from "../../files/directory-transfer-production.js";
 import { automatedTransfers } from "../../files/automated-transfer-production.js";
@@ -53,6 +55,9 @@ export function readPolicy(userId: string): CommandPolicySnapshot {
   };
 }
 export const taskRuntime = new TaskRuntime({
+  persistRecovery: async (checkpoint, finished) => {
+    await taskRecoveryStore.save(checkpoint.userId, checkpoint, !finished);
+  },
   directorySteps: {
     validate: (...args) => directoryWorkflowSteps.validate(...args),
     open: (...args) => directoryWorkflowSteps.open(...args),
@@ -85,6 +90,9 @@ export const taskRuntime = new TaskRuntime({
           hostId: session.hostId,
           identity: session.hostName,
         }),
+      acceptedHostKey: session.sshConn
+        ? acceptedHostKeyFor(session.sshConn)
+        : undefined,
       id: session.id,
       userId: session.userId,
       hostId: session.hostId,

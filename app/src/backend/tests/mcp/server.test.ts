@@ -95,3 +95,29 @@ describe("Codex-facing MCP tools", () => {
     expect(JSON.stringify(result.content)).toContain("规则禁止");
   });
 });
+
+it("exposes checkpoint recovery without allowing MCP to supply a reconciliation decision or grant", async () => {
+  const { client, calls } = await connect();
+  const restored = await client.callTool({
+    name: "restore_task_progress",
+    arguments: { id: taskId, sessionId: taskId },
+  });
+  expect(restored.isError).not.toBe(true);
+  expect(calls).toEqual([
+    {
+      method: "recovery.restore",
+      parameters: { id: taskId, sessionId: taskId },
+    },
+  ]);
+  const invalid = await client.callTool({
+    name: "restore_task_progress",
+    arguments: {
+      id: taskId,
+      sessionId: taskId,
+      reconciliation: "skip",
+      origin: "human",
+    },
+  });
+  expect(invalid.isError).toBe(true);
+  expect(calls).toHaveLength(1);
+});

@@ -157,7 +157,7 @@ function rpc(method, params) {
     JSON.stringify(result, null, 2),
   );
   if (
-    tools.length !== 34 ||
+    tools.length !== 38 ||
     ![
       "list_authorized_files",
       "upload_file",
@@ -179,6 +179,15 @@ function rpc(method, params) {
     ].every((name) => tools.some((tool) => tool.name === name))
   )
     throw Error("Codex did not discover all workflow and file tools");
+  if (
+    ![
+      "list_saved_tasks",
+      "get_saved_task",
+      "save_task_progress",
+      "restore_task_progress",
+    ].every((name) => tools.some((tool) => tool.name === name))
+  )
+    throw Error("Codex did not discover task recovery tools");
   console.log(JSON.stringify(result));
 })()
   .catch((error) => {

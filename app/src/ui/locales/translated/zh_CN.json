@@ -6283,5 +6283,51 @@
       "DOWNLOAD_BATCH_LIMIT": "已保存批次达到容量限制，请清理已结束记录。",
       "DOWNLOAD_BATCH_NOT_AVAILABLE": "该批次当前不能恢复，请刷新查看最新状态。"
     }
+  },
+  "taskRecovery": {
+    "save": "暂停并保存任务进度",
+    "open": "查看可恢复任务",
+    "title": "恢复任务执行",
+    "hint": "先重新连接原服务器。核对原计划和已执行结果，恢复后重新授权才会继续；旧批准和本地文件授权不会复用。",
+    "busy": "正在保存或核验任务…",
+    "saved": "执行进度已加密保存，原任务已停止。",
+    "failed": "任务恢复操作失败。",
+    "empty": "没有已保存的任务。",
+    "plan": "原执行计划",
+    "previous": "查看此前执行结果",
+    "done": "已完成",
+    "pending": "待执行",
+    "progress": "步骤 {{done}} / {{total}}",
+    "resources": "此记录需要先恢复部分文件或目录内部进度，当前不能直接继续。",
+    "external": "MCP 任务由原客户端领取；内置 AI 对话恢复仍在接入。",
+    "reconcile": "核实远端实际结果后，选择当前未确定步骤的处理方式。",
+    "retry": "我已核实，重新执行当前步骤。",
+    "skip": "我已核实，跳过当前步骤并保留异常记录。",
+    "review": "我已核对原计划、已执行结果和当前服务器，恢复为等待重新授权的任务。",
+    "restore": "恢复为待授权任务",
+    "remove": "移除保存的进度",
+    "removeHint": "仅移除此执行检查点，不清理远端文件或操作历史。",
+    "confirmRemove": "确认移除执行进度",
+    "states": {
+      "available": "可恢复",
+      "claimed": "正在使用",
+      "interrupted": "上次运行已中断",
+      "consumed": "已领取"
+    },
+    "errors": {
+      "TASK_RECOVERY_BUSY": "任务仍在收敛或记录正被使用，请稍后重试。",
+      "TASK_RECOVERY_HOST_CHANGED": "当前服务器身份或 SSH 公钥与保存记录不一致。",
+      "TASK_RECOVERY_HOST_KEY_REQUIRED": "当前连接没有可核对的 SSH 公钥，不能保存执行进度。",
+      "TASK_RECOVERY_REVIEW_REQUIRED": "请先核对原计划和执行结果。",
+      "TASK_RECOVERY_OWNER_MISMATCH": "此恢复入口不属于原任务的用户或客户端。",
+      "TASK_RECOVERY_RESOURCES_REQUIRED": "部分文件或目录进度需要专门恢复，当前任务已暂停。",
+      "TASK_RECOVERY_AGENT_ADAPTER_REQUIRED": "内置 AI 或父流程的完整恢复仍在接入，未保存为普通任务。",
+      "TASK_RECOVERY_DECRYPT_FAILED": "无法解密或校验执行进度。",
+      "TASK_RECOVERY_ENCRYPTION_UNAVAILABLE": "系统加密不可用，未保存执行进度。",
+      "TASK_RECOVERY_KEY_MISSING": "无法读取系统中的恢复密钥。",
+      "TASK_RECOVERY_LIMIT": "执行检查点已达到存储限制。",
+      "TASK_RECOVERY_INVALID": "执行检查点格式无效。",
+      "TASK_RECOVERY_SAVING": "任务已暂停，正在保存执行进度。"
+    }
   }
 }

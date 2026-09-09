@@ -1,3 +1,4 @@
+import { TaskRecovery } from "./TaskRecovery";
 import { TaskHistoryButton } from "./TaskHistory";
 import { useTaskOperationPage } from "./use-task-operation-page";
 import { OperationOutput } from "./OperationOutput";
@@ -617,6 +618,16 @@ export function TaskPanel({
             taskId={task?.id}
           />
         </Suspense>
+        <TaskRecovery
+          key={sessionId}
+          sessionId={sessionId}
+          task={task}
+          onRestored={(created) => {
+            void work.run(async () => created);
+            setSelected(created.id);
+            setComposing(false);
+          }}
+        />
         <TaskHistoryButton taskId={task?.id} />
         <McpSettings hostId={session?.hostId} />
       </footer>

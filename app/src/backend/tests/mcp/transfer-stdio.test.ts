@@ -74,7 +74,7 @@ describe.runIf(
       });
       await client.connect(transport);
       cleanup.push(() => client.close());
-      expect((await client.listTools()).tools).toHaveLength(34);
+      expect((await client.listTools()).tools).toHaveLength(38);
       const call = async (
         name: string,
         arguments_: Record<string, unknown>,

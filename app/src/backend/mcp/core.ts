@@ -1,3 +1,4 @@
+import type { TaskRecoveryService } from "../collaboration/recovery/service.js";
 import type { DirectoryAutomation } from "../collaboration/files/directories.js";
 import type { TransferAutomation } from "../collaboration/files/transfers.js";
 import type { FileAutomation } from "../collaboration/files/automation.js";
@@ -15,6 +16,7 @@ import type {
 import { redact } from "../privacy/redaction.js";
 import type { WorkflowAutomationPort } from "../collaboration/workflows/library.js";
 export interface McpCorePorts {
+  recovery?: TaskRecoveryService;
   directories?: DirectoryAutomation;
   files?: FileAutomation;
   transfers?: TransferAutomation;
@@ -129,6 +131,29 @@ export class McpCore {
   ): Promise<unknown> {
     const identity = actor(principal);
     switch (method) {
+      case "recovery.list": {
+        if (!this.ports.recovery) throw Error("TASK_RECOVERY_UNAVAILABLE");
+        return this.ports.recovery.list(identity);
+      }
+      case "recovery.detail": {
+        if (!this.ports.recovery) throw Error("TASK_RECOVERY_UNAVAILABLE");
+        const p = coreInputSchemas[method].parse(input);
+        return this.ports.recovery.detail(identity, p.id);
+      }
+      case "recovery.save": {
+        if (!this.ports.recovery) throw Error("TASK_RECOVERY_UNAVAILABLE");
+        const p = coreInputSchemas[method].parse(input);
+        return this.ports.recovery.save(identity, p.taskId);
+      }
+      case "recovery.restore": {
+        if (!this.ports.recovery) throw Error("TASK_RECOVERY_UNAVAILABLE");
+        const p = coreInputSchemas[method].parse(input);
+        return this.ports.recovery.restore(identity, p.id, {
+          sessionId: p.sessionId,
+          reviewed: true,
+        });
+      }
+
       case "transfers.local": {
         if (!this.ports.transfers)
           throw Error("FILE_TRANSFER_EXECUTOR_UNAVAILABLE");

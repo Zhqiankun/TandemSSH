@@ -91,6 +91,10 @@ export interface TaskOperationPage {
   latest?: { id: string; status: string; error?: string; auditGap?: boolean };
 }
 export interface TaskView {
+  recovery?: {
+    recordId: string;
+    completedSteps: number;
+  };
   canArchive?: boolean;
   operationPage?: TaskOperationPage;
   id: string;

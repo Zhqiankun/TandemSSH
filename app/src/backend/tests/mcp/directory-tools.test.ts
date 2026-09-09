@@ -62,7 +62,7 @@ it.each([
       return r.structuredContent!.result as T;
     }
     const inventory = (await client.listTools()).tools.map((t) => t.name);
-    expect(inventory).toHaveLength(34);
+    expect(inventory).toHaveLength(38);
     expect(inventory).toEqual(
       expect.arrayContaining([
         "preview_directory_transfer",

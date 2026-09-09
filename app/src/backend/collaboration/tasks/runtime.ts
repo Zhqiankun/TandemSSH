@@ -1,3 +1,4 @@
+import type { TaskExecutionCheckpoint } from "../../../types/task-recovery.js";
 import type {
   DirectoryStepCursor,
   DirectoryStepPort,
@@ -60,6 +61,7 @@ export type TaskActor =
       allowedHostIds: number[];
     };
 export interface TaskSession {
+  acceptedHostKey?: string;
   assertAvailable?: () => void;
   files?: FileExecutorPort;
   id: string;
@@ -71,6 +73,10 @@ export interface TaskSession {
   executor: CommandExecutorPort & { prepareContext(): PreparedCommand };
 }
 export interface TaskRuntimePorts {
+  persistRecovery?(
+    checkpoint: TaskExecutionCheckpoint,
+    finished?: boolean,
+  ): Promise<void>;
   directorySteps?: DirectoryStepPort;
   validateFileBinding?(
     userId: string,
@@ -120,6 +126,11 @@ type RuntimeStep = TaskPlanStep & {
   directoryCursor?: DirectoryStepCursor;
 };
 interface RecordTask {
+  recoveryEnabled?: boolean;
+  recoverySaving?: boolean;
+  recoveryRestoring?: boolean;
+  recoveryHistory?: TaskOperation[];
+  recoveryDecisionRequired?: boolean;
   unsubscribe?: () => void;
   archiving?: boolean;
   view: Omit<TaskView, "control" | "operations" | "policyRevision">;
@@ -788,6 +799,8 @@ export class TaskRuntime {
     this.sessionFor(actor, task.view.sessionId);
     if (task.connectionId && !this.clients.has(task.connectionId))
       throw new Error("CLIENT_DISCONNECTED");
+    if (task.recoverySaving || task.recoveryRestoring)
+      throw Error("TASK_RECOVERY_BUSY");
     if (terminalState(task.view.state) || !inactive(task.view.state))
       throw new Error("TASK_STATE_INVALID");
     task.session.assertAvailable?.();
@@ -797,6 +810,8 @@ export class TaskRuntime {
       scope.planRevision !== task.view.planRevision
     )
       throw new Error("STALE_PLAN");
+    if (task.recoveryDecisionRequired && !scope.reconciliation)
+      throw Error("RECONCILIATION_REQUIRED");
     const initiatingVersion = task.generation;
     const groups = [...task.session.groups()].sort();
     const currentPolicy = await this.ports.policy(actor.userId);
@@ -902,6 +917,16 @@ export class TaskRuntime {
       task.deadline = Date.now() + scope.durationMinutes * 60000;
       task.attempts.clear();
       task.view.error = undefined;
+      if (task.recoveryDecisionRequired) {
+        for (const op of task.recoveryHistory ?? [])
+          if (["unknown", "failed"].includes(op.status) && !op.reviewed)
+            op.reviewed = { decision: scope.reconciliation!, at: Date.now() };
+        if (scope.reconciliation === "skip") {
+          if (task.view.nextStep < task.steps.length) task.view.nextStep++;
+          task.view.hasFailures = true;
+        }
+        task.recoveryDecisionRequired = false;
+      }
       if (prior && scope.reconciliation)
         task.reviews.set(prior.id, {
           decision: scope.reconciliation,
@@ -980,6 +1005,248 @@ export class TaskRuntime {
         );
       throw error;
     }
+  }
+
+  async saveRecovery(
+    actor: TaskActor,
+    taskId: string,
+    persist: (checkpoint: TaskExecutionCheckpoint) => Promise<void>,
+  ) {
+    const task = this.owned(actor, taskId);
+    if (task.recoverySaving || task.recoveryRestoring)
+      throw Error("TASK_RECOVERY_BUSY");
+    if (task.view.source === "assistant" || task.activeWorkflowRunId)
+      throw Error("TASK_RECOVERY_AGENT_ADAPTER_REQUIRED");
+    task.recoverySaving = true;
+    try {
+      this.pause(task, "TASK_RECOVERY_SAVING");
+      const deadline = Date.now() + 10000;
+      let checkpoint: TaskExecutionCheckpoint;
+      for (;;) {
+        try {
+          checkpoint = this.recoverySnapshot(actor, taskId);
+          break;
+        } catch (error) {
+          if (
+            !(error instanceof Error) ||
+            error.message !== "TASK_RECOVERY_BUSY" ||
+            Date.now() >= deadline
+          )
+            throw error;
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+      }
+      if (checkpoint.resourceRecoveryRequired)
+        throw Error("TASK_RECOVERY_RESOURCES_REQUIRED");
+      await persist(checkpoint);
+      this.cancel(actor, taskId);
+      await this.ports.audit(actor.userId).record("task.recovery-saved", {
+        taskId,
+        nextStep: checkpoint.nextStep,
+      });
+      return checkpoint;
+    } finally {
+      task.recoverySaving = false;
+    }
+  }
+  /** Captures trusted runtime state; no external transport may supply a snapshot. */
+  recoverySnapshot(actor: TaskActor, taskId: string): TaskExecutionCheckpoint {
+    const task = this.owned(actor, taskId);
+    if (task.view.source === "assistant" || task.activeWorkflowRunId)
+      throw Error("TASK_RECOVERY_AGENT_ADAPTER_REQUIRED");
+    if (
+      task.pumping !== undefined ||
+      task.submitting ||
+      task.attachingWorkflow ||
+      task.probe ||
+      task.archiving ||
+      task.operationIds.some((id) =>
+        ["running", "queued"].includes(task.gateway.status(id)),
+      )
+    )
+      throw Error("TASK_RECOVERY_BUSY");
+    if (!inactive(task.view.state)) throw Error("TASK_RECOVERY_PAUSE_REQUIRED");
+    return this.captureRecovery(task);
+  }
+  private captureRecovery(
+    task: RecordTask,
+    inFlight?: string,
+  ): TaskExecutionCheckpoint {
+    if (!task.session.acceptedHostKey)
+      throw Error("TASK_RECOVERY_HOST_KEY_REQUIRED");
+    const operations = task.operationIds.map((id) =>
+      this.projectOperation(task, id, 8000),
+    );
+    if (inFlight) {
+      const op = operations.find((op) => op.id === inFlight);
+      if (op) {
+        op.status = "unknown";
+        op.error = "TASK_RECOVERY_INTERRUPTED";
+      }
+    }
+    let nextStep = task.view.nextStep;
+    while (nextStep < task.steps.length) {
+      const step = task.steps[nextStep],
+        op = operations.find((op) => op.id === step.operationId);
+      if (
+        !op ||
+        op.status !== "succeeded" ||
+        op.error ||
+        op.auditGap ||
+        (step.directoryCursor && !step.directoryCursor.done)
+      )
+        break;
+      nextStep++;
+    }
+    const current = task.steps[nextStep],
+      operation = current?.operationId
+        ? operations.find((op) => op.id === current.operationId)
+        : undefined;
+    const uncertain = (op: TaskOperation) =>
+      (["unknown", "failed", "running"].includes(op.status) && !op.reviewed) ||
+      !!op.auditGap;
+    const resourceRecoveryRequired =
+      (!!current?.directoryCursor &&
+        !current.directoryCursor.canRestart &&
+        !current.directoryCursor.done) ||
+      !!operation?.fileResult?.temporaryPath ||
+      !!operation?.fileResult?.transfer?.cleanupRequired;
+    return {
+      schemaVersion: 1,
+      id: task.view.id,
+      userId: task.userId,
+      host: {
+        id: task.view.hostId,
+        name: task.view.hostName,
+        peer: task.session.acceptedHostKey,
+      },
+      title: task.view.title,
+      source: task.view.source,
+      clientId: task.clientId,
+      mode: task.view.mode,
+      steps: task.steps.map(
+        ({ operationId: _id, directoryCursor: _cursor, ...step }) =>
+          structuredClone(step),
+      ),
+      nextStep,
+      workflow: task.view.workflow,
+      cwd: task.workflowCwd ?? task.view.cwd,
+      hasFailures: !!task.view.hasFailures,
+      resourceRecoveryRequired:
+        resourceRecoveryRequired ||
+        !!task.directoryReservation ||
+        operations.some(
+          (op) =>
+            !op.reviewed &&
+            (!!op.fileResult?.temporaryPath ||
+              !!op.fileResult?.transfer?.cleanupRequired),
+        ),
+      reconciliationRequired:
+        task.recoveryDecisionRequired ||
+        (task.steps.length
+          ? !!operation && uncertain(operation)
+          : operations.some(uncertain)),
+      operations: [...(task.recoveryHistory ?? []), ...operations],
+      createdAt: task.view.createdAt,
+      savedAt: Date.now(),
+    };
+  }
+  enableRecovery(actor: TaskActor, taskId: string) {
+    const task = this.owned(actor, taskId);
+    task.recoveryEnabled = true;
+    task.recoveryRestoring = false;
+  }
+  private async persistRecovery(task: RecordTask, inFlight?: string) {
+    if (task.recoveryEnabled) {
+      if (!this.ports.persistRecovery) throw Error("TASK_RECOVERY_UNAVAILABLE");
+      await this.ports.persistRecovery(
+        this.captureRecovery(task, inFlight),
+        terminalState(task.view.state),
+      );
+    }
+  }
+  async restoreRecovery(
+    actor: TaskActor,
+    checkpoint: TaskExecutionCheckpoint,
+    input: {
+      sessionId: string;
+      requestId: string;
+      reconciliation?: "retry" | "skip";
+    },
+  ) {
+    const session = this.sessionFor(actor, input.sessionId);
+    if (
+      checkpoint.userId !== actor.userId ||
+      checkpoint.source === "assistant" ||
+      actor.kind === "agent" ||
+      (checkpoint.source === "mcp" &&
+        (actor.kind !== "mcp" || checkpoint.clientId !== actor.clientId)) ||
+      (checkpoint.source === "workflow" && actor.kind !== "human")
+    )
+      throw Error("TASK_RECOVERY_OWNER_MISMATCH");
+    if (
+      session.hostId !== checkpoint.host.id ||
+      session.hostName !== checkpoint.host.name ||
+      !session.acceptedHostKey ||
+      session.acceptedHostKey !== checkpoint.host.peer
+    )
+      throw Error("TASK_RECOVERY_HOST_CHANGED");
+    if (checkpoint.resourceRecoveryRequired)
+      throw Error("TASK_RECOVERY_RESOURCES_REQUIRED");
+    if (
+      checkpoint.reconciliationRequired &&
+      !input.reconciliation &&
+      actor.kind === "human"
+    )
+      throw Error("RECONCILIATION_REQUIRED");
+    const steps = validateTaskPlan(checkpoint.steps);
+    if (
+      !Number.isInteger(checkpoint.nextStep) ||
+      checkpoint.nextStep < 0 ||
+      checkpoint.nextStep > steps.length
+    )
+      throw Error("TASK_RECOVERY_INVALID");
+    const created = await this.create(actor, {
+      sessionId: input.sessionId,
+      requestId: input.requestId,
+      title: checkpoint.title,
+      mode: checkpoint.mode,
+      plan: steps,
+      workflow: checkpoint.workflow,
+    });
+    const task = this.owned(actor, created.id);
+    task.recoveryRestoring = true;
+    task.view.nextStep =
+      checkpoint.nextStep +
+      (checkpoint.reconciliationRequired &&
+      input.reconciliation === "skip" &&
+      checkpoint.nextStep < steps.length
+        ? 1
+        : 0);
+    task.view.hasFailures =
+      checkpoint.hasFailures ||
+      (checkpoint.reconciliationRequired && input.reconciliation === "skip");
+    task.recoveryDecisionRequired =
+      checkpoint.reconciliationRequired && !input.reconciliation;
+    task.workflowCwd = checkpoint.cwd;
+    task.view.cwd = checkpoint.cwd;
+    task.view.recovery = {
+      recordId: checkpoint.id,
+      completedSteps: checkpoint.nextStep,
+    };
+    task.recoveryHistory = structuredClone(checkpoint.operations);
+    try {
+      await this.ports.audit(actor.userId).record("task.recovered", {
+        taskId: task.view.id,
+        originalTaskId: checkpoint.id,
+        nextStep: task.view.nextStep,
+        reconciliation: input.reconciliation,
+      });
+    } catch (error) {
+      this.cancel(actor, task.view.id);
+      throw error;
+    }
+    return this.view(task);
   }
 
   checkWorkflowFileBindings(
@@ -1167,6 +1434,7 @@ export class TaskRuntime {
         }
         task.view.nextStep++;
         task.view.state = "ready";
+        await this.persistRecovery(task);
       }
       if (
         version === task.generation &&
@@ -1209,6 +1477,7 @@ export class TaskRuntime {
             state: task.view.state,
             hasFailures: task.view.hasFailures ?? false,
           });
+          await this.persistRecovery(task);
         }
       }
     } catch (error) {
@@ -1276,7 +1545,10 @@ export class TaskRuntime {
     task.view.state = "running";
     let result: OperationView;
     try {
+      await this.persistRecovery(task, operationId);
+      if (version !== task.generation) throw Error("STALE_CONTROL");
       result = await task.gateway.dispatch(operationId);
+      await this.persistRecovery(task);
     } catch (error) {
       task.attempts.delete(operationId);
       throw error;
@@ -1858,10 +2130,12 @@ export class TaskRuntime {
         : [...task.workflowRuns.keys()].map((id) =>
             this.workflowSummary(task, id, !!options),
           ),
-      reconciliationRequired: task.steps.length
-        ? !!stepId &&
-          ["unknown", "failed"].includes(task.gateway.status(stepId))
-        : !!this.pendingReconciliation(task),
+      reconciliationRequired:
+        task.recoveryDecisionRequired ||
+        (task.steps.length
+          ? !!stepId &&
+            ["unknown", "failed"].includes(task.gateway.status(stepId))
+          : !!this.pendingReconciliation(task)),
       control: task.session.control.snapshot(),
       policyRevision: task.policy.revision,
       operations,

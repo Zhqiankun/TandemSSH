@@ -1,3 +1,4 @@
+import { taskRecovery } from "../collaboration/recovery/production.js";
 import {
   fileAutomation,
   transferAutomation,
@@ -66,6 +67,7 @@ export const desktopSessionRequests = new DesktopSessionRequests({
   },
 });
 const core = new McpCore({
+  recovery: taskRecovery,
   files: fileAutomation,
   transfers: transferAutomation,
   directories: directoryAutomation,

@@ -41,8 +41,12 @@ jobs:
           npm run lint
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/check-localization.cjs
-      - name: Run all tests
-        run: npm test
+      # Run the interactive ConPTY suite without competing application test workers.
+      # Both steps are required; no retry or skipped terminal gate is introduced.
+      - name: Run application tests
+        run: npm test -- --exclude src/backend/tests/collaboration/pty-integration.test.ts
+      - name: Run real terminal tests
+        run: npm test -- src/backend/tests/collaboration/pty-integration.test.ts
       - name: Build application
         run: npm run build
       - name: Verify Spectre-enabled MSVC toolchain

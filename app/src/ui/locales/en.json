@@ -6283,5 +6283,51 @@
       "DOWNLOAD_BATCH_LIMIT": "Saved batches reached the storage limit. Remove finished records.",
       "DOWNLOAD_BATCH_NOT_AVAILABLE": "This batch is not available. Refresh its current state."
     }
+  },
+  "taskRecovery": {
+    "save": "Pause and save task progress",
+    "open": "Recover saved tasks",
+    "title": "Recover task execution",
+    "hint": "Reconnect to the original server, review the plan and prior results, then authorize the recovered task. Old approvals and local file grants are not reused.",
+    "busy": "Saving or verifying task…",
+    "saved": "Progress saved encrypted; the original task has stopped.",
+    "failed": "Task recovery failed.",
+    "empty": "No saved task progress.",
+    "plan": "Original execution plan",
+    "previous": "View previous results",
+    "done": "Completed",
+    "pending": "Pending",
+    "progress": "Step {{done}} / {{total}}",
+    "resources": "Partial files or directory progress require resource recovery before continuing.",
+    "external": "MCP tasks must be claimed by the original client. Built-in AI conversation recovery is being integrated.",
+    "reconcile": "Verify the remote outcome before choosing how to handle the unresolved step.",
+    "retry": "I verified the outcome; retry this step.",
+    "skip": "I verified the outcome; skip this step and retain the unresolved history.",
+    "review": "I reviewed the plan, prior results, and current server. Restore the task awaiting new authorization.",
+    "restore": "Restore awaiting authorization",
+    "remove": "Remove saved progress",
+    "removeHint": "Only remove this checkpoint. Remote files and operation history are retained.",
+    "confirmRemove": "Confirm removing progress",
+    "states": {
+      "available": "Available",
+      "claimed": "In use",
+      "interrupted": "Previous run interrupted",
+      "consumed": "Claimed"
+    },
+    "errors": {
+      "TASK_RECOVERY_BUSY": "The task is still settling or this record is in use. Retry shortly.",
+      "TASK_RECOVERY_HOST_CHANGED": "Server identity or SSH key differs from the saved record.",
+      "TASK_RECOVERY_HOST_KEY_REQUIRED": "This connection has no verified SSH key for recovery.",
+      "TASK_RECOVERY_REVIEW_REQUIRED": "Review the original plan and results first.",
+      "TASK_RECOVERY_OWNER_MISMATCH": "The user or client does not match the original task.",
+      "TASK_RECOVERY_RESOURCES_REQUIRED": "Partial files or directory progress require dedicated recovery. The task is paused.",
+      "TASK_RECOVERY_AGENT_ADAPTER_REQUIRED": "Built-in AI and parent workflow recovery require their complete coordinator state.",
+      "TASK_RECOVERY_DECRYPT_FAILED": "Unable to decrypt or verify task progress.",
+      "TASK_RECOVERY_ENCRYPTION_UNAVAILABLE": "System encryption is unavailable. Progress was not saved.",
+      "TASK_RECOVERY_KEY_MISSING": "The system recovery key is unavailable.",
+      "TASK_RECOVERY_LIMIT": "Execution checkpoints reached the storage limit.",
+      "TASK_RECOVERY_INVALID": "Invalid execution checkpoint.",
+      "TASK_RECOVERY_SAVING": "Task paused while saving progress."
+    }
   }
 }

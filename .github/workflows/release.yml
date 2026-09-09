@@ -46,7 +46,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/check-localization.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm test
+          npm test -- --exclude src/backend/tests/collaboration/pty-integration.test.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test -- src/backend/tests/collaboration/pty-integration.test.ts
       - name: Build Windows installer and portable archive
         run: npm run build:win-installer
       - name: Verify packaged native modules

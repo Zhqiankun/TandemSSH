@@ -1,3 +1,5 @@
+import { taskRecovery } from "../recovery/production.js";
+import { taskRecoveryRoutes } from "../recovery/http-routes.js";
 import { releaseTaskFiles } from "../files/production.js";
 import { aiTasks } from "../../ai/tasks/production.js";
 import { journalFor } from "../audit/production.js";
@@ -57,6 +59,7 @@ router.use(
     taskRuntime.state({ kind: "human", userId }, taskId, false);
   }),
 );
+router.use("/recovery", taskRecoveryRoutes(taskRecovery));
 router.use("/mcp", mcpRoutes);
 router.use("/ai-tasks", aiTaskRoutes);
 router.use("/workflows", workflowRoutes);

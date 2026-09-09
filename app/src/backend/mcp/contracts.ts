@@ -20,6 +20,10 @@ import { z } from "zod";
 const id = z.string().uuid(),
   requestId = z.string().min(1).max(128);
 export const coreInputSchemas = {
+  "recovery.list": z.object({}).strict(),
+  "recovery.detail": z.object({ id }).strict(),
+  "recovery.save": z.object({ taskId: id }).strict(),
+  "recovery.restore": z.object({ id, sessionId: id }).strict(),
   "directories.preview": directoryPreviewSchema
     .extend({ taskId: id, requestId })
     .strict(),

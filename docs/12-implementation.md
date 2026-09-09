@@ -537,3 +537,18 @@ CI 34192353445 已通过真实安装、中文启动、更新入口、正常退�
 首轮桌面脚本误用了单文件菜单名称，失败现场保留，修正脚本后完整通过。该测试的中断位置是恢复暂停后，未声称覆盖所有 I/O/掉电时序。目录结果核对的最后结束状态已补充修复并复测。AI/MCP/流程跨重启恢复、其他基础功能、实际跨版本更新和全部原始验收继续，Goal 保持进行中。
 
 最终包已纳入目录核对结束状态修复，三阶段桌面验收再次全部通过：.cache/desktop-observation-report-8e849c6a-a6d4-4ed3-a9df-ef5029f21bbb。保存前缀 8388608 字节，最终 12583025 字节与相同 SHA-256 一致。最终包原生探针与打包 MCP/隔离 Codex 3 项通过，最终 lint 通过。日志 download-batch-recovery-desktop-final.log、download-batch-ui-package-final.log、download-batch-ui-packaged-mcp-final.log、download-batch-ui-lint-final.log。
+
+## 2026-09-09 独立任务执行恢复与 MCP 领取
+
+已接入中文任务保存、原计划与结果核对、系统加密记录及新会话恢复。恢复先等待重新授权，已完成步骤不重跑；MCP 新增四项恢复工具，当前共 38 项，不能自行核对未知结果或批准执行。恢复事务持久化完成前禁止提前授权。职责、容量与完整边界见 [第 43 份文档](43-task-execution-recovery.md)。
+
+相关回归 114 文件 / 749 项无跳过通过，最后授权竞态专项组合 47 项通过；类型、lint、构建、中文键和包原生探针通过，打包 MCP/隔离 Codex 3 项通过。真实 Windows 自动/协作流程跨正常重启后只执行剩余步骤，原完成文件未改写；证据 .cache/desktop-observation-report-93aba7d6-7133-481e-b530-bd2877736352。
+
+终端超时和补录截图时的 ConPTY/Bash 首字母丢失失败均保留，未宣称该兼容问题解决。内置 AI 对话/模型预算/父流程与部分传输/目录游标恢复、其他基础功能和完整验收继续，Goal 保持进行中。
+
+
+## 最终包与完整 CI 顺序复核
+
+最终含恢复事务授权门禁的 Windows 包已通过双模式重启验证，且截图等待实际任务面板显示“已完成 / 2 / 2 步”：.cache/desktop-observation-report-6d033345-0cf6-40e3-9997-52473331e9e0。实际共享 SSH、首个文件不重写、第二文件内容、重新授权和协作逐条批准均通过；首末正常退出。最终原生探针和打包 MCP/隔离 Codex 3 项通过，类型与模块 lint 通过。日志 task-execution-recovery-desktop-release.log、task-recovery-release-mcp.log、task-recovery-race-types.log、task-recovery-race-lint.log、task-recovery-package-final.log。
+
+上一提交 dc27429 的云端 CI 34329364523 在终端测试文件内失败 4 项，其他 455 文件通过，未生成新安装包。CI 与 Release 现在先运行应用测试，再单独运行真实交互 PTY 测试，减少终端与数百测试进程争用；两组必须通过，不重试、不删除断言、不关闭 Spectre。已用相同顺序和长路径/原始帧设置在本机验证：应用组 **457 文件 / 3279 项通过，4 项按既有条件跳过**；真实终端组 **1 文件 / 10 项通过**。日志 task-recovery-ci-application-tests.log 和 task-recovery-ci-terminal-tests.log。4 项跳过不计为已验证，原生终端兼容风险仍按第 32 份文档保留；本机通过不能提前代替新提交云端结果。

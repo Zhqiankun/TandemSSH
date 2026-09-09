@@ -400,5 +400,44 @@ export function createTandemMcpServer(bridge: CoreBridgePort): McpServer {
       readOnly,
       method === "files.edit" || method === "files.write",
     );
+  for (const [name, method, title, description, readOnly] of [
+    [
+      "list_saved_tasks",
+      "recovery.list",
+      "查看已保存任务",
+      "只列出当前客户端及允许服务器范围内的执行检查点。",
+      true,
+    ],
+    [
+      "get_saved_task",
+      "recovery.detail",
+      "核对已保存任务",
+      "查看原计划和已执行结果，不执行历史命令。未知结果必须由人在桌面核对。",
+      true,
+    ],
+    [
+      "save_task_progress",
+      "recovery.save",
+      "暂停并保存任务进度",
+      "停止当前任务后续执行，等待在途动作收敛并加密保存检查点。保存成功后旧任务停止。部分目录和内置 AI 父流程仍需专用恢复。",
+      false,
+    ],
+    [
+      "restore_task_progress",
+      "recovery.restore",
+      "领取待重新授权的任务",
+      "将原客户端的检查点绑定到同一服务器的新会话。只创建待授权任务，必须在桌面重新确认范围；未知结果必须在桌面核对后选择跳过或重试。不会恢复旧批准或文件授权。",
+      false,
+    ],
+  ] as const)
+    tool(
+      name,
+      method,
+      title,
+      description,
+      coreInputSchemas[method],
+      readOnly,
+      false,
+    );
   return server;
 }
