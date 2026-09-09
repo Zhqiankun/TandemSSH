@@ -47,6 +47,7 @@ vi.mock("../../hosts/host-resolver.js", () => ({
 }));
 vi.mock("../../utils/logger.js", () => ({
   sshLogger: { error: vi.fn() },
+  fileLogger: { error: vi.fn() },
   tunnelLogger: {
     error: vi.fn(),
     warn: vi.fn(),
@@ -123,6 +124,8 @@ import {
 } from "../../hosts/tunnel/ssh-primitives";
 import { tunnelTrustTarget } from "../../hosts/tunnel/connection-trust";
 import { classifyTunnelError } from "../../hosts/tunnel/utils";
+import { createJumpHostChain } from "../../hosts/jump-host-chain";
+import * as terminalAuth from "../../hosts/terminal-auth-helpers";
 import { DataCrypto } from "../../utils/data-crypto";
 import { acceptedHostKeyFor } from "../../hosts/accepted-host-key";
 const cleanup: Array<() => unknown | Promise<unknown>> = [];
@@ -862,3 +865,66 @@ it.each(["cancel", "disconnect"] as const)(
   },
   10000,
 );
+
+it("cancels a real jump-host trust handshake before authentication and can connect again", async () => {
+  const service = trust(),
+    server = await ssh(),
+    controller = new AbortController();
+  current.resolvedHost = {
+    id: 7,
+    ip: "127.0.0.1",
+    port: server.port,
+    username: "fixture",
+    password: "fixture-only",
+    authType: "password",
+  };
+  const connecting = createJumpHostChain(
+    [{ hostId: 7 }],
+    "requester",
+    controller.signal,
+  );
+  const rejected = expect(connecting).rejects.toThrow("cancel jump fixture");
+  await vi.waitFor(() =>
+    expect(service.list("requester").requests).toHaveLength(1),
+  );
+  controller.abort(Error("cancel jump fixture"));
+  await rejected;
+  await vi.waitFor(() =>
+    expect(service.list("requester").requests).toEqual([]),
+  );
+  await vi.waitFor(() => expect(server.clients()).toBe(0));
+  expect(server.auth()).toBe(0);
+  const again = createJumpHostChain([{ hostId: 7 }], "requester");
+  await decide(service);
+  const client = await again;
+  expect(client).not.toBeNull();
+  cleanup.push(() => client?.end());
+  const channel = await forwardOut(client!, "127.0.0.1", server.echoPort);
+  const bytes = new Promise<Buffer>((resolve) => channel.once("data", resolve));
+  channel.write("jump forwarding");
+  expect((await bytes).toString()).toBe("jump forwarding");
+  channel.destroy();
+}, 15000);
+
+it("settles asynchronous agent setup failures in a jump chain", async () => {
+  trust();
+  const server = await ssh();
+  current.resolvedHost = {
+    id: 7,
+    ip: "127.0.0.1",
+    port: server.port,
+    username: "fixture",
+    authType: "agent",
+  };
+  const agent = vi
+    .spyOn(terminalAuth, "applyAgentAuth")
+    .mockResolvedValue({ error: "fixture agent unavailable" });
+  try {
+    await expect(
+      createJumpHostChain([{ hostId: 7 }], "requester"),
+    ).rejects.toThrow("fixture agent unavailable");
+    expect(server.clients()).toBe(0);
+  } finally {
+    agent.mockRestore();
+  }
+}, 10000);

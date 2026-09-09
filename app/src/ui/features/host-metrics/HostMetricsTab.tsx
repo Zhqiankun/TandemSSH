@@ -1,3 +1,4 @@
+import { useMetricsViewer } from "./hooks/useMetricsViewer";
 import { MonitoringCollectionPanel } from "./MonitoringCollectionPanel";
 import { useTaskModeChoice } from "@/features/collaboration/use-task-mode-choice";
 import { legacyErrorCode } from "@/api/legacy-commands-api";
@@ -9,8 +10,6 @@ import { Button } from "@/components/button.tsx";
 import {
   getServerStatusById,
   getServerMetricsById,
-  startMetricsPolling,
-  stopMetricsPolling,
   submitMetricsTOTP,
   executeSnippet,
   getSnippets,
@@ -123,6 +122,7 @@ function HostMetricsInner({
   embedded = false,
 }: HostMetricsProps): React.ReactElement {
   const quickModeChoice = useTaskModeChoice();
+  const metricsViewer = useMetricsViewer();
   const { t } = useTranslation();
   const { addLog, clearLogs } = useConnectionLog();
   const { currentTab, removeTab } = useTabsSafe();
@@ -228,7 +228,8 @@ function HostMetricsInner({
   React.useEffect(() => {
     if (!viewerSessionId || !isActuallyVisible) return;
     const interval = setInterval(() => {
-      sendMetricsHeartbeat(viewerSessionId).catch(() => {});
+      if (metricsViewer.current.current?.id === viewerSessionId)
+        sendMetricsHeartbeat(viewerSessionId).catch(() => {});
     }, 30000);
     return () => clearInterval(interval);
   }, [viewerSessionId, isActuallyVisible]);
@@ -278,8 +279,11 @@ function HostMetricsInner({
 
   const handleTOTPSubmit = async (totpCode: string) => {
     if (!totpSessionId || !currentHostConfig) return;
+    const lease = metricsViewer.current.current;
+    if (!lease) return;
     try {
       const result = await submitMetricsTOTP(totpSessionId, totpCode);
+      if (metricsViewer.current.current !== lease) return;
       if (result.success) {
         setTotpRequired(false);
         setTotpSessionId(null);
@@ -296,7 +300,7 @@ function HostMetricsInner({
   const handleTOTPCancel = async () => {
     setTotpRequired(false);
     if (currentHostConfig?.id) {
-      await stopMetricsPolling(currentHostConfig.id).catch(() => {});
+      await metricsViewer.release(currentHostConfig.id).catch(() => {});
     }
     if (currentTab !== null) removeTab(currentTab);
   };
@@ -373,7 +377,7 @@ function HostMetricsInner({
         stage: "stats_connecting",
         message: `Connecting to ${currentHostConfig.username}@${currentHostConfig.ip}:${currentHostConfig.port}`,
       });
-      const result = await startMetricsPolling(currentHostConfig.id);
+      const result = await metricsViewer.start(currentHostConfig.id);
       result?.connectionLogs?.forEach((log) =>
         addLog(log as ConnectionLogPayload),
       );
@@ -387,7 +391,12 @@ function HostMetricsInner({
       if (result.viewerSessionId) setViewerSessionId(result.viewerSessionId);
     }
 
+    const lease = metricsViewer.current.current;
+    if (!lease || lease.hostId !== currentHostConfig.id)
+      throw Error("MONITORING_CANCELLED");
     const data = await getServerMetricsById(currentHostConfig.id);
+    if (metricsViewer.current.current !== lease)
+      throw Error("MONITORING_CANCELLED");
     if (!data) {
       throw new Error(t("hostMetrics.connectionFailed"));
     }
@@ -476,10 +485,7 @@ function HostMetricsInner({
       stopMetricsPollingRef.current?.();
       stopMetricsPollingRef.current = null;
       if (currentHostConfig?.id) {
-        await stopMetricsPolling(
-          currentHostConfig.id,
-          viewerSessionId || undefined,
-        ).catch(() => {});
+        await metricsViewer.release(currentHostConfig.id).catch(() => {});
       }
     };
 
@@ -500,7 +506,7 @@ function HostMetricsInner({
       stopMetricsPollingRef.current?.();
       stopMetricsPollingRef.current = null;
       if (currentHostConfig?.id) {
-        stopMetricsPolling(currentHostConfig.id).catch(() => {});
+        metricsViewer.release(currentHostConfig.id).catch(() => {});
       }
     };
   }, [

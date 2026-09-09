@@ -7,11 +7,13 @@ export interface MetricsSession {
   lastActive: number;
   timeout?: NodeJS.Timeout;
   activeOperations: number;
+  cleanupRequested?: boolean;
   hostId: number;
   userId: string;
 }
 
 export interface PendingTOTPSession {
+  viewerSessionId?: string;
   client: Client;
   finish: (responses: string[]) => void;
   config: ConnectConfig;
@@ -35,10 +37,14 @@ export interface MetricsViewer {
 export const metricsSessions: Record<string, MetricsSession> = {};
 export const pendingTOTPSessions: Record<string, PendingTOTPSession> = {};
 
-export function cleanupMetricsSession(sessionId: string): void {
+export function cleanupMetricsSession(
+  sessionId: string,
+  expectedClient?: Client,
+): void {
   const session = metricsSessions[sessionId];
-  if (session) {
+  if (session && (!expectedClient || session.client === expectedClient)) {
     if (session.activeOperations > 0) {
+      session.cleanupRequested = true;
       statsLogger.warn(
         `Deferring metrics session cleanup - ${session.activeOperations} active operations`,
         {
@@ -68,7 +74,7 @@ export function scheduleMetricsSessionCleanup(sessionId: string): void {
 
     session.timeout = setTimeout(
       () => {
-        cleanupMetricsSession(sessionId);
+        cleanupMetricsSession(sessionId, session.client);
       },
       30 * 60 * 1000,
     );

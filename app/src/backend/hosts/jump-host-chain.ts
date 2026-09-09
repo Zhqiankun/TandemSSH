@@ -62,19 +62,29 @@ export class JumpHostChainError extends Error {
 export async function createJumpHostChain(
   jumpHosts: Array<{ hostId: number }>,
   userId: string,
+  signal?: AbortSignal,
 ): Promise<SSHClient | null> {
+  signal?.throwIfAborted();
   if (!jumpHosts || jumpHosts.length === 0) {
     return null;
   }
 
   let currentClient: SSHClient | null = null;
   const clients: SSHClient[] = [];
+  let proxySocket: import("net").Socket | null = null;
+  const abort = () => {
+    proxySocket?.destroy();
+    clients.forEach((client) => client.destroy());
+  };
+  signal?.addEventListener("abort", abort, { once: true });
 
   try {
     const jumpHostConfigs: Array<Awaited<ReturnType<typeof resolveJumpHost>>> =
       [];
     for (let i = 0; i < jumpHosts.length; i++) {
+      signal?.throwIfAborted();
       const config = await resolveJumpHost(jumpHosts[i].hostId, userId);
+      signal?.throwIfAborted();
       jumpHostConfigs.push(config);
     }
 
@@ -98,20 +108,23 @@ export async function createJumpHostChain(
     }
 
     const firstHopSocks5Config = getJumpHostSocks5Config(jumpHostConfigs[0]);
-    let proxySocket: import("net").Socket | null = null;
     if (firstHopSocks5Config?.useSocks5) {
       const firstHop = jumpHostConfigs[0]!;
       proxySocket = await createSocks5Connection(
         firstHop.ip,
         firstHop.port || 22,
         firstHopSocks5Config,
+        signal,
       );
+      signal?.throwIfAborted();
     }
 
     for (let i = 0; i < jumpHostConfigs.length; i++) {
       const jumpHostConfig = jumpHostConfigs[i]!;
 
+      signal?.throwIfAborted();
       const jumpClient = new SSHClient();
+      jumpClient.on("error", () => {});
       clients.push(jumpClient);
 
       const jumpHostVerifier = await SSHHostKeyVerifier.createHostVerifier(
@@ -125,24 +138,47 @@ export async function createJumpHostChain(
         jumpClient,
       );
 
+      signal?.throwIfAborted();
       let lastError: Error | null = null;
 
-      // eslint-disable-next-line no-async-promise-executor
-      const connected = await new Promise<boolean>(async (resolve) => {
+      const connected = await new Promise<boolean>((resolve) => {
+        let settled = false;
+        const finish = (value: boolean) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          signal?.removeEventListener("abort", cancelled);
+          resolve(value);
+        };
+        const cancelled = () => {
+          lastError = signal?.reason ?? Error("SSH_CONNECTION_CANCELLED");
+          finish(false);
+        };
         const readyTimeoutMs = 60000;
         const timeout = setTimeout(() => {
           lastError = new Error(
             `Timed out waiting for jump host ${i + 1}/${totalHops} to authenticate`,
           );
-          resolve(false);
+          finish(false);
           // ssh2 has no explicit cancel; ending the client stops it from
           // firing "ready"/"error" after we've already resolved.
           jumpClient.end();
         }, readyTimeoutMs + 5000);
 
+        signal?.addEventListener("abort", cancelled, { once: true });
+        if (signal?.aborted) {
+          cancelled();
+          return;
+        }
+        jumpClient.once("close", () => {
+          if (!settled) {
+            lastError = Error("SSH_CONNECTION_CLOSED");
+            finish(false);
+          }
+        });
         jumpClient.on("ready", () => {
           clearTimeout(timeout);
-          resolve(true);
+          finish(true);
         });
 
         jumpClient.on("error", (err) => {
@@ -166,130 +202,149 @@ export async function createJumpHostChain(
               usedProxySocket: i === 0 && !!proxySocket,
             },
           );
-          resolve(false);
+          finish(false);
         });
 
-        const connectConfig: Record<string, unknown> = {
-          host: jumpHostConfig.ip?.replace(/^\[|\]$/g, "") || jumpHostConfig.ip,
-          port: jumpHostConfig.port || 22,
-          username: jumpHostConfig.username,
-          tryKeyboard: jumpHostConfig.authType !== "none",
-          readyTimeout: readyTimeoutMs,
-          hostVerifier: jumpHostVerifier,
-          algorithms: {
-            kex: [
-              "curve25519-sha256",
-              "curve25519-sha256@libssh.org",
-              "ecdh-sha2-nistp521",
-              "ecdh-sha2-nistp384",
-              "ecdh-sha2-nistp256",
-              "diffie-hellman-group-exchange-sha256",
-              "diffie-hellman-group18-sha512",
-              "diffie-hellman-group17-sha512",
-              "diffie-hellman-group16-sha512",
-              "diffie-hellman-group15-sha512",
-              "diffie-hellman-group14-sha256",
-              "diffie-hellman-group14-sha1",
-              "diffie-hellman-group-exchange-sha1",
-              "diffie-hellman-group1-sha1",
-            ],
-            serverHostKey: [
-              "ssh-ed25519",
-              "ecdsa-sha2-nistp521",
-              "ecdsa-sha2-nistp384",
-              "ecdsa-sha2-nistp256",
-              "rsa-sha2-512",
-              "rsa-sha2-256",
-              "ssh-rsa",
-              "ssh-dss",
-            ],
-            cipher: SSH_ALGORITHMS.cipher,
-            hmac: [
-              "hmac-sha2-512-etm@openssh.com",
-              "hmac-sha2-256-etm@openssh.com",
-              "hmac-sha2-512",
-              "hmac-sha2-256",
-              "hmac-sha1",
-              "hmac-md5",
-            ],
-            compress: ["none", "zlib@openssh.com", "zlib"],
-          },
-        };
+        const initialize = async () => {
+          const connectConfig: Record<string, unknown> = {
+            host:
+              jumpHostConfig.ip?.replace(/^\[|\]$/g, "") || jumpHostConfig.ip,
+            port: jumpHostConfig.port || 22,
+            username: jumpHostConfig.username,
+            tryKeyboard: jumpHostConfig.authType !== "none",
+            readyTimeout: readyTimeoutMs,
+            hostVerifier: jumpHostVerifier,
+            algorithms: {
+              kex: [
+                "curve25519-sha256",
+                "curve25519-sha256@libssh.org",
+                "ecdh-sha2-nistp521",
+                "ecdh-sha2-nistp384",
+                "ecdh-sha2-nistp256",
+                "diffie-hellman-group-exchange-sha256",
+                "diffie-hellman-group18-sha512",
+                "diffie-hellman-group17-sha512",
+                "diffie-hellman-group16-sha512",
+                "diffie-hellman-group15-sha512",
+                "diffie-hellman-group14-sha256",
+                "diffie-hellman-group14-sha1",
+                "diffie-hellman-group-exchange-sha1",
+                "diffie-hellman-group1-sha1",
+              ],
+              serverHostKey: [
+                "ssh-ed25519",
+                "ecdsa-sha2-nistp521",
+                "ecdsa-sha2-nistp384",
+                "ecdsa-sha2-nistp256",
+                "rsa-sha2-512",
+                "rsa-sha2-256",
+                "ssh-rsa",
+                "ssh-dss",
+              ],
+              cipher: SSH_ALGORITHMS.cipher,
+              hmac: [
+                "hmac-sha2-512-etm@openssh.com",
+                "hmac-sha2-256-etm@openssh.com",
+                "hmac-sha2-512",
+                "hmac-sha2-256",
+                "hmac-sha1",
+                "hmac-md5",
+              ],
+              compress: ["none", "zlib@openssh.com", "zlib"],
+            },
+          };
 
-        if (jumpHostConfig.authType === "password" && jumpHostConfig.password) {
-          connectConfig.password = jumpHostConfig.password;
-        } else if (jumpHostConfig.authType === "key" && jumpHostConfig.key) {
-          try {
-            connectConfig.privateKey = preparePrivateKeyForSSH2(
-              jumpHostConfig.key,
-              jumpHostConfig.keyPassword,
+          if (
+            jumpHostConfig.authType === "password" &&
+            jumpHostConfig.password
+          ) {
+            connectConfig.password = jumpHostConfig.password;
+          } else if (jumpHostConfig.authType === "key" && jumpHostConfig.key) {
+            try {
+              connectConfig.privateKey = preparePrivateKeyForSSH2(
+                jumpHostConfig.key,
+                jumpHostConfig.keyPassword,
+              );
+            } catch (keyError) {
+              clearTimeout(timeout);
+              lastError = new Error(
+                `Jump host ${i + 1}/${totalHops} key error: ${getErrorMessage(keyError, "Invalid private key format")}`,
+              );
+              finish(false);
+              return;
+            }
+            if (jumpHostConfig.keyPassword) {
+              connectConfig.passphrase = jumpHostConfig.keyPassword;
+            }
+          } else if (jumpHostConfig.authType === "agent") {
+            const result = await applyAgentAuth(
+              connectConfig,
+              jumpHostConfig.terminalConfig as
+                Record<string, unknown> | undefined,
             );
-          } catch (keyError) {
-            clearTimeout(timeout);
-            lastError = new Error(
-              `Jump host ${i + 1}/${totalHops} key error: ${getErrorMessage(keyError, "Invalid private key format")}`,
-            );
-            resolve(false);
-            return;
+            if ("error" in result) {
+              throw new Error(result.error);
+            }
           }
-          if (jumpHostConfig.keyPassword) {
-            connectConfig.passphrase = jumpHostConfig.keyPassword;
-          }
-        } else if (jumpHostConfig.authType === "agent") {
-          const result = await applyAgentAuth(
-            connectConfig,
-            jumpHostConfig.terminalConfig as
-              Record<string, unknown> | undefined,
-          );
-          if ("error" in result) {
-            throw new Error(result.error);
-          }
-        }
 
-        jumpClient.on(
-          "keyboard-interactive",
-          (
-            _name: string,
-            _instructions: string,
-            _lang: string,
-            prompts: Array<{ prompt: string; echo: boolean }>,
-            finish: (responses: string[]) => void,
-          ) => {
-            const responses = prompts.map((p) => {
-              if (/password/i.test(p.prompt) && jumpHostConfig.password) {
-                return jumpHostConfig.password as string;
-              }
-              return "";
-            });
-            finish(responses);
-          },
-        );
-
-        if (currentClient) {
-          currentClient.forwardOut(
-            "127.0.0.1",
-            0,
-            jumpHostConfig.ip,
-            jumpHostConfig.port || 22,
-            (err, stream) => {
-              if (err) {
-                clearTimeout(timeout);
-                lastError = err;
-                resolve(false);
-                return;
-              }
-              connectConfig.sock = stream;
-              jumpClient.connect(connectConfig);
+          jumpClient.on(
+            "keyboard-interactive",
+            (
+              _name: string,
+              _instructions: string,
+              _lang: string,
+              prompts: Array<{ prompt: string; echo: boolean }>,
+              finish: (responses: string[]) => void,
+            ) => {
+              if (signal?.aborted) return;
+              const responses = prompts.map((p) => {
+                if (/password/i.test(p.prompt) && jumpHostConfig.password) {
+                  return jumpHostConfig.password as string;
+                }
+                return "";
+              });
+              finish(responses);
             },
           );
-        } else if (proxySocket) {
-          connectConfig.sock = proxySocket;
-          jumpClient.connect(connectConfig);
-        } else {
-          jumpClient.connect(connectConfig);
-        }
+
+          signal?.throwIfAborted();
+          if (settled) return;
+          if (currentClient) {
+            currentClient.forwardOut(
+              "127.0.0.1",
+              0,
+              jumpHostConfig.ip,
+              jumpHostConfig.port || 22,
+              (err, stream) => {
+                if (settled || signal?.aborted) {
+                  stream?.destroy();
+                  return;
+                }
+                if (err) {
+                  clearTimeout(timeout);
+                  lastError = err;
+                  finish(false);
+                  return;
+                }
+                connectConfig.sock = stream;
+                jumpClient.connect(connectConfig);
+              },
+            );
+          } else if (proxySocket) {
+            connectConfig.sock = proxySocket;
+            jumpClient.connect(connectConfig);
+          } else {
+            jumpClient.connect(connectConfig);
+          }
+        };
+        void initialize().catch((error) => {
+          lastError = error instanceof Error ? error : Error(String(error));
+          finish(false);
+          jumpClient.destroy();
+        });
       });
 
+      signal?.throwIfAborted();
       if (!connected) {
         clients.forEach((c) => c.end());
         throw new JumpHostChainError(
@@ -305,8 +360,16 @@ export async function createJumpHostChain(
       currentClient = jumpClient;
     }
 
+    if (signal && currentClient)
+      currentClient.once("close", () => {
+        signal.removeEventListener("abort", abort);
+        abort();
+      });
     return currentClient;
   } catch (error) {
+    signal?.removeEventListener("abort", abort);
+    abort();
+    if (signal?.aborted) throw signal.reason;
     if (error instanceof JumpHostChainError) throw error;
     fileLogger.error("Failed to create jump host chain", error, {
       operation: "jump_host_chain",

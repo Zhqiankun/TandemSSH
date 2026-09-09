@@ -211,7 +211,10 @@ export async function getServerMetricsById(
   });
 }
 
-export async function startMetricsPolling(hostId: number): Promise<{
+export async function startMetricsPolling(
+  hostId: number,
+  viewerSessionId?: string,
+): Promise<{
   success: boolean;
   requires_totp?: boolean;
   sessionId?: string;
@@ -220,7 +223,9 @@ export async function startMetricsPolling(hostId: number): Promise<{
   connectionLogs?: ApiConnectionLog[];
 }> {
   try {
-    const response = await statsApi.post(`/metrics/start/${hostId}`);
+    const response = await statsApi.post(`/metrics/start/${hostId}`, {
+      viewerSessionId,
+    });
     metricsCache.invalidate(String(hostId));
     return response.data;
   } catch (error: unknown) {

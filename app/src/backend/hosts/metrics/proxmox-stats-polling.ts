@@ -257,6 +257,9 @@ export class ProxmoxPollingManager<
     sessionId: string,
     userId: string,
   ): void => {
+    const existing = this.viewerDetails.get(sessionId);
+    if (existing && (existing.hostId !== hostId || existing.userId !== userId))
+      throw Error("MONITORING_VIEWER_CONFLICT");
     if (!this.activeViewers.has(hostId)) {
       this.activeViewers.set(hostId, new Set());
     }
@@ -273,7 +276,7 @@ export class ProxmoxPollingManager<
       Promise.resolve()
         .then(async () => {
           const host = await this.deps.fetchHostById(hostId, userId);
-          if (host) {
+          if (host && this.viewerDetails.get(sessionId)?.userId === userId) {
             this.startPollingForHost(host, userId);
           }
         })
@@ -291,7 +294,18 @@ export class ProxmoxPollingManager<
     }
   };
 
-  unregisterViewer = (hostId: number, sessionId: string): void => {
+  unregisterViewer = (
+    hostId: number,
+    sessionId: string,
+    userId?: string,
+  ): boolean => {
+    const viewer = this.viewerDetails.get(sessionId);
+    if (
+      !viewer ||
+      viewer.hostId !== hostId ||
+      (userId !== undefined && viewer.userId !== userId)
+    )
+      return false;
     const viewers = this.activeViewers.get(hostId);
     if (viewers) {
       viewers.delete(sessionId);
@@ -301,11 +315,12 @@ export class ProxmoxPollingManager<
       }
     }
     this.viewerDetails.delete(sessionId);
+    return true;
   };
 
-  updateHeartbeat(sessionId: string): boolean {
+  updateHeartbeat(sessionId: string, userId?: string): boolean {
     const viewer = this.viewerDetails.get(sessionId);
-    if (viewer) {
+    if (viewer && (userId === undefined || viewer.userId === userId)) {
       viewer.lastHeartbeat = Date.now();
       return true;
     }

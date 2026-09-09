@@ -146,3 +146,25 @@ describe("ProxmoxPollingManager", () => {
     manager.destroy();
   });
 });
+
+it("does not let a different user or host remove or keep alive a Proxmox viewer", async () => {
+  const manager = new ProxmoxPollingManager<TestHost>({
+    fetchHostById: async () => undefined,
+    withSshConnection: async (_host, fn) => fn({} as Client),
+  });
+  try {
+    manager.registerViewer(7, "alice-window", "alice");
+    manager.registerViewer(7, "bob-window", "bob");
+    expect(manager.updateHeartbeat("alice-window", "bob")).toBe(false);
+    expect(manager.unregisterViewer(7, "alice-window", "bob")).toBe(false);
+    expect(manager.unregisterViewer(8, "alice-window", "alice")).toBe(false);
+    expect(() => manager.registerViewer(8, "alice-window", "bob")).toThrow(
+      "MONITORING_VIEWER_CONFLICT",
+    );
+    expect(manager.unregisterViewer(7, "alice-window", "alice")).toBe(true);
+    expect(manager.updateHeartbeat("bob-window", "bob")).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+  } finally {
+    manager.destroy();
+  }
+});

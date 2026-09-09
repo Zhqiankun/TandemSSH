@@ -1,3 +1,8 @@
+import { randomUUID } from "node:crypto";
+import {
+  pendingMonitoringConnections,
+  type PendingMonitoringConnection,
+} from "./pending-connections.js";
 import {
   monitoringCollections,
   authorizeMonitoring,
@@ -655,9 +660,21 @@ class PollingManager {
     host: SSHHostWithCredentials,
     viewerUserId?: string,
   ): Promise<void> {
+    const expectedConfig = this.pollingConfigs.get(host.id);
     const userId = viewerUserId || host.userId;
+    const assertCurrent = () => {
+      if (
+        this.pollingConfigs.get(host.id) !== expectedConfig ||
+        (viewerUserId && this.selectedViewerUser(host.id) !== viewerUserId)
+      )
+        throw Error("MONITORING_CANCELLED");
+    };
     const refreshedHost = await this.resolveHostForPoll(host, userId);
-    if (!refreshedHost) {
+    if (
+      !refreshedHost ||
+      this.pollingConfigs.get(host.id) !== expectedConfig ||
+      (viewerUserId && this.selectedViewerUser(host.id) !== viewerUserId)
+    ) {
       return;
     }
 
@@ -700,8 +717,14 @@ class PollingManager {
           });
         },
         userId,
+        assertCurrent,
       );
-      if (monitoringCollections.isPaused(host.id, userId)) return;
+      if (
+        monitoringCollections.isPaused(host.id, userId) ||
+        this.pollingConfigs.get(host.id) !== expectedConfig ||
+        (viewerUserId && this.selectedViewerUser(host.id) !== viewerUserId)
+      )
+        return;
       this.statusStore.set(refreshedHost.id, {
         status: statusAfterAuthentication(true),
         lastChecked: new Date().toISOString(),
@@ -841,6 +864,7 @@ class PollingManager {
   }
 
   stopMetricsOnly(hostId: number): void {
+    pendingMonitoringConnections.cancelBackground(hostId);
     monitoringCollections.cancelHost(hostId);
     metricsCache.clear(hostId);
     const config = this.pollingConfigs.get(hostId);
@@ -942,77 +966,114 @@ class PollingManager {
     }
   }
 
-  registerViewer(hostId: number, sessionId: string, userId: string): void {
-    if (!this.activeViewers.has(hostId)) {
-      this.activeViewers.set(hostId, new Set());
+  canRegisterViewer(
+    hostId: number,
+    sessionId: string,
+    userId: string,
+  ): boolean {
+    return (
+      !this.viewerDetails.has(sessionId) ||
+      this.ownsViewer(hostId, sessionId, userId)
+    );
+  }
+  ownsViewer(hostId: number, sessionId: string, userId: string): boolean {
+    const viewer = this.viewerDetails.get(sessionId);
+    return viewer?.hostId === hostId && viewer.userId === userId;
+  }
+  hasViewerForUser(hostId: number, userId: string): boolean {
+    return [...(this.activeViewers.get(hostId) ?? [])].some(
+      (id) => this.viewerDetails.get(id)?.userId === userId,
+    );
+  }
+  private selectedViewerUser(hostId: number): string | undefined {
+    const users = [...(this.activeViewers.get(hostId) ?? [])]
+      .map((id) => this.viewerDetails.get(id)?.userId)
+      .filter(
+        (user): user is string =>
+          !!user && !monitoringCollections.isPaused(hostId, user),
+      );
+    const current = this.pollingConfigs.get(hostId)?.viewerUserId;
+    return current && users.includes(current) ? current : users[0];
+  }
+  isSamplingForUser(hostId: number, userId: string): boolean {
+    return this.selectedViewerUser(hostId) === userId;
+  }
+  refreshViewerPolling(hostId: number): void {
+    const userId = this.selectedViewerUser(hostId),
+      config = this.pollingConfigs.get(hostId);
+    if (!userId) {
+      this.stopMetricsOnly(hostId);
+      return;
     }
+    if (config?.metricsTimer && config.viewerUserId === userId) return;
+    pendingMonitoringConnections.cancelBackground(hostId);
+    monitoringCollections.cancelHost(hostId);
+    void this.startMetricsForHost(hostId, userId);
+  }
+  registerViewer(hostId: number, sessionId: string, userId: string): void {
+    const existing = this.viewerDetails.get(sessionId);
+    if (existing && !this.ownsViewer(hostId, sessionId, userId))
+      throw Error("MONITORING_VIEWER_CONFLICT");
+    if (!this.activeViewers.has(hostId))
+      this.activeViewers.set(hostId, new Set());
     this.activeViewers.get(hostId)!.add(sessionId);
-
     this.viewerDetails.set(sessionId, {
       sessionId,
       userId,
       hostId,
       lastHeartbeat: Date.now(),
     });
-
-    if (this.activeViewers.get(hostId)!.size === 1) {
-      // Fire-and-forget: never let background metrics start-up failures
-      // propagate up to the HTTP handler that registered the viewer.
-      Promise.resolve()
-        .then(() => this.startMetricsForHost(hostId, userId))
-        .catch((err) => {
-          statsLogger.warn("startMetricsForHost rejected (non-fatal)", {
-            operation: "start_metrics_unhandled",
-            hostId,
-            userId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-    }
+    this.refreshViewerPolling(hostId);
   }
-
-  updateHeartbeat(sessionId: string): boolean {
+  updateHeartbeat(sessionId: string, userId?: string): boolean {
     const viewer = this.viewerDetails.get(sessionId);
-    if (viewer) {
-      viewer.lastHeartbeat = Date.now();
-      return true;
-    }
-    return false;
+    if (!viewer || (userId !== undefined && viewer.userId !== userId))
+      return false;
+    viewer.lastHeartbeat = Date.now();
+    return true;
   }
-
-  unregisterViewer(hostId: number, sessionId: string): void {
+  unregisterViewer(
+    hostId: number,
+    sessionId: string,
+    userId?: string,
+  ): boolean {
+    const viewer = this.viewerDetails.get(sessionId);
+    if (
+      !viewer ||
+      viewer.hostId !== hostId ||
+      (userId !== undefined && viewer.userId !== userId)
+    )
+      return false;
     const viewers = this.activeViewers.get(hostId);
-    if (viewers) {
-      viewers.delete(sessionId);
-
-      if (viewers.size === 0) {
-        this.activeViewers.delete(hostId);
-        this.stopMetricsForHost(hostId);
-      }
-    }
+    viewers?.delete(sessionId);
+    if (!viewers?.size) this.activeViewers.delete(hostId);
     this.viewerDetails.delete(sessionId);
+    this.refreshViewerPolling(hostId);
+    if (!this.hasViewerForUser(hostId, viewer.userId))
+      cleanupMetricsSession(getSessionKey(hostId, viewer.userId));
+    return true;
   }
-
+  unregisterUserViewers(hostId: number, userId: string): void {
+    for (const id of [...(this.activeViewers.get(hostId) ?? [])])
+      if (this.ownsViewer(hostId, id, userId))
+        this.unregisterViewer(hostId, id, userId);
+  }
   private async startMetricsForHost(
     hostId: number,
     userId: string,
   ): Promise<void> {
     try {
       const host = await fetchHostById(hostId, userId);
-      if (host) {
+      if (host && this.selectedViewerUser(hostId) === userId)
         await this.startPollingForHost(host, { viewerUserId: userId });
-      }
     } catch (error) {
       statsLogger.error("Failed to start metrics polling", {
         operation: "start_metrics_error",
         hostId,
-        error: error instanceof Error ? error.message : String(error),
+        userId,
+        error: getErrorMessage(error),
       });
     }
-  }
-
-  private stopMetricsForHost(hostId: number): void {
-    this.stopMetricsOnly(hostId);
   }
 
   private cleanupInactiveViewers(): void {
@@ -1478,185 +1539,248 @@ function getPoolKey(host: SSHHostWithCredentials): string {
   return `stats:${host.userId}:${host.ip}:${host.port}:${host.username}${socks5Key}`;
 }
 
-function createSshFactory(host: SSHHostWithCredentials): () => Promise<Client> {
+function createSshFactory(
+  host: SSHHostWithCredentials,
+  monitoringUserId?: string,
+): () => Promise<Client> {
   return async () => {
+    const pending = monitoringUserId
+      ? pendingMonitoringConnections.begin(
+          host.id,
+          monitoringUserId,
+          `poll-${randomUUID()}`,
+          true,
+        )
+      : undefined;
     const client = new Client();
-    const config = await buildSshConfig(host, client);
+    client.on("error", () => {});
+    pending?.own(() => client.destroy());
+    try {
+      const config = await buildSshConfig(host, client);
+      pending?.signal.throwIfAborted();
 
-    // Set up OPKSSH cert auth if needed (requires client instance)
-    if (host.authType === "opkssh" && host.userId) {
-      const { getOPKSSHToken } = await import("../opkssh-auth.js");
-      const token = await getOPKSSHToken(host.userId, host.id);
-      if (!token) {
-        throw new Error(
-          "OPKSSH authentication required. Please open a Terminal connection first.",
-        );
-      }
-      const { setupOPKSSHCertAuth } = await import("../opkssh-cert-auth.js");
-      await setupOPKSSHCertAuth(config, client, token, host.username);
-    } else if (host.authType === "vault") {
-      const { setupVaultSshSignerAuth } =
-        await import("../vault-ssh-connect.js");
-      await setupVaultSshSignerAuth(config, client, host);
-    }
-
-    const proxyConfig: SOCKS5Config | null =
-      host.useSocks5 &&
-      (host.socks5Host ||
-        (host.socks5ProxyChain && host.socks5ProxyChain.length > 0))
-        ? {
-            useSocks5: host.useSocks5,
-            socks5Host: host.socks5Host,
-            socks5Port: host.socks5Port,
-            socks5Username: host.socks5Username,
-            socks5Password: host.socks5Password,
-            socks5ProxyChain: host.socks5ProxyChain,
-          }
-        : null;
-
-    const hasJumpHosts =
-      host.jumpHosts && host.jumpHosts.length > 0 && host.userId;
-
-    let jumpClient: Client | null = null;
-    if (hasJumpHosts) {
-      jumpClient = await createJumpHostChain(host.jumpHosts!, host.userId!);
-
-      if (!jumpClient) {
-        throw new Error("Failed to establish jump host chain");
-      }
-    } else if (proxyConfig) {
-      try {
-        const proxySocket = await createSocks5Connection(
-          host.ip,
-          host.port,
-          proxyConfig,
-        );
-        if (proxySocket) {
-          config.sock = proxySocket;
-        }
-      } catch (proxyError) {
-        throw new Error(
-          "Proxy connection failed: " + getErrorMessage(proxyError),
-          { cause: proxyError },
-        );
-      }
-    }
-
-    return new Promise<Client>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        client.end();
-        jumpClient?.end();
-        reject(new Error("SSH connection timeout"));
-      }, 30000);
-
-      client.on("ready", () => {
-        clearTimeout(timeout);
-        resolve(client);
-      });
-
-      client.on("close", () => {
-        jumpClient?.end();
-      });
-
-      client.on("error", (err) => {
-        clearTimeout(timeout);
-        jumpClient?.end();
-        reject(err);
-      });
-
-      client.on(
-        "keyboard-interactive",
-        (
-          _name: string,
-          _instructions: string,
-          _instructionsLang: string,
-          prompts: Array<{ prompt: string; echo: boolean }>,
-          finish: (responses: string[]) => void,
-        ) => {
-          const totpPromptIndex = prompts.findIndex((p) =>
-            /verification code|verification_code|token|otp|2fa|authenticator|google.*auth/i.test(
-              p.prompt,
-            ),
+      // Set up OPKSSH cert auth if needed (requires client instance)
+      if (host.authType === "opkssh" && host.userId) {
+        const { getOPKSSHToken } = await import("../opkssh-auth.js");
+        const token = await getOPKSSHToken(host.userId, host.id);
+        if (!token) {
+          throw new Error(
+            "OPKSSH authentication required. Please open a Terminal connection first.",
           );
+        }
+        const { setupOPKSSHCertAuth } = await import("../opkssh-cert-auth.js");
+        await setupOPKSSHCertAuth(config, client, token, host.username);
+      } else if (host.authType === "vault") {
+        const { setupVaultSshSignerAuth } =
+          await import("../vault-ssh-connect.js");
+        await setupVaultSshSignerAuth(config, client, host);
+      }
 
-          if (totpPromptIndex !== -1) {
-            const sessionId = `totp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-            pendingTOTPSessions[sessionId] = {
-              client,
-              finish,
-              config,
-              createdAt: Date.now(),
-              sessionId,
-              hostId: host.id,
-              userId: host.userId!,
-              prompts: prompts.map((p) => ({
-                prompt: p.prompt,
-                echo: p.echo ?? false,
-              })),
-              totpPromptIndex,
-              resolvedPassword: host.password,
-              totpAttempts: 0,
-            };
-
-            return;
-          } else if (host.password) {
-            const responses = prompts.map((p) => {
-              if (/password/i.test(p.prompt)) {
-                return host.password || "";
-              }
-              return "";
-            });
-            finish(responses);
-          } else {
-            finish(prompts.map(() => ""));
-          }
-        },
-      );
-
-      if (jumpClient) {
-        jumpClient.forwardOut(
-          "127.0.0.1",
-          0,
-          host.ip,
-          host.port,
-          (err, stream) => {
-            if (err) {
-              clearTimeout(timeout);
-              jumpClient!.end();
-              reject(
-                new Error(
-                  "Failed to forward through jump host: " + err.message,
-                ),
-              );
-              return;
+      const proxyConfig: SOCKS5Config | null =
+        host.useSocks5 &&
+        (host.socks5Host ||
+          (host.socks5ProxyChain && host.socks5ProxyChain.length > 0))
+          ? {
+              useSocks5: host.useSocks5,
+              socks5Host: host.socks5Host,
+              socks5Port: host.socks5Port,
+              socks5Username: host.socks5Username,
+              socks5Password: host.socks5Password,
+              socks5ProxyChain: host.socks5ProxyChain,
             }
+          : null;
 
-            config.sock = stream;
-            client.connect(config);
+      const hasJumpHosts =
+        host.jumpHosts && host.jumpHosts.length > 0 && host.userId;
+
+      let jumpClient: Client | null = null;
+      if (hasJumpHosts) {
+        jumpClient = await createJumpHostChain(
+          host.jumpHosts!,
+          host.userId!,
+          pending?.signal,
+        );
+
+        if (pending?.signal.aborted) {
+          jumpClient?.end();
+          pending.signal.throwIfAborted();
+        }
+        if (!jumpClient) {
+          throw new Error("Failed to establish jump host chain");
+        }
+        const ownedJump = jumpClient;
+        pending?.own(() => ownedJump.end());
+      } else if (proxyConfig) {
+        try {
+          const proxySocket = await createSocks5Connection(
+            host.ip,
+            host.port,
+            proxyConfig,
+            pending?.signal,
+          );
+          if (pending?.signal.aborted) {
+            proxySocket?.destroy();
+            pending.signal.throwIfAborted();
+          }
+          if (proxySocket) {
+            pending?.own(() => proxySocket.destroy());
+            config.sock = proxySocket;
+          }
+        } catch (proxyError) {
+          throw new Error(
+            "Proxy connection failed: " + getErrorMessage(proxyError),
+            { cause: proxyError },
+          );
+        }
+      }
+
+      pending?.signal.throwIfAborted();
+      return await new Promise<Client>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          client.end();
+          jumpClient?.end();
+          reject(new Error("SSH connection timeout"));
+        }, 30000);
+
+        const aborted = () => {
+          clearTimeout(timeout);
+          reject(pending?.signal.reason ?? Error("MONITORING_CANCELLED"));
+        };
+        pending?.signal.addEventListener("abort", aborted, { once: true });
+        client.on("ready", () => {
+          clearTimeout(timeout);
+          pending?.signal.removeEventListener("abort", aborted);
+          pending?.complete();
+          resolve(client);
+        });
+
+        client.on("close", () => {
+          clearTimeout(timeout);
+          pending?.signal.removeEventListener("abort", aborted);
+          reject(Error("MONITORING_CONNECTION_CLOSED"));
+          jumpClient?.end();
+        });
+
+        client.on("error", (err) => {
+          clearTimeout(timeout);
+          jumpClient?.end();
+          reject(err);
+        });
+
+        client.on(
+          "keyboard-interactive",
+          (
+            _name: string,
+            _instructions: string,
+            _instructionsLang: string,
+            prompts: Array<{ prompt: string; echo: boolean }>,
+            finish: (responses: string[]) => void,
+          ) => {
+            const totpPromptIndex = prompts.findIndex((p) =>
+              /verification code|verification_code|token|otp|2fa|authenticator|google.*auth/i.test(
+                p.prompt,
+              ),
+            );
+
+            if (totpPromptIndex !== -1) {
+              const sessionId = `totp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+              pendingTOTPSessions[sessionId] = {
+                client,
+                finish,
+                config,
+                createdAt: Date.now(),
+                sessionId,
+                hostId: host.id,
+                userId: host.userId!,
+                prompts: prompts.map((p) => ({
+                  prompt: p.prompt,
+                  echo: p.echo ?? false,
+                })),
+                totpPromptIndex,
+                resolvedPassword: host.password,
+                totpAttempts: 0,
+              };
+
+              return;
+            } else if (host.password) {
+              const responses = prompts.map((p) => {
+                if (/password/i.test(p.prompt)) {
+                  return host.password || "";
+                }
+                return "";
+              });
+              finish(responses);
+            } else {
+              finish(prompts.map(() => ""));
+            }
           },
         );
-      } else if (config.sock) {
-        client.connect(config);
-      } else {
-        resolveSshConnectConfigHost(config)
-          .then(() => {
-            client.connect(config);
-          })
-          .catch((error) => {
-            clearTimeout(timeout);
-            reject(error);
-          });
-        return;
-      }
-    });
+
+        if (jumpClient) {
+          jumpClient.forwardOut(
+            "127.0.0.1",
+            0,
+            host.ip,
+            host.port,
+            (err, stream) => {
+              if (pending?.signal.aborted) {
+                stream?.destroy();
+                return;
+              }
+              if (err) {
+                clearTimeout(timeout);
+                jumpClient!.end();
+                reject(
+                  new Error(
+                    "Failed to forward through jump host: " + err.message,
+                  ),
+                );
+                return;
+              }
+
+              pending?.own(() => stream.destroy());
+              config.sock = stream;
+              client.connect(config);
+            },
+          );
+        } else if (config.sock) {
+          client.connect(config);
+        } else {
+          resolveSshConnectConfigHost(config)
+            .then(() => {
+              pending?.signal.throwIfAborted();
+              client.connect(config);
+            })
+            .catch((error) => {
+              clearTimeout(timeout);
+              reject(error);
+            });
+          return;
+        }
+      });
+    } finally {
+      pending?.cancel();
+    }
   };
 }
 
 async function withSshConnection<T>(
   host: SSHHostWithCredentials,
   fn: (client: Client) => Promise<T>,
+  monitoringUserId?: string,
 ): Promise<T> {
+  if (monitoringUserId) {
+    const client = await createSshFactory(
+      { ...host, userId: monitoringUserId },
+      monitoringUserId,
+    )();
+    try {
+      return await fn(client);
+    } finally {
+      client.end();
+    }
+  }
   const key = getPoolKey(host);
   const factory = createSshFactory(host);
   return withConnection(key, factory, fn);
@@ -1673,6 +1797,7 @@ async function collectMetrics(
   host: SSHHostWithCredentials,
   onAuthenticated?: () => void,
   requestingUserId = host.userId,
+  assertCurrent?: () => void,
 ): Promise<{
   cpu: {
     percent: number | null;
@@ -1733,6 +1858,7 @@ async function collectMetrics(
     throw new Error(reason || "Authentication failed");
   }
 
+  assertCurrent?.();
   const cached = metricsCache.get(
     host.id,
     pollingManager.parseStatsConfig(host.statsConfig).metricsInterval * 1000,
@@ -1756,12 +1882,16 @@ async function collectMetrics(
         host.statsConfig,
       ).monitoredMounts;
 
-      const collectFn = async (client: Client) =>
-        monitoringCollections.run(
+      const collectFn = async (client: Client) => {
+        assertCurrent?.();
+        if (!pollingManager.isSamplingForUser(host.id, requestingUserId))
+          throw Error("MONITORING_CANCELLED");
+        return monitoringCollections.run(
           host.id,
           requestingUserId,
           pollingManager.parseStatsConfig(host.statsConfig),
           async () => {
+            assertCurrent?.();
             assertMonitoringCollectionActive();
             onAuthenticated?.();
             const cpu = await collectCpuMetrics(client);
@@ -1872,6 +2002,7 @@ async function collectMetrics(
             return result;
           },
         );
+      };
 
       if (existingSession && existingSession.isConnected) {
         existingSession.activeOperations++;
@@ -1881,11 +2012,14 @@ async function collectMetrics(
           return result;
         } finally {
           existingSession.activeOperations--;
-          if (monitoringCollections.isPaused(host.id, requestingUserId))
-            cleanupMetricsSession(sessionKey);
+          if (
+            existingSession.cleanupRequested ||
+            monitoringCollections.isPaused(host.id, requestingUserId)
+          )
+            cleanupMetricsSession(sessionKey, existingSession.client);
         }
       } else {
-        return await withSshConnection(host, collectFn);
+        return await withSshConnection(host, collectFn, requestingUserId);
       }
     } catch (error) {
       if (error instanceof Error) {
@@ -2348,6 +2482,14 @@ app.get("/metrics/:id", validateHostId, async (req, res) => {
 app.post("/metrics/start/:id", validateHostId, async (req, res) => {
   const id = Number(req.params.id);
   const userId = (req as AuthenticatedRequest).userId;
+  const viewerSessionId = req.body?.viewerSessionId ?? `viewer-${randomUUID()}`;
+  if (
+    typeof viewerSessionId !== "string" ||
+    !/^[a-zA-Z0-9:._-]{1,128}$/.test(viewerSessionId)
+  )
+    return res.status(400).json({ code: "MONITORING_IDENTITY_INVALID" });
+  let pending: PendingMonitoringConnection | undefined;
+  let keepPending = false;
 
   const connectionLogs: Array<Omit<LogEntry, "id" | "timestamp">> = [];
 
@@ -2363,7 +2505,11 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
   }
 
   try {
+    if (!pollingManager.canRegisterViewer(id, viewerSessionId, userId))
+      return res.status(409).json({ code: "MONITORING_VIEWER_CONFLICT" });
+    pending = pendingMonitoringConnections.begin(id, userId, viewerSessionId);
     const host = await fetchHostById(id, userId);
+    pending.signal.throwIfAborted();
     if (!host) {
       connectionLogs.push(
         createConnectionLog("error", "stats_connecting", "Host not found"),
@@ -2428,15 +2574,20 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
           "Using existing metrics session",
         ),
       );
-      return res.json({ success: true, connectionLogs });
+      pending.complete();
+      pollingManager.registerViewer(id, viewerSessionId, userId);
+      return res.json({ success: true, viewerSessionId, connectionLogs });
     }
 
     const client = new Client();
-    const config = await buildSshConfig(host, client);
+    client.on("error", () => {});
+    pending.own(() => client.destroy());
+    const config = await buildSshConfig({ ...host, userId }, client);
+    pending.signal.throwIfAborted();
 
     if (host.authType === "opkssh" && host.userId) {
       const { getOPKSSHToken } = await import("../opkssh-auth.js");
-      const token = await getOPKSSHToken(host.userId, host.id);
+      const token = await getOPKSSHToken(userId, host.id);
       if (!token) {
         connectionLogs.push(
           createConnectionLog(
@@ -2456,9 +2607,10 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
     } else if (host.authType === "vault") {
       const { setupVaultSshSignerAuth } =
         await import("../vault-ssh-connect.js");
-      await setupVaultSshSignerAuth(config, client, host);
+      await setupVaultSshSignerAuth(config, client, { ...host, userId });
     }
 
+    pending.signal.throwIfAborted();
     const connectionPromise = new Promise<{
       success: boolean;
       requires_totp?: boolean;
@@ -2467,18 +2619,40 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
       viewerSessionId?: string;
     }>((resolve, reject) => {
       let isResolved = false;
+      const abort = () => {
+        clearTimeout(timeout);
+        if (!isResolved) {
+          isResolved = true;
+          reject(pending!.signal.reason ?? Error("MONITORING_CANCELLED"));
+        }
+      };
+      pending!.signal.addEventListener("abort", abort, { once: true });
+      client.once("close", () => {
+        if (metricsSessions[sessionKey]?.client === client) {
+          clearTimeout(metricsSessions[sessionKey].timeout);
+          delete metricsSessions[sessionKey];
+        }
+        clearTimeout(timeout);
+        pending!.signal.removeEventListener("abort", abort);
+        if (!isResolved) {
+          isResolved = true;
+          reject(Error("MONITORING_CONNECTION_CLOSED"));
+        }
+        pending!.cancel();
+      });
 
       const timeout = setTimeout(() => {
         if (!isResolved) {
           isResolved = true;
-          client.end();
-          reject(new Error("Connection timeout"));
+          pending!.cancel(Error("MONITORING_TIMEOUT"));
+          reject(Error("MONITORING_TIMEOUT"));
         }
       }, 60000);
 
       client.on(
         "keyboard-interactive",
         (name, instructions, instructionsLang, prompts, finish) => {
+          if (pending!.signal.aborted) return;
           const totpPromptIndex = prompts.findIndex((p) =>
             /verification code|verification_code|token|otp|2fa|authenticator|google.*auth/i.test(
               p.prompt,
@@ -2486,6 +2660,7 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
           );
 
           if (totpPromptIndex !== -1) {
+            pending!.waitForAuthentication();
             const sessionId = `totp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
             pendingTOTPSessions[sessionId] = {
@@ -2495,7 +2670,8 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
               createdAt: Date.now(),
               sessionId,
               hostId: host.id,
-              userId: host.userId!,
+              userId,
+              viewerSessionId,
               prompts: prompts.map((p) => ({
                 prompt: p.prompt,
                 echo: p.echo ?? false,
@@ -2505,6 +2681,10 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
               totpAttempts: 0,
             };
 
+            pending!.own(() => {
+              if (pendingTOTPSessions[sessionId]?.client === client)
+                delete pendingTOTPSessions[sessionId];
+            });
             connectionLogs.push(
               createConnectionLog(
                 "info",
@@ -2519,6 +2699,7 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
               resolve({
                 success: false,
                 requires_totp: true,
+                viewerSessionId,
                 sessionId,
                 prompt: prompts[totpPromptIndex].prompt,
               });
@@ -2538,6 +2719,10 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
 
       client.on("ready", () => {
         clearTimeout(timeout);
+        if (pending!.signal.aborted) {
+          client.destroy();
+          return;
+        }
         if (!isResolved) {
           isResolved = true;
 
@@ -2557,6 +2742,13 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
             ),
           );
 
+          if (metricsSessions[sessionKey]?.isConnected) {
+            pending!.complete();
+            client.end();
+            pollingManager.registerViewer(id, viewerSessionId, userId);
+            resolve({ success: true, viewerSessionId });
+            return;
+          }
           metricsSessions[sessionKey] = {
             client,
             isConnected: true,
@@ -2567,7 +2759,7 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
           };
           scheduleMetricsSessionCleanup(sessionKey);
 
-          const viewerSessionId = `viewer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          pending!.complete();
           pollingManager.registerViewer(host.id, viewerSessionId, userId);
 
           resolve({ success: true, viewerSessionId });
@@ -2670,14 +2862,25 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
             "Connecting via jump host chain",
           ),
         );
-        createJumpHostChain(host.jumpHosts!, host.userId!)
+        createJumpHostChain(host.jumpHosts!, userId, pending!.signal)
           .then((jumpClient) => {
+            if (!jumpClient) throw Error("MONITORING_JUMP_UNAVAILABLE");
+            if (pending!.signal.aborted) {
+              jumpClient.end();
+              return;
+            }
+            pending!.own(() => jumpClient.end());
+            client.once("close", () => jumpClient.end());
             jumpClient.forwardOut(
               "127.0.0.1",
               0,
               host.ip,
               host.port,
               (err, stream) => {
+                if (pending!.signal.aborted) {
+                  stream?.destroy();
+                  return;
+                }
                 if (err || !stream) {
                   if (!isResolved) {
                     isResolved = true;
@@ -2686,6 +2889,7 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
                   }
                   return;
                 }
+                pending!.own(() => stream.destroy());
                 config.sock = stream;
                 delete config.host;
                 delete config.port;
@@ -2715,16 +2919,26 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
         connectionLogs.push(
           createConnectionLog("info", "proxy", "Connecting via SOCKS5 proxy"),
         );
-        createSocks5Connection(host.ip, host.port, {
-          useSocks5: host.useSocks5,
-          socks5Host: host.socks5Host,
-          socks5Port: host.socks5Port,
-          socks5Username: host.socks5Username,
-          socks5Password: host.socks5Password,
-          socks5ProxyChain: host.socks5ProxyChain,
-        })
+        createSocks5Connection(
+          host.ip,
+          host.port,
+          {
+            useSocks5: host.useSocks5,
+            socks5Host: host.socks5Host,
+            socks5Port: host.socks5Port,
+            socks5Username: host.socks5Username,
+            socks5Password: host.socks5Password,
+            socks5ProxyChain: host.socks5ProxyChain,
+          },
+          pending!.signal,
+        )
           .then((socks5Socket) => {
+            if (pending!.signal.aborted) {
+              socks5Socket?.destroy();
+              return;
+            }
             if (socks5Socket) {
+              pending!.own(() => socks5Socket.destroy());
               config.sock = socks5Socket;
             }
             client.connect(config);
@@ -2746,6 +2960,7 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
       } else {
         resolveSshConnectConfigHost(config)
           .then(() => {
+            pending!.signal.throwIfAborted();
             client.connect(config);
           })
           .catch((error) => {
@@ -2759,8 +2974,11 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
     });
 
     const result = await connectionPromise;
+    keepPending = result.requires_totp === true;
     res.json({ ...result, connectionLogs });
   } catch (error) {
+    if (error instanceof Error && /^MONITORING_/.test(error.message))
+      return res.status(409).json({ code: error.message, connectionLogs });
     statsLogger.error("Failed to start metrics collection", {
       operation: "metrics_start_error",
       hostId: id,
@@ -2777,6 +2995,8 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
       error: getErrorMessage(error, "Failed to start metrics collection"),
       connectionLogs,
     });
+  } finally {
+    if (!keepPending) pending?.cancel();
   }
 });
 
@@ -2829,18 +3049,30 @@ app.post("/metrics/stop/:id", validateHostId, async (req, res) => {
     } catch {
       return res.status(403).json({ code: "MONITORING_DENIED" });
     }
-    const sessionKey = getSessionKey(id, userId);
-    const session = metricsSessions[sessionKey];
-
-    if (session) {
-      cleanupMetricsSession(sessionKey);
-    }
-
-    if (viewerSessionId && typeof viewerSessionId === "string") {
-      pollingManager.unregisterViewer(id, viewerSessionId);
+    if (
+      viewerSessionId !== undefined &&
+      (typeof viewerSessionId !== "string" ||
+        !/^[a-zA-Z0-9:._-]{1,128}$/.test(viewerSessionId))
+    )
+      return res.status(400).json({ code: "MONITORING_IDENTITY_INVALID" });
+    if (viewerSessionId) {
+      const ownsPending = pendingMonitoringConnections.owns(
+        id,
+        userId,
+        viewerSessionId,
+      );
+      const ownsViewer = pollingManager.ownsViewer(id, viewerSessionId, userId);
+      if (!ownsPending && !ownsViewer)
+        return res.status(404).json({ code: "MONITORING_VIEWER_NOT_FOUND" });
+      pendingMonitoringConnections.cancel(id, userId, viewerSessionId);
+      if (ownsViewer)
+        pollingManager.unregisterViewer(id, viewerSessionId, userId);
     } else {
-      pollingManager.stopMetricsOnly(id);
+      pendingMonitoringConnections.cancel(id, userId);
+      pollingManager.unregisterUserViewers(id, userId);
     }
+    if (!pollingManager.hasViewerForUser(id, userId))
+      cleanupMetricsSession(getSessionKey(id, userId));
 
     res.json({ success: true });
   } catch (error) {
@@ -2920,6 +3152,21 @@ app.post("/metrics/connect-totp", async (req, res) => {
     return res.status(403).json({ error: "Unauthorized" });
   }
 
+  if (
+    session.viewerSessionId &&
+    !pendingMonitoringConnections.owns(
+      session.hostId,
+      userId,
+      session.viewerSessionId,
+    )
+  )
+    return res.status(409).json({ code: "MONITORING_CANCELLED" });
+  try {
+    await authorizeMonitoring(session.hostId, userId);
+  } catch {
+    return res.status(403).json({ code: "MONITORING_DENIED" });
+  }
+
   session.totpAttempts++;
   if (session.totpAttempts > 3) {
     delete pendingTOTPSessions[sessionId];
@@ -2965,6 +3212,10 @@ app.post("/metrics/connect-totp", async (req, res) => {
         },
       );
 
+      session.client.once("close", () => {
+        clearTimeout(timeout);
+        reject(Error("MONITORING_CONNECTION_CLOSED"));
+      });
       session.client.once("ready", () => {
         clearTimeout(timeout);
         resolve();
@@ -2985,6 +3236,15 @@ app.post("/metrics/connect-totp", async (req, res) => {
     session.finish(responses);
 
     await connectionPromise;
+    if (
+      session.viewerSessionId &&
+      !pendingMonitoringConnections.owns(
+        session.hostId,
+        userId,
+        session.viewerSessionId,
+      )
+    )
+      return res.status(409).json({ code: "MONITORING_CANCELLED" });
 
     const sessionKey = getSessionKey(session.hostId, userId);
     metricsSessions[sessionKey] = {
@@ -2999,7 +3259,12 @@ app.post("/metrics/connect-totp", async (req, res) => {
 
     delete pendingTOTPSessions[sessionId];
 
-    const viewerSessionId = `viewer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const viewerSessionId = session.viewerSessionId ?? `viewer-${randomUUID()}`;
+    pendingMonitoringConnections.complete(
+      session.hostId,
+      userId,
+      viewerSessionId,
+    );
     pollingManager.registerViewer(session.hostId, viewerSessionId, userId);
 
     res.json({ success: true, viewerSessionId });
@@ -3050,13 +3315,14 @@ registerMonitoringCollectionRoutes(app, {
     return pollingManager.parseStatsConfig(host.statsConfig);
   },
   pause: (hostId, userId) => {
-    pollingManager.stopMetricsOnly(hostId);
+    pendingMonitoringConnections.cancel(hostId, userId);
+    pollingManager.refreshViewerPolling(hostId);
     cleanupMetricsSession(getSessionKey(hostId, userId));
   },
   resume: async (hostId, userId) => {
     const host = await fetchHostById(hostId, userId);
     if (!host) throw Error("MONITORING_DENIED");
-    await pollingManager.startPollingForHost(host, { viewerUserId: userId });
+    pollingManager.refreshViewerPolling(hostId);
   },
 });
 
@@ -3065,12 +3331,12 @@ registerHostMetricsViewerRoutes(app, {
   supportsMetrics: (host: SSHHostWithCredentials) => supportsMetrics(host),
   parseStatsConfig: (statsConfig: SSHHostWithCredentials["statsConfig"]) =>
     pollingManager.parseStatsConfig(statsConfig),
-  updateHeartbeat: (viewerSessionId) =>
-    pollingManager.updateHeartbeat(viewerSessionId),
+  updateHeartbeat: (viewerSessionId, userId) =>
+    pollingManager.updateHeartbeat(viewerSessionId, userId),
   registerViewer: (hostId, viewerSessionId, userId) =>
     pollingManager.registerViewer(hostId, viewerSessionId, userId),
-  unregisterViewer: (hostId, viewerSessionId) =>
-    pollingManager.unregisterViewer(hostId, viewerSessionId),
+  unregisterViewer: (hostId, viewerSessionId, userId) =>
+    pollingManager.unregisterViewer(hostId, viewerSessionId, userId),
 });
 
 registerHostMetricsSettingsRoutes(app, {
@@ -3108,12 +3374,12 @@ registerHostMetricsViewerRoutes<
   supportsMetrics: (host: SSHHostWithCredentials) =>
     supportsMetrics(host) && host.enableProxmoxStats === true,
   parseStatsConfig: () => ({ metricsEnabled: true }),
-  updateHeartbeat: (viewerSessionId) =>
-    proxmoxPollingManager.updateHeartbeat(viewerSessionId),
+  updateHeartbeat: (viewerSessionId, userId) =>
+    proxmoxPollingManager.updateHeartbeat(viewerSessionId, userId),
   registerViewer: (hostId, viewerSessionId, userId) =>
     proxmoxPollingManager.registerViewer(hostId, viewerSessionId, userId),
-  unregisterViewer: (hostId, viewerSessionId) =>
-    proxmoxPollingManager.unregisterViewer(hostId, viewerSessionId),
+  unregisterViewer: (hostId, viewerSessionId, userId) =>
+    proxmoxPollingManager.unregisterViewer(hostId, viewerSessionId, userId),
   pathPrefix: "proxmox-stats",
 });
 

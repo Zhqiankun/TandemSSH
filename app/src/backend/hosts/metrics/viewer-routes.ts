@@ -15,13 +15,17 @@ type HostMetricsViewerRoutesDeps<
   fetchHostById: (hostId: number, userId: string) => Promise<THost>;
   supportsMetrics: (host: THost) => boolean;
   parseStatsConfig: (statsConfig: THost["statsConfig"]) => TStatsConfig;
-  updateHeartbeat: (viewerSessionId: string) => boolean;
+  updateHeartbeat: (viewerSessionId: string, userId: string) => boolean;
   registerViewer: (
     hostId: number,
     viewerSessionId: string,
     userId: string,
   ) => void;
-  unregisterViewer: (hostId: number, viewerSessionId: string) => void;
+  unregisterViewer: (
+    hostId: number,
+    viewerSessionId: string,
+    userId: string,
+  ) => boolean | void;
   /** Route path segment, e.g. "metrics" -> /metrics/heartbeat. Defaults to "metrics". */
   pathPrefix?: string;
 };
@@ -86,7 +90,7 @@ export function registerHostMetricsViewerRoutes<
     }
 
     try {
-      const success = updateHeartbeat(viewerSessionId);
+      const success = updateHeartbeat(viewerSessionId, userId);
       if (success) {
         res.json({ success: true });
       } else {
@@ -276,7 +280,8 @@ export function registerHostMetricsViewerRoutes<
     }
 
     try {
-      unregisterViewer(hostId, viewerSessionId);
+      if (unregisterViewer(hostId, viewerSessionId, userId) === false)
+        return res.status(403).json({ code: "MONITORING_VIEWER_DENIED" });
       res.json({ success: true });
     } catch (error) {
       statsLogger.error("Failed to unregister viewer", {
