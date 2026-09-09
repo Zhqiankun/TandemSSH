@@ -70,6 +70,8 @@ export async function resolveHostById(
   if (!resolvedHost) return null;
 
   const host = resolvedHost as Record<string, unknown>;
+  if (host.authType === "unconfigured")
+    throw Error("HOST_CREDENTIAL_REBIND_REQUIRED");
 
   // Admin bypass resolves like the owner would; every such access is audited.
   const ownerEquivalent = userId === ownerId || access.isAdminBypass === true;

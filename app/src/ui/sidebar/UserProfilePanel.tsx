@@ -1,3 +1,4 @@
+import { ConfigurationBackupPanel } from "@/features/configuration-backup/ConfigurationBackupPanel";
 import { McpSettings } from "@/features/mcp/McpSettings";
 import { LocalizedText } from "@/i18n/LocalizedText";
 import { useState, useRef, useEffect } from "react";
@@ -2528,71 +2529,75 @@ export function UserProfilePanel({
         open={openSections.has("data")}
         onToggle={() => toggle("data")}
       >
-        <div className="flex flex-col gap-3 pt-3">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium">
-              {t("newUi.sidebar.userProfile.exportData")}
-            </span>
-            <span className="text-[10px] text-muted-foreground">
-              {t("newUi.sidebar.userProfile.exportDataDesc")}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="self-start text-xs border-accent-brand/40 text-accent-brand hover:bg-accent-brand/10 hover:text-accent-brand mt-1"
-              onClick={handleExportData}
-              disabled={exportLoading}
-            >
-              {exportLoading
-                ? t("newUi.sidebar.userProfile.exporting")
-                : t("newUi.sidebar.userProfile.export")}
-            </Button>
-          </div>
-          <div className="flex flex-col gap-1.5 border-t border-border pt-3">
-            <span className="text-xs font-medium">
-              {t("newUi.sidebar.userProfile.importData")}
-            </span>
-            <span className="text-[10px] text-muted-foreground">
-              {importFile
-                ? t("newUi.sidebar.userProfile.importDataSelected", {
-                    name: importFile.name,
-                  })
-                : t("newUi.sidebar.userProfile.importDataDesc")}
-            </span>
-            <div className="flex items-center gap-2 mt-1">
-              <div className="relative">
-                <input
-                  type="file"
-                  accept=".sqlite,.db"
-                  onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="pointer-events-none text-xs"
-                >
-                  {importFile
-                    ? t("newUi.sidebar.userProfile.changeFile")
-                    : t("newUi.sidebar.userProfile.selectFile")}
-                </Button>
+        {isElectron() ? (
+          <ConfigurationBackupPanel />
+        ) : (
+          <div className="flex flex-col gap-3 pt-3">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium">
+                {t("newUi.sidebar.userProfile.exportData")}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {t("newUi.sidebar.userProfile.exportDataDesc")}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="self-start text-xs border-accent-brand/40 text-accent-brand hover:bg-accent-brand/10 hover:text-accent-brand mt-1"
+                onClick={handleExportData}
+                disabled={exportLoading}
+              >
+                {exportLoading
+                  ? t("newUi.sidebar.userProfile.exporting")
+                  : t("newUi.sidebar.userProfile.export")}
+              </Button>
+            </div>
+            <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+              <span className="text-xs font-medium">
+                {t("newUi.sidebar.userProfile.importData")}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {importFile
+                  ? t("newUi.sidebar.userProfile.importDataSelected", {
+                      name: importFile.name,
+                    })
+                  : t("newUi.sidebar.userProfile.importDataDesc")}
+              </span>
+              <div className="flex items-center gap-2 mt-1">
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept=".sqlite,.db"
+                    onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="pointer-events-none text-xs"
+                  >
+                    {importFile
+                      ? t("newUi.sidebar.userProfile.changeFile")
+                      : t("newUi.sidebar.userProfile.selectFile")}
+                  </Button>
+                </div>
+                {importFile && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs border-accent-brand/40 text-accent-brand hover:bg-accent-brand/10 hover:text-accent-brand"
+                    onClick={handleImportData}
+                    disabled={importLoading}
+                  >
+                    {importLoading
+                      ? t("newUi.sidebar.userProfile.importing")
+                      : t("newUi.sidebar.userProfile.import")}
+                  </Button>
+                )}
               </div>
-              {importFile && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs border-accent-brand/40 text-accent-brand hover:bg-accent-brand/10 hover:text-accent-brand"
-                  onClick={handleImportData}
-                  disabled={importLoading}
-                >
-                  {importLoading
-                    ? t("newUi.sidebar.userProfile.importing")
-                    : t("newUi.sidebar.userProfile.import")}
-                </Button>
-              )}
             </div>
           </div>
-        </div>
+        )}
       </AccordionSection>
 
       {isElectron() && (

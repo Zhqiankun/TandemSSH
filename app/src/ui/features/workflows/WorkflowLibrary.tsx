@@ -227,6 +227,7 @@ export function WorkflowLibraryBody({
   }
   const available =
     selected &&
+    !selected.needsHostBinding &&
     (!selected.allowedHostIds.length ||
       (!!hostId && selected.allowedHostIds.includes(hostId)));
   return (
@@ -360,6 +361,11 @@ export function WorkflowLibraryBody({
             ))}
             {dirty && <span>{w("unsaved")}</span>}
           </div>
+          {selected?.needsHostBinding && (
+            <p role="status" className="tandem-settings-help">
+              {t("configBackup.workflowBindingRequired")}
+            </p>
+          )}
           {view === "edit" ? (
             <fieldset disabled={busy}>
               <WorkflowDefinitionEditor
@@ -372,7 +378,8 @@ export function WorkflowLibraryBody({
                 <label className="tandem-settings-check">
                   <input
                     type="checkbox"
-                    checked={!bindings.length}
+                    disabled={selected?.needsHostBinding === true}
+                    checked={!bindings.length && !selected?.needsHostBinding}
                     onChange={(e) => {
                       setBindings(
                         e.target.checked

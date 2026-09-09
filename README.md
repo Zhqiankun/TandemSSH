@@ -12,6 +12,10 @@
 
 普通推送/PR 运行 [CI](https://github.com/Zhqiankun/TandemSSH/actions/workflows/ci.yml)；稳定版本标签推送运行 [Release](https://github.com/Zhqiankun/TandemSSH/actions/workflows/release.yml)，生成 NSIS、ZIP、更新清单和校验和。详细发布方式与实际验证见[版本发布文档](docs/25-github-releases.md)。
 
+## 配置备份与恢复
+
+在桌面“用户资料 → 数据”中预览并导出配置，或选择备份文件、预览后确认导入。当前支持 SSH 主机基本信息、命令流程和界面偏好；凭据需重新配置，流程需重新选择主机，导入不会自动执行。格式范围与真实桌面验证见[配置备份文档](docs/54-configuration-backup.md)。
+
 ## 已确认的方向
 
 - Windows 优先的桌面客户端，中文界面优先。
@@ -82,6 +86,7 @@
 | [任务目录恢复](docs/47-task-directory-recovery.md) | 上传目录条目边界、原来源重新授权与真实双模式重启验证 |
 | [任务下载目录恢复](docs/48-task-download-directory-recovery.md) | 固定来源、本地完成收据、异步快照与双模式重启验证 |
 | [隧道身份与生命周期](docs/49-tunnel-trust-and-lifecycle.md) | 源/端点信任、认证前阻断、真实转发与资源释放 |
+| [配置备份与恢复](docs/54-configuration-backup.md) | 中文预览确认、凭据重新配置、流程绑定与实际重启验证 |
 
 ## 产品主线
 

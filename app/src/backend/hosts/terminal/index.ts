@@ -1634,6 +1634,17 @@ wss.on("connection", async (ws: WebSocket, req) => {
           }
         }
       } catch (error) {
+        if (getErrorMessage(error) === "HOST_CREDENTIAL_REBIND_REQUIRED") {
+          ws.send(
+            JSON.stringify({
+              type: "error",
+              code: "HOST_CREDENTIAL_REBIND_REQUIRED",
+              message: "HOST_CREDENTIAL_REBIND_REQUIRED",
+            }),
+          );
+          cleanupAuthState(connectionTimeout);
+          return;
+        }
         sshLogger.warn(`Failed to resolve server-side host data for ${id}`, {
           operation: "ssh_host_data",
           hostId: id,

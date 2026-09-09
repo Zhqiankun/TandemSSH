@@ -478,3 +478,21 @@ describe("resolveHostById", () => {
     ]);
   });
 });
+
+it("requires imported hosts to rebind credentials before resolving any inherited folder credential", async () => {
+  state.host = baseHost({
+    authType: "unconfigured",
+    password: null,
+    credentialId: null,
+  });
+  state.folderCredentialId = 9;
+  state.credentials.set("9:owner", {
+    id: 9,
+    username: "inherited",
+    authType: "password",
+    password: "must-not-bind",
+  });
+  await expect(resolveHostById(42, "owner")).rejects.toThrow(
+    "HOST_CREDENTIAL_REBIND_REQUIRED",
+  );
+});

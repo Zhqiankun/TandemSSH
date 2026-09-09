@@ -1461,9 +1461,13 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             }
           } else if (msg.type === "error") {
             const trustRejected = msg.code === "HOST_TRUST_REJECTED";
-            const errorMessage = trustRejected
-              ? t("terminal.hostKeyRejected")
-              : msg.message || t("terminal.unknownError");
+            const credentialsRequired =
+              msg.code === "HOST_CREDENTIAL_REBIND_REQUIRED";
+            const errorMessage = credentialsRequired
+              ? t("configBackup.credentialsRequired")
+              : trustRejected
+                ? t("terminal.hostKeyRejected")
+                : msg.message || t("terminal.unknownError");
 
             addLog({
               type: "error",
@@ -1471,7 +1475,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
               message: errorMessage,
             });
 
-            if (trustRejected) {
+            if (trustRejected || credentialsRequired) {
               updateConnectionError(errorMessage);
               setIsConnected(false);
               setIsConnecting(false);

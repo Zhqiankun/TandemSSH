@@ -1,3 +1,5 @@
+import { configurationBackups } from "../configuration-backup/production.js";
+import { configurationBackupRoutes } from "../configuration-backup/http-routes.js";
 import hostTrustRoutes from "../hosts/trust/http-routes.js";
 import collaborationRoutes from "../collaboration/http/routes.js";
 import { getErrorMessage } from "../utils/error-message.js";
@@ -266,6 +268,24 @@ app.use(bodyParser.json({ limit: "1gb" }));
 app.use(bodyParser.urlencoded({ limit: "1gb", extended: true }));
 app.use(bodyParser.raw({ limit: "5gb", type: "application/octet-stream" }));
 app.use(cookieParser());
+if (runtimePolicy.desktop) {
+  app.use(
+    ["/database/export", "/database/import"],
+    authenticateJWT,
+    (_req, res) =>
+      res
+        .status(409)
+        .json({
+          code: "CONFIGURATION_BACKUP_REQUIRED",
+          error: "Use the configuration backup preview in desktop settings.",
+        }),
+  );
+  app.use(
+    "/configuration-backup",
+    configurationBackupRoutes(configurationBackups, authenticateJWT),
+  );
+}
+
 app.use((_req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   next();

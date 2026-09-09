@@ -135,7 +135,8 @@ export type Host = {
     | "opkssh"
     | "tailscale"
     | "agent"
-    | "vault";
+    | "vault"
+    | "unconfigured";
   useWarpgate?: boolean;
   shareSshAuth?: boolean;
   password?: string;
@@ -295,7 +296,8 @@ export interface HostData {
     | "opkssh"
     | "tailscale"
     | "agent"
-    | "vault";
+    | "vault"
+    | "unconfigured";
   useWarpgate?: boolean;
   shareSshAuth?: boolean;
   password?: string;

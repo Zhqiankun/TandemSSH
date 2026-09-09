@@ -580,6 +580,11 @@ export function HostEditor({
                     <p className="text-[10px] text-muted-foreground">
                       {t("hosts.authenticationMethodDesc")}
                     </p>
+                    {authMethod === "unconfigured" && (
+                      <p role="alert" className="text-xs text-amber-500">
+                        {t("configBackup.credentialsRequired")}
+                      </p>
+                    )}
                     <div
                       className="flex flex-wrap gap-2"
                       role="radiogroup"
@@ -611,7 +616,7 @@ export function HostEditor({
                           }}
                           className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${authMethod === m ? "border-accent-brand/40 bg-accent-brand/10 text-accent-brand" : "border-border text-muted-foreground hover:text-foreground"}`}
                         >
-                          {m}
+                          {t(`configBackup.authMethods.${m}`)}
                         </button>
                       ))}
                     </div>

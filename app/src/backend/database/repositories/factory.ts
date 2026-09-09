@@ -1,3 +1,4 @@
+import { ConfigurationBackupRepository } from "./configuration-backup-repository.js";
 import { HostTrustRepository } from "./host-trust-repository.js";
 import { DatabaseSaveTrigger } from "../../utils/database-save-trigger.js";
 import { getDb, getSqlite } from "../db/index.js";
@@ -602,5 +603,12 @@ export function createCurrentHostTrustRepository(): HostTrustRepository {
           await DatabaseSaveTrigger.forceSave("host_trust_update");
         }
       : undefined,
+  );
+}
+
+export function createCurrentConfigurationBackupRepository(): ConfigurationBackupRepository {
+  return new ConfigurationBackupRepository(
+    createCurrentRepositoryContext(),
+    createCurrentRepositoryWriteHook("configuration_backup_restore"),
   );
 }

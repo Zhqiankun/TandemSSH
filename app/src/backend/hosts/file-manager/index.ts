@@ -895,6 +895,12 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
         );
       }
     } catch (error) {
+      if (getErrorMessage(error) === "HOST_CREDENTIAL_REBIND_REQUIRED")
+        return res.status(400).json({
+          code: "HOST_CREDENTIAL_REBIND_REQUIRED",
+          error: "HOST_CREDENTIAL_REBIND_REQUIRED",
+          connectionLogs,
+        });
       if (
         error instanceof HostAddressMismatchError ||
         error instanceof HostNotOnThisServerError
@@ -964,6 +970,12 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
         );
       }
     } catch (error) {
+      if (getErrorMessage(error) === "HOST_CREDENTIAL_REBIND_REQUIRED")
+        return res.status(400).json({
+          code: "HOST_CREDENTIAL_REBIND_REQUIRED",
+          error: "HOST_CREDENTIAL_REBIND_REQUIRED",
+          connectionLogs,
+        });
       if (
         error instanceof HostAddressMismatchError ||
         error instanceof HostNotOnThisServerError

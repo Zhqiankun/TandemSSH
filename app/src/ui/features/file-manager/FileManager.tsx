@@ -616,6 +616,11 @@ function FileManagerContent({
       }
     } catch (error: unknown) {
       const sshError = error as SSHConnectionError;
+      if (sshError.message === "HOST_CREDENTIAL_REBIND_REQUIRED") {
+        handleCloseWithError(t("configBackup.credentialsRequired"));
+        setIsLoading(false);
+        return;
+      }
       console.error("SSH connection failed:", error);
 
       if (sshError.connectionLogs) {

@@ -221,3 +221,42 @@ describe("workflow library immutable previews", () => {
     expect(f.library.list("owner")).toEqual([]);
   });
 });
+
+it("requires imported workflows to bind specific owned hosts before preview or execution", async () => {
+  const f = fixture(),
+    saved = await f.save();
+  f.storage.set(
+    "owner",
+    JSON.stringify([{ ...saved, allowedHostIds: [], needsHostBinding: true }]),
+  );
+  expect(() =>
+    f.library.preview(human, {
+      workflowId: saved.id,
+      sessionId: "session",
+      parameters: {},
+    }),
+  ).toThrow("WORKFLOW_HOST_BINDING_REQUIRED");
+  await expect(
+    f.library.save("owner", {
+      id: saved.id,
+      expectedRevision: 1,
+      definition: source,
+      allowedHostIds: [],
+    }),
+  ).rejects.toThrow("WORKFLOW_HOST_BINDING_REQUIRED");
+  const bound = await f.library.save("owner", {
+    id: saved.id,
+    expectedRevision: 1,
+    definition: source,
+    allowedHostIds: [1],
+  });
+  expect(bound.needsHostBinding).toBeUndefined();
+  expect(
+    f.library.preview(human, {
+      workflowId: saved.id,
+      sessionId: "session",
+      parameters: {},
+    }).commands,
+  ).toHaveLength(1);
+  expect(f.create).not.toHaveBeenCalled();
+});

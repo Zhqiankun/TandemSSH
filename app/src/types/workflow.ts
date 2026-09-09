@@ -95,6 +95,7 @@ export interface WorkflowDefinition {
   }>;
 }
 export interface SavedWorkflow {
+  needsHostBinding?: boolean;
   id: string;
   revision: number;
   definition: WorkflowDefinition;

@@ -33,7 +33,8 @@ export type Host = {
     | "opkssh"
     | "tailscale"
     | "vault"
-    | "agent";
+    | "agent"
+    | "unconfigured";
   useWarpgate?: boolean;
   shareSshAuth?: boolean;
   credentialId?: string;

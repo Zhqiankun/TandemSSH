@@ -133,7 +133,14 @@ async function withTerminal(
         terminal.write(text);
       },
     },
-    () => {},
+    (event) => {
+      if (process.env.TANDEM_PTY_TRACE === "1")
+        frameTimes.push({
+          kind: "control-changed",
+          elapsedMs: Date.now() - traceStarted,
+          event,
+        });
+    },
   );
   const failures: unknown[] = [];
   try {

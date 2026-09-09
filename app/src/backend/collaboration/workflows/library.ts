@@ -103,6 +103,9 @@ export class WorkflowLibrary {
     );
     return pending;
   }
+  withBackupLock<T>(userId: string, work: () => Promise<T>): Promise<T> {
+    return this.serialize(userId, work);
+  }
   save(
     userId: string,
     input: {
@@ -125,6 +128,8 @@ export class WorkflowLibrary {
       const allowedHostIds = [...new Set(input.allowedHostIds)].sort(
         (a, b) => a - b,
       );
+      if (old?.needsHostBinding && !allowedHostIds.length)
+        throw Error("WORKFLOW_HOST_BINDING_REQUIRED");
       for (const hostId of allowedHostIds)
         if (
           !Number.isInteger(hostId) ||
@@ -196,6 +201,7 @@ export class WorkflowLibrary {
     decisions: ReturnType<typeof evaluateCommandPolicy>[];
   } {
     const stored = this.get(actor.userId, input.workflowId);
+    if (stored.needsHostBinding) throw Error("WORKFLOW_HOST_BINDING_REQUIRED");
     const target = this.target(actor, input.sessionId);
     if (
       stored.allowedHostIds.length &&
