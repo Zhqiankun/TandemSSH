@@ -53,8 +53,8 @@ jobs:
         run: npm run build:win-installer
       - name: Verify packaged native modules
         run: node scripts/verify-native-package.cjs
-      - name: Verify Windows installation and removal
-        timeout-minutes: 10
+      - name: Verify Windows installation, online upgrade and removal
+        timeout-minutes: 20
         run: ./scripts/verify-windows-installation.ps1
       - name: Preserve installation evidence
         if: always()

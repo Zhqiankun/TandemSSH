@@ -61,9 +61,9 @@ jobs:
       - name: Verify packaged native modules
         if: github.event_name != 'pull_request'
         run: node scripts/verify-native-package.cjs
-      - name: Verify Windows installation and removal
+      - name: Verify Windows installation, online upgrade and removal
         if: github.event_name != 'pull_request'
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: ./scripts/verify-windows-installation.ps1
       - name: Preserve installation evidence
         if: always()

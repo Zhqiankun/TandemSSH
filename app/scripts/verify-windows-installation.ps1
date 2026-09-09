@@ -17,7 +17,7 @@ $executable = Join-Path $installRoot 'TandemSSH.exe'
 $uninstaller = Join-Path $installRoot 'Uninstall TandemSSH.exe'
 $marker = Join-Path $installRoot '.tandemssh-installed'
 $start = Get-Date
-$evidence = [ordered]@{ version = $version; installed = $false; native = $false; desktop = $false; uninstalled = $false; dataPreserved = $false }
+$evidence = [ordered]@{ version = $version; installed = $false; native = $false; desktop = $false; upgraded = $false; uninstalled = $false; dataPreserved = $false }
 $failures = [System.Collections.Generic.List[string]]::new()
 function Assert-OwnedInstallPath {
   $full = [IO.Path]::GetFullPath($installRoot)
@@ -69,6 +69,14 @@ try {
   & node (Join-Path $PSScriptRoot 'verify-installed-desktop.cjs') $installRoot $profile $reportRoot
   if ($LASTEXITCODE -ne 0) { throw 'Installed desktop failed verification' }
   $evidence.desktop = $true
+  & node (Join-Path $PSScriptRoot 'verify-online-update.cjs') $installRoot $profile $reportRoot
+  if ($LASTEXITCODE -ne 0) { throw 'Real online upgrade failed verification' }
+  $upgrade = Get-Content -LiteralPath (Join-Path $reportRoot 'upgrade.json') -Raw | ConvertFrom-Json
+  $entries = @(Get-TandemUninstallEntries)
+  if (-not $upgrade.succeeded -or $entries.Count -ne 1 -or $entries[0].DisplayVersion -ne $upgrade.newVersion) { throw 'Upgrade did not update the installed version registration' }
+  & node (Join-Path $PSScriptRoot 'verify-native-package.cjs') $installRoot 2>&1 | Tee-Object -FilePath (Join-Path $reportRoot 'upgraded-native.log')
+  if ($LASTEXITCODE -ne 0) { throw 'Upgraded native modules failed verification' }
+  $evidence.upgraded = $true
   $databaseFile = Join-Path $profile 'server-data/db.sqlite.encrypted'
   if ((Get-Item -LiteralPath $databaseFile).Length -lt 128) { throw 'Application database was not persisted' }
   $databaseHash = (Get-FileHash -LiteralPath $databaseFile -Algorithm SHA256).Hash
@@ -106,5 +114,5 @@ finally {
   $evidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $reportRoot 'installation.json') -Encoding utf8
 }
 if ($failures.Count -gt 0) { throw ($failures -join '; ') }
-if (-not ($evidence.installed -and $evidence.native -and $evidence.desktop -and $evidence.uninstalled -and $evidence.dataPreserved)) { throw 'Installer verification incomplete' }
+if (-not ($evidence.installed -and $evidence.native -and $evidence.desktop -and $evidence.upgraded -and $evidence.uninstalled -and $evidence.dataPreserved)) { throw 'Installer verification incomplete' }
 $evidence | ConvertTo-Json -Compress

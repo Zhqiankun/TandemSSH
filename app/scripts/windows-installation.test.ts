@@ -16,6 +16,24 @@ describe.skipIf(process.platform !== "win32")(
           process.execPath,
           [path.join(scripts, "verify-installed-desktop.cjs")],
         ],
+        [process.execPath, [path.join(scripts, "verify-online-update.cjs")]],
+        [
+          "pwsh.exe",
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            path.join(scripts, "confirm-upgrade-window.ps1"),
+            "-Executable",
+            "unused",
+            "-Sha256",
+            "unused",
+            "-Action",
+            "cancel",
+            "-Report",
+            "unused",
+          ],
+        ],
       ] as const) {
         const result = spawnSync(command, [...args], {
           env,
