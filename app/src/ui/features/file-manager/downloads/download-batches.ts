@@ -1,3 +1,6 @@
+import { downloadBatchRecoveryApi } from "@/api/download-batch-recovery-api";
+import type { RestoredDownloadBatch } from "@/types/download-batch-recovery";
+import type { LocalDownloadView } from "@/types/file-download";
 import { downloadTreeApi, type DownloadTreeApi } from "@/api/download-tree-api";
 import {
   downloadApi,
@@ -27,7 +30,9 @@ interface Batch {
   members: Map<string, string>;
   cleared: Partial<Record<DownloadJobState, number>>;
   remaining: Set<string>;
-  state: "creating" | "running" | "cancelled";
+  state: "creating" | "running" | "saving" | "paused" | "cancelled";
+  pauseRequested?: boolean;
+  directoryWork?: Promise<void>;
   results: Map<string, DirectoryDownloadResult>;
   stop: AbortController;
   busy: boolean;
@@ -37,7 +42,8 @@ export interface DownloadBatchView {
   id: string;
   name: string;
   target: string;
-  state: "creating" | "running" | "finished" | "cancelled";
+  state:
+    "creating" | "running" | "saving" | "paused" | "finished" | "cancelled";
   completed: number;
   skipped: number;
   failed: number;
@@ -60,6 +66,7 @@ export class DownloadBatches {
     private files: DownloadApiPort = downloadApi,
     private native: () => DesktopDownloadDirectoryApi | undefined = () =>
       window.electronAPI?.downloadDirectories,
+    private recovery: typeof downloadBatchRecoveryApi = downloadBatchRecoveryApi,
   ) {
     queue.subscribe(() => this.emit());
   }
@@ -236,12 +243,17 @@ export class DownloadBatches {
             choose: async (source) => {
               this.current(b);
               return value(
-                await this.desktop().file(b.target.id, entry.id, {
-                  name: target!.name,
-                  size: source.size,
-                  sha256: source.sha256,
-                  hashes: source.hashes,
-                }),
+                await this.desktop().file(
+                  b.target.id,
+                  entry.id,
+                  {
+                    name: target!.name,
+                    size: source.size,
+                    sha256: source.sha256,
+                    hashes: source.hashes,
+                  },
+                  source.id,
+                ),
               );
             },
             complete: async (source) => {
@@ -279,7 +291,16 @@ export class DownloadBatches {
       reservation.close();
     }
   }
-  private async createDirectories(b: Batch) {
+  private createDirectories(b: Batch) {
+    if (b.directoryWork) return b.directoryWork;
+    const work = this.runDirectories(b);
+    b.directoryWork = work;
+    void work.finally(() => {
+      b.directoryWork = undefined;
+    });
+    return work;
+  }
+  private async runDirectories(b: Batch) {
     if (b.busy) return;
     b.busy = true;
     try {
@@ -306,7 +327,7 @@ export class DownloadBatches {
           localPath: result.path,
         });
       }
-      b.state = "running";
+      b.state = b.pauseRequested ? "paused" : "running";
       b.error = undefined;
     } catch (error) {
       if (this.records.get(b.id) !== b) return;
@@ -346,18 +367,252 @@ export class DownloadBatches {
       this.emit();
     }
   }
+  async save(id: string) {
+    const b = this.records.get(id);
+    if (!b) throw Error("DOWNLOAD_NOT_FOUND");
+    this.current(b);
+    if (b.state === "saving") throw Error("DOWNLOAD_BUSY");
+    b.pauseRequested = true;
+    b.state = "saving";
+    this.emit();
+    const ids = [...b.members.values()];
+    try {
+      await b.directoryWork;
+      b.state = "saving";
+      const rows = await this.queue.quiesce(ids);
+      this.current(b);
+      const jobs = new Map(rows.map((j) => [j.view.id, j]));
+      const members = b.source.entries
+        .filter((e) => e.kind === "file" && !e.error)
+        .map((e) => {
+          const j = jobs.get(b.members.get(e.id)!);
+          return {
+            entryId: e.id,
+            sourceId: j?.sourceId,
+            localId:
+              j?.view.state !== "completed" ? j?.view.local?.id : undefined,
+            cancelled: ["skipped", "cancelled"].includes(j?.view.state ?? ""),
+          };
+        });
+      const result = await this.recovery.save(
+        b.source.sessionId,
+        b.source.id,
+        b.target.id,
+        members,
+      );
+      this.current(b);
+      this.queue.releaseSaved(ids);
+      for (const j of rows)
+        if (j.sourceId)
+          await this.files
+            .action(b.source.sessionId, j.sourceId, "cancel")
+            .catch(() => {});
+      await this.api.forget(b.source.sessionId, b.source.id).catch(() => {});
+      b.stop.abort();
+      this.records.delete(b.id);
+      this.emit();
+      return result;
+    } catch (error) {
+      if (this.records.get(id) === b) {
+        b.state = "paused";
+        b.error = downloadErrorCode(error);
+        this.queue.unfreeze(ids);
+        this.emit();
+      }
+      throw error;
+    }
+  }
+  async resumeBatch(id: string) {
+    const b = this.records.get(id);
+    if (!b) throw Error("DOWNLOAD_NOT_FOUND");
+    this.current(b);
+    if (b.state !== "paused") return;
+    b.pauseRequested = false;
+    this.queue.unfreeze([...b.members.values()]);
+    await this.createDirectories(b);
+    for (const j of this.queue.getSnapshot())
+      if (j.batchId === id && ["paused", "failed"].includes(j.state))
+        this.queue.resume(j.id, b.source.sessionId);
+    this.queue.wake();
+    this.emit();
+  }
+  reserveRestore(count: number) {
+    return this.queue.reserve(count);
+  }
+  async restore(
+    saved: RestoredDownloadBatch,
+    hostId?: number,
+    reserved?: ReturnType<DownloadQueue["reserve"]>,
+  ) {
+    const owner = this.owner;
+    if (!owner || owner !== this.queue.getOwner())
+      throw Error("DOWNLOAD_OWNER_REQUIRED");
+    const native = this.desktop(),
+      reservation = reserved ?? this.queue.reserve(saved.source.entries.length),
+      b: Batch = {
+        id: saved.summary.id,
+        owner,
+        source: saved.source,
+        target: saved.target,
+        hostLabel: saved.summary.hostLabel,
+        hostId,
+        state: "paused",
+        pauseRequested: true,
+        members: new Map(),
+        cleared: {},
+        remaining: new Set(saved.source.entries.map((e) => e.id)),
+        results: new Map(),
+        stop: new AbortController(),
+        busy: false,
+      };
+    try {
+      if (this.records.has(b.id)) throw Error("DOWNLOAD_BUSY");
+      this.records.set(b.id, b);
+      const targets = new Map(saved.target.entries.map((e) => [e.id, e])),
+        members = new Map(saved.members.map((m) => [m.entryId, m]));
+      for (const entry of saved.source.entries) {
+        const target = targets.get(entry.id),
+          m = members.get(entry.id),
+          completed = target?.result?.state === "completed",
+          skipped =
+            !!entry.error ||
+            !target ||
+            target.action === "skip" ||
+            m?.state === "cancelled",
+          state: DownloadJobState = completed
+            ? "completed"
+            : skipped
+              ? "skipped"
+              : m?.state === "unknown" || m?.state === "committing"
+                ? "unknown"
+                : m?.state === "paused"
+                  ? "paused"
+                  : "queued";
+        const base = {
+            sessionId: b.source.sessionId,
+            path: entry.path,
+            name: entry.relativePath,
+            hostId,
+            hostLabel: b.hostLabel,
+            batchId: b.id,
+            kind:
+              entry.kind === "directory"
+                ? ("directory" as const)
+                : ("file" as const),
+            localPath: target?.path,
+          },
+          release = () => this.release(b, entry.id),
+          show = async () => {
+            value(await native.show(b.target.id, entry.id));
+          };
+        const job =
+          entry.kind === "file" && !skipped && !completed && state !== "unknown"
+            ? reservation.file(base, {
+                kind: "file",
+                overwrite: target?.action === "overwrite",
+                ready: () => b.state === "running" && !b.stop.signal.aborted,
+                release,
+                show,
+                prepare: (requestId, sessionId, signal) =>
+                  this.api.prepare(
+                    sessionId,
+                    b.source.id,
+                    entry.id,
+                    requestId,
+                    signal,
+                  ),
+                choose: async (source) =>
+                  value(
+                    await native.file(
+                      b.target.id,
+                      entry.id,
+                      {
+                        name: target!.name,
+                        size: source.size,
+                        sha256: source.sha256,
+                        hashes: source.hashes,
+                      },
+                      source.id,
+                    ),
+                  ),
+                complete: async (source) => {
+                  value(await native.complete(b.target.id, entry.id));
+                  await this.files.action(
+                    source.sessionId,
+                    source.id,
+                    "forget",
+                  );
+                },
+              })
+            : reservation.record(
+                base,
+                {
+                  kind: "record",
+                  release,
+                  show,
+                  retry:
+                    entry.kind === "directory"
+                      ? () => this.createDirectories(b)
+                      : undefined,
+                },
+                state,
+              );
+        b.members.set(entry.id, job);
+        const local = completed
+          ? (m?.local ?? {
+              id: entry.id,
+              path: target!.path!,
+              size: entry.size,
+              writtenBytes: entry.size,
+              state: "completed" as const,
+            })
+          : m?.local;
+        this.queue.adoptBatch(job, b.id, state, m?.source, local);
+        if (entry.kind === "directory" && target?.result) {
+          const r = target.result;
+          b.results.set(entry.id, { id: entry.id, path: target.path, ...r });
+          this.queue.updateRecord(job, {
+            state: ["created", "merged"].includes(r.state)
+              ? "completed"
+              : (r.state as DownloadJobState),
+            error: r.error,
+            localPath: target.path,
+          });
+        }
+      }
+      this.emit();
+      return b.id;
+    } finally {
+      reservation.close();
+      this.queue.wake();
+    }
+  }
+  reconciled(
+    id: string,
+    completed: Array<{ entryId: string; local: LocalDownloadView }>,
+  ) {
+    const b = this.records.get(id);
+    if (!b) return;
+    for (const item of completed) {
+      const job = b.members.get(item.entryId);
+      if (job) this.queue.completeRecord(job, item.local);
+    }
+    this.emit();
+  }
   async cancel(id: string) {
     const b = this.records.get(id);
     if (!b) return;
+    if (b.state === "saving") return;
     b.stop.abort();
     b.state = "cancelled";
-    await this.desktop().cancel(b.target.id);
+    value(await this.desktop().cancel(b.target.id));
     for (const job of b.members.values())
       await this.queue.cancel(job).catch(() => {});
     this.emit();
   }
   private async release(b: Batch, entryId: string) {
     if (this.records.get(b.id) !== b) return;
+    if (b.state === "saving") throw Error("DOWNLOAD_BUSY");
     if (b.remaining.size === 1 && b.remaining.has(entryId)) {
       if (b.busy) throw Error("DOWNLOAD_BUSY");
       const result = await this.desktop().forget(b.target.id);

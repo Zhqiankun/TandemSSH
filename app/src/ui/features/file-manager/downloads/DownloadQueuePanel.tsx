@@ -1,3 +1,4 @@
+import { DownloadBatchRecoveryDialog } from "./DownloadBatchRecoveryDialog";
 import { DownloadRecoveryDialog } from "./DownloadRecoveryDialog";
 import { downloadRecoveryApi } from "@/api/download-recovery-api";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -223,7 +224,14 @@ export function DownloadQueuePanel({
   if (!jobs.length && !window.electronAPI?.downloads?.recovery) return null;
   if (!jobs.length)
     return (
-      <div className="border-t border-border p-2">
+      <div className="border-t border-border p-2 flex flex-wrap gap-2">
+        {queue === downloadQueue && (
+          <DownloadBatchRecoveryDialog
+            key={(queue.getOwner() ?? "") + (sessionId ?? "")}
+            sessionId={sessionId}
+            hostId={hostId}
+          />
+        )}
         <DownloadRecoveryDialog
           key={queue.getOwner() ?? ""}
           sessionId={sessionId}
@@ -261,6 +269,13 @@ export function DownloadQueuePanel({
           >
             {t("tandem.upload.clearFinished")}
           </Button>
+          {queue === downloadQueue && (
+            <DownloadBatchRecoveryDialog
+              key={(queue.getOwner() ?? "") + (sessionId ?? "")}
+              sessionId={sessionId}
+              hostId={hostId}
+            />
+          )}
           <DownloadRecoveryDialog
             key={queue.getOwner() ?? ""}
             sessionId={sessionId}
@@ -293,7 +308,48 @@ export function DownloadQueuePanel({
                   })}
                 </p>
               )}
-              {(["creating", "running"].includes(batch.state) ||
+              {batch.state === "saving" && (
+                <p role="status">{t("downloadBatchRecovery.saving")}</p>
+              )}
+              {batch.state === "paused" && (
+                <p>{t("downloadBatchRecovery.paused")}</p>
+              )}
+              <div className="flex flex-wrap gap-2 my-2">
+                {!["cancelled", "saving"].includes(batch.state) &&
+                  window.electronAPI?.downloadDirectories?.recovery && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        void downloadBatches
+                          .save(batch.id)
+                          .then(() =>
+                            toast.success(t("downloadBatchRecovery.saved")),
+                          )
+                          .catch(() =>
+                            toast.error(t("downloadBatchRecovery.failed")),
+                          )
+                      }
+                    >
+                      {t("downloadBatchRecovery.save")}
+                    </Button>
+                  )}
+                {batch.state === "paused" && (
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      void downloadBatches
+                        .resumeBatch(batch.id)
+                        .catch(() =>
+                          toast.error(t("downloadBatchRecovery.failed")),
+                        )
+                    }
+                  >
+                    {t("downloadBatchRecovery.resume")}
+                  </Button>
+                )}
+              </div>
+              {(["creating", "running", "paused"].includes(batch.state) ||
                 (batch.state === "finished" && batch.failed > 0)) && (
                 <Button
                   size="sm"

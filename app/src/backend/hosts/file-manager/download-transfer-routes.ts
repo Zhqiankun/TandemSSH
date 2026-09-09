@@ -1,3 +1,4 @@
+import type { DownloadBatchRecoveryTickets } from "../../files/download-batch-recovery-tickets.js";
 import type { DownloadRecoveryTickets } from "../../files/download-recovery-tickets.js";
 import type { Express, Request, Response } from "express";
 import {
@@ -16,6 +17,7 @@ export function registerDownloadTransferRoutes(
   service: DownloadService,
   trees?: DownloadTreeService,
   recovery?: DownloadRecoveryTickets,
+  batches?: DownloadBatchRecoveryTickets,
 ) {
   const prefix = "/ssh/file_manager/ssh/downloads",
     uuid = z.string().uuid();
@@ -67,6 +69,11 @@ export function registerDownloadTransferRoutes(
     app.post(
       prefix + "/recovery/ticket",
       route((actor, req) => recovery.issue(actor.userId, req.body)),
+    );
+  if (batches)
+    app.post(
+      prefix + "/batches/recovery/ticket",
+      route((actor, req) => batches.issue(actor.userId, req.body)),
     );
   if (trees) {
     app.post(

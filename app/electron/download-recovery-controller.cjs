@@ -330,6 +330,7 @@ function createDownloadRecovery({ sink, getBackend, root, crypto }) {
     }
   }
   return {
+    scopeFor: scope,
     handle,
     reset,
     beforeFinish,

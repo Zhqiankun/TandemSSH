@@ -1,3 +1,4 @@
+import { downloadBatchRecoveryTickets } from "../../files/download-batch-recovery-production.js";
 import { downloadRecoveryTickets } from "../../files/download-recovery-production.js";
 import { downloadTransfers, downloadTrees } from "../../files/production.js";
 import { registerDownloadTransferRoutes } from "./download-transfer-routes.js";
@@ -2465,6 +2466,7 @@ registerDownloadTransferRoutes(
   downloadTransfers,
   downloadTrees,
   downloadRecoveryTickets,
+  downloadBatchRecoveryTickets,
 );
 registerFileDownloadRoutes(app, {
   sshSessions,

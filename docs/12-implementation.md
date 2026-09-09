@@ -527,3 +527,13 @@ CI 34192353445 已通过真实安装、中文启动、更新入口、正常退�
 完整相关回归 **110 文件 / 724 项全部通过**，类型、lint、构建、Windows 包内原生加载和 MCP/隔离 Codex 3 项通过。打包下载失败后改用校验一致的本地 Electron ZIP，正式构建配置保持原样。
 
 该结果证明下载批次来源与持久化核心，主进程操作协调、中文整批恢复按钮、实际 Windows 重启/中断验收仍待接入；AI/MCP/流程恢复及原完整验收范围不变，Goal 保持进行中。
+
+## 2026-09-09 中文整批下载恢复与 Windows 验收
+
+下载批次已接入实际 HTTP/私有后台桥与原生协调器、中文恢复清单、原计划/覆盖审阅、原目标目录重新选择，以及保存整批和恢复后主动继续。已完成文件保留收据不重写；取消、未知结果核对与关闭窗口保留走同一批次状态。文件职责、契约与证据见 [第 42 份文档](42-download-batch-recovery.md)。
+
+相关回归 112 文件 / 734 项通过；补充完成收据和仅目录核对场景后，最终协调器/界面专项 12 项通过。类型、lint、汉化、构建和原生包探针通过，打包 MCP/隔离 Codex 3 项通过。真实 Windows 完成 8 MiB 前缀保存、正常重启、暂停恢复、测试实例进程中断、再次重启继续，最终两个文件与两个目录全部完成，大文件 12,583,025 字节与 SHA-256 一致。证据目录 .cache/desktop-observation-report-3f8f26c7-96fc-41b8-8f8f-da93b28cf8f9。
+
+首轮桌面脚本误用了单文件菜单名称，失败现场保留，修正脚本后完整通过。该测试的中断位置是恢复暂停后，未声称覆盖所有 I/O/掉电时序。目录结果核对的最后结束状态已补充修复并复测。AI/MCP/流程跨重启恢复、其他基础功能、实际跨版本更新和全部原始验收继续，Goal 保持进行中。
+
+最终包已纳入目录核对结束状态修复，三阶段桌面验收再次全部通过：.cache/desktop-observation-report-8e849c6a-a6d4-4ed3-a9df-ef5029f21bbb。保存前缀 8388608 字节，最终 12583025 字节与相同 SHA-256 一致。最终包原生探针与打包 MCP/隔离 Codex 3 项通过，最终 lint 通过。日志 download-batch-recovery-desktop-final.log、download-batch-ui-package-final.log、download-batch-ui-packaged-mcp-final.log、download-batch-ui-lint-final.log。

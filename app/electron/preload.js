@@ -72,6 +72,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   downloadDirectories: {
+    recovery: (operation, ticketId, args) =>
+      ipcRenderer.invoke(
+        "tandem-download-directory",
+        "recovery",
+        operation,
+        ticketId,
+        args,
+      ),
     choose: () => ipcRenderer.invoke("tandem-download-directory", "choose"),
     preview: (id, entries) =>
       ipcRenderer.invoke("tandem-download-directory", "preview", id, entries),
@@ -85,8 +93,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ),
     directories: (id) =>
       ipcRenderer.invoke("tandem-download-directory", "directories", id),
-    file: (id, entry, spec) =>
-      ipcRenderer.invoke("tandem-download-directory", "file", id, entry, spec),
+    file: (id, entry, spec, sourceId) =>
+      ipcRenderer.invoke(
+        "tandem-download-directory",
+        "file",
+        id,
+        entry,
+        spec,
+        sourceId,
+      ),
     complete: (id, entry) =>
       ipcRenderer.invoke("tandem-download-directory", "complete", id, entry),
     show: (id, entry) =>

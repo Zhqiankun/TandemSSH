@@ -65,6 +65,11 @@ export interface DirectoryDownloadResult {
   error?: string;
 }
 export interface DesktopDownloadDirectoryApi {
+  recovery?(
+    operation: string,
+    ticketId?: string,
+    args?: Record<string, unknown>,
+  ): Promise<DownloadNativeResult<unknown>>;
   choose(): Promise<DownloadNativeResult<LocalDownloadTreePreview | null>>;
   preview(
     id: string,
@@ -82,6 +87,7 @@ export interface DesktopDownloadDirectoryApi {
     id: string,
     entryId: string,
     spec: LocalDownloadSpec,
+    sourceId?: string,
   ): Promise<DownloadNativeResult<LocalDownloadView>>;
   complete(
     id: string,

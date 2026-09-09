@@ -22,7 +22,13 @@ function registerDownloadIpc({
         ...recoveryOptions,
       })
     : undefined;
+  const batches = recovery
+    ? require("./download-batch-recovery-controller.cjs").createDownloadBatchRecovery(
+        { sink, directories, recovery, ...recoveryOptions },
+      )
+    : undefined;
   async function resetOwner(id) {
+    await batches?.reset(id);
     try {
       await directories.reset(id);
     } finally {
@@ -102,26 +108,40 @@ function registerDownloadIpc({
         value = null;
       } else {
         if (typeof args[0] !== "string") throw Error("DOWNLOAD_NOT_FOUND");
-        if (operation === "start")
+        batches?.assertFile(id, args[0], operation);
+        if (operation === "start") {
           value = await sink.start(id, args[0], args[1]);
-        else if (operation === "append")
+          await batches?.afterStart(id, args[0], value);
+        } else if (operation === "append")
           value = await sink.append(id, args[0], args[1], args[2]);
         else if (
           ["pause", "resume", "finish", "cancel", "forget", "touch"].includes(
             operation,
           )
         ) {
-          if (operation === "finish") await recovery?.beforeFinish(id, args[0]);
+          if (operation === "finish") {
+            await recovery?.beforeFinish(id, args[0]);
+            await batches?.beforeFinish(id, args[0]);
+          }
           try {
             value = await sink[operation](id, args[0]);
           } catch (e) {
-            if (operation === "finish") recovery?.finishFailed(id, args[0]);
+            if (operation === "finish") {
+              recovery?.finishFailed(id, args[0]);
+              await batches?.finishFailed(id, args[0]);
+            }
             throw e;
           }
-          if (operation === "finish")
+          if (operation === "finish") {
             await recovery?.afterFinish(id, args[0], value);
-          if (operation === "cancel")
+            await batches?.afterFinish(id, args[0], value);
+          }
+          if (operation === "resume")
+            await batches?.afterStart(id, args[0], value);
+          if (operation === "cancel") {
             await recovery?.afterCancel(id, args[0], value);
+            await batches?.afterCancel(id, args[0], value);
+          }
         } else if (operation === "show") {
           const r = sink.owned(id, args[0]);
           if (r.view.state !== "completed") throw Error("DOWNLOAD_NOT_READY");
@@ -138,9 +158,13 @@ function registerDownloadIpc({
     "tandem-download-directory",
     async (event, operation, ...args) => {
       try {
-        const { id, life } = owner(event);
+        const scoped = owner(event),
+          { id, life } = scoped;
         let value;
-        if (operation === "choose") {
+        if (operation === "recovery") {
+          if (!batches) throw Error("DOWNLOAD_DESKTOP_REQUIRED");
+          value = await batches.handle(scoped, args[0], args[1], args[2]);
+        } else if (operation === "choose") {
           if (life.choosing) throw Error("DOWNLOAD_BUSY");
           life.choosing = true;
           const epoch = life.epoch;
@@ -163,24 +187,43 @@ function registerDownloadIpc({
           }
         } else {
           if (typeof args[0] !== "string") throw Error("DOWNLOAD_NOT_FOUND");
+          batches?.assertTree(id, args[0]);
           if (operation === "preview")
             value = await directories.preview(id, args[0], args[1]);
           else if (operation === "confirm")
             value = directories.confirm(id, args[0], args[1], args[2]);
-          else if (operation === "directories")
+          else if (operation === "directories") {
+            await batches?.beforeDirectories(id, args[0]);
             value = await directories.directories(id, args[0]);
-          else if (operation === "file")
+            await batches?.afterDirectories(id, args[0]);
+          } else if (operation === "file") {
+            const proof = await batches?.beforeFile(
+              id,
+              args[0],
+              args[1],
+              args[3],
+              args[2],
+            );
             value = await directories.file(id, args[0], args[1], args[2]);
-          else if (operation === "complete")
+            try {
+              batches?.afterFile(id, value.id, proof);
+            } catch (error) {
+              await sink.cancel(id, value.id);
+              sink.forget(id, value.id);
+              throw error;
+            }
+          } else if (operation === "complete")
             value = directories.complete(id, args[0], args[1]);
           else if (operation === "show") {
             shell.showItemInFolder(directories.show(id, args[0], args[1]));
             value = null;
-          } else if (operation === "cancel")
+          } else if (operation === "cancel") {
             value = await directories.cancel(id, args[0]);
-          else if (operation === "forget")
+            await batches?.afterCancelTree(id, args[0], value);
+          } else if (operation === "forget") {
             value = directories.forget(id, args[0]);
-          else throw Error("DOWNLOAD_REQUEST_INVALID");
+            await batches?.afterForgetTree(id, args[0]);
+          } else throw Error("DOWNLOAD_REQUEST_INVALID");
         }
         return { ok: true, value };
       } catch (error) {

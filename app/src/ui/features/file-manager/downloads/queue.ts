@@ -65,6 +65,8 @@ export type DownloadInput = Pick<
   | "localPath"
 >;
 interface Job {
+  frozen?: boolean;
+  preserve?: boolean;
   binding?: ManagedDownloadBinding;
   view: DownloadJobView;
   source?: DownloadSource;
@@ -208,6 +210,7 @@ export class DownloadQueue {
   }
   start(id: string, overwrite: boolean) {
     const j = this.job(id);
+    if (j.frozen) throw Error("DOWNLOAD_BUSY");
     if (j.view.state !== "awaiting-review") return;
     j.overwrite = overwrite;
     j.work = "download";
@@ -224,6 +227,7 @@ export class DownloadQueue {
   }
   resume(id: string, sessionId?: string) {
     const j = this.job(id);
+    if (j.frozen) throw Error("DOWNLOAD_BUSY");
     if (
       !["paused", "failed"].includes(j.view.state) ||
       !j.view.local?.temporaryPath ||
@@ -238,6 +242,114 @@ export class DownloadQueue {
     j.view.error = undefined;
     this.emit();
     this.drain();
+  }
+  async quiesce(ids: string[]) {
+    const rows = ids.flatMap((id) =>
+        this.jobs.get(id) ? [this.jobs.get(id)!] : [],
+      ),
+      epoch = this.ownerEpoch;
+    for (const j of rows) {
+      j.frozen = true;
+      if (j.view.state === "downloading") {
+        j.pause = true;
+        j.view.state = "pausing";
+      }
+    }
+    this.emit();
+    if (rows.some((j) => j.stop))
+      await new Promise<void>((resolve) => {
+        const off = this.subscribe(() => {
+          if (rows.every((j) => !j.stop || this.jobs.get(j.view.id) !== j)) {
+            off();
+            resolve();
+          }
+        });
+      });
+    if (epoch !== this.ownerEpoch) throw Error("DOWNLOAD_CANCELLED");
+    try {
+      for (const j of rows) {
+        if (
+          j.view.state === "completed" &&
+          j.source &&
+          j.binding?.kind === "file"
+        ) {
+          await j.binding.complete(j.source, j.view.local!);
+          j.source = undefined;
+        }
+        if (
+          j.view.local?.temporaryPath &&
+          !["unknown", "cancelled", "completed"].includes(j.view.local.state)
+        ) {
+          j.view.local = value(
+            await this.native()!.action(j.view.local.id, "pause"),
+          );
+          if (j.source)
+            j.source = await this.api.action(
+              j.view.sessionId,
+              j.source.id,
+              "pause",
+            );
+          j.view.state = "paused";
+          j.work = undefined;
+        }
+      }
+    } catch (error) {
+      this.unfreeze(ids);
+      throw error;
+    }
+    this.emit();
+    return rows.map((j) => ({
+      view: structuredClone(j.view),
+      sourceId: j.view.state === "completed" ? undefined : j.source?.id,
+    }));
+  }
+  unfreeze(ids: string[]) {
+    for (const id of ids) {
+      const j = this.jobs.get(id);
+      if (j) j.frozen = false;
+    }
+    this.emit();
+    this.drain();
+  }
+  releaseSaved(ids: string[]) {
+    for (const id of ids) {
+      const j = this.jobs.get(id);
+      if (j?.stop) throw Error("DOWNLOAD_BUSY");
+      if (j) {
+        j.preserve = true;
+        this.jobs.delete(id);
+      }
+    }
+    this.emit();
+  }
+  adoptBatch(
+    id: string,
+    recordId: string,
+    state: DownloadJobState,
+    source?: DownloadSource,
+    local?: LocalDownloadView,
+  ) {
+    const j = this.jobs.get(id);
+    if (!j) throw Error("DOWNLOAD_NOT_FOUND");
+    j.preserve = true;
+    j.view.recoveryId = recordId;
+    j.view.state = state;
+    j.view.local = local;
+    j.view.size = local?.size ?? source?.size ?? j.view.size;
+    j.view.writtenBytes = local?.writtenBytes ?? 0;
+    j.source = source;
+    j.work = state === "queued" ? "prepare" : undefined;
+    j.pause = state === "paused";
+  }
+  completeRecord(id: string, local: LocalDownloadView) {
+    const j = this.jobs.get(id);
+    if (!j) return;
+    j.view.local = local;
+    j.view.state = "completed";
+    j.view.writtenBytes = local.writtenBytes;
+    j.view.error = undefined;
+    j.work = undefined;
+    this.emit();
   }
   async suspend(
     id: string,
@@ -347,6 +459,7 @@ export class DownloadQueue {
   }
   async cancel(id: string) {
     const j = this.job(id);
+    if (j.frozen) throw Error("DOWNLOAD_BUSY");
     if (
       [
         "completed",
@@ -367,6 +480,7 @@ export class DownloadQueue {
   }
   async retry(id: string) {
     const j = this.job(id);
+    if (j.frozen) throw Error("DOWNLOAD_BUSY");
     if (j.view.state !== "failed") return;
     if (j.binding?.kind === "record") {
       await j.binding.retry?.();
@@ -416,6 +530,7 @@ export class DownloadQueue {
             j.view.state,
           ) ||
           j.stop ||
+          j.frozen ||
           j.view.local?.temporaryPath
         )
           continue;
@@ -476,6 +591,7 @@ export class DownloadQueue {
       throw Error("DOWNLOAD_CANCELLED");
   }
   private async cleanup(j: Job) {
+    if (j.preserve && (!j.cancel || this.jobs.get(j.view.id) !== j)) return;
     if (j.source)
       await this.api
         .action(j.view.sessionId, j.source.id, "cancel")
@@ -495,7 +611,10 @@ export class DownloadQueue {
   private drain() {
     while (this.active < this.limit) {
       const j = [...this.jobs.values()].find(
-        (j) => j.work && (j.binding?.kind !== "file" || j.binding.ready()),
+        (j) =>
+          j.work &&
+          !j.frozen &&
+          (j.binding?.kind !== "file" || j.binding.ready()),
       );
       if (!j) break;
       const work = j.work!;
@@ -566,6 +685,11 @@ export class DownloadQueue {
         }
       }
       if (!j.source || !j.view.local) throw Error("DOWNLOAD_PREVIEW_REQUIRED");
+      if (j.frozen || (j.binding?.kind === "file" && !j.binding.ready())) {
+        j.work = work === "prepare" ? "download" : work;
+        j.view.state = j.view.local.temporaryPath ? "paused" : "queued";
+        return;
+      }
       if (work === "resume") {
         j.view.state = "checking";
         this.emit();

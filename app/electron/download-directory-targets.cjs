@@ -750,9 +750,158 @@ class DownloadDirectoryTargets {
       e.binding = false;
     }
   }
+  async reconcileSavedDirectories(raw, authorize) {
+    const c = readDownloadDirectoryCheckpoint(raw),
+      entries = new Map(c.entries.map((e) => [e.id, e]));
+    authorize?.();
+    const root = await fs.lstat(c.path);
+    if (
+      !root.isDirectory() ||
+      root.isSymbolicLink() ||
+      identity(root) !== c.identity ||
+      pathKey(await fs.realpath(c.path)) !== pathKey(c.path)
+    )
+      throw Error("DOWNLOAD_TARGET_CHANGED");
+    const names = (e) => {
+      const result = [e.name];
+      let p = e.parentId ? entries.get(e.parentId) : undefined;
+      while (p) {
+        result.unshift(p.name);
+        p = p.parentId ? entries.get(p.parentId) : undefined;
+      }
+      return result;
+    };
+    for (const e of [...entries.values()]
+      .filter((e) => e.kind === "directory")
+      .sort((a, b) => names(a).length - names(b).length)) {
+      if (e.action === "skip" && e.result?.state !== "unknown") continue;
+      const parts = names(e);
+      if (!parts.every(validName)) throw Error("DOWNLOAD_LOCAL_NAME_INVALID");
+      const file = path.join(c.path, ...parts);
+      authorize?.();
+      const stat = await fs.lstat(file);
+      if (
+        !stat.isDirectory() ||
+        stat.isSymbolicLink() ||
+        pathKey(await fs.realpath(file)) !== pathKey(file) ||
+        (e.directoryIdentity && identity(stat) !== e.directoryIdentity)
+      )
+        throw Error("DOWNLOAD_TARGET_CHANGED");
+      if (e.result?.state === "unknown") {
+        e.directoryIdentity = identity(stat);
+        e.status = "directory";
+        e.result = { state: "merged" };
+      }
+    }
+    return c;
+  }
+  async receiptFromCheckpoint(raw, entryId, checkpoint, authorize) {
+    const c = readDownloadDirectoryCheckpoint(raw),
+      entries = new Map(c.entries.map((e) => [e.id, e])),
+      e = entries.get(entryId);
+    if (!e || e.kind !== "file") throw Error("DOWNLOAD_TREE_MEMBER_MISMATCH");
+    authorize?.();
+    const root = await fs.lstat(c.path);
+    if (
+      !root.isDirectory() ||
+      root.isSymbolicLink() ||
+      identity(root) !== c.identity ||
+      pathKey(await fs.realpath(c.path)) !== pathKey(c.path)
+    )
+      throw Error("DOWNLOAD_TARGET_CHANGED");
+    const names = [e.name];
+    let parent = e.parentId ? entries.get(e.parentId) : undefined;
+    while (parent) {
+      names.unshift(parent.name);
+      parent = parent.parentId ? entries.get(parent.parentId) : undefined;
+    }
+    if (
+      !names.every(validName) ||
+      pathKey(path.join(c.path, ...names)) !== pathKey(checkpoint.destination)
+    )
+      throw Error("DOWNLOAD_TREE_MEMBER_MISMATCH");
+    let current = c.path;
+    for (let i = 0; i < names.length - 1; i++) {
+      current = path.join(current, names[i]);
+      const stat = await fs.lstat(current);
+      if (
+        !stat.isDirectory() ||
+        stat.isSymbolicLink() ||
+        pathKey(await fs.realpath(current)) !== pathKey(current)
+      )
+        throw Error("DOWNLOAD_TARGET_CHANGED");
+      authorize?.();
+    }
+    const actual = await inspectDownloadTarget(
+      checkpoint.destination,
+      authorize,
+    );
+    if (
+      !actual ||
+      actual.stat.size !== e.size ||
+      actual.sha256 !== checkpoint.spec.sha256
+    )
+      throw Error("DOWNLOAD_RESULT_UNVERIFIED");
+    return { sha256: actual.sha256, stat: checkpointStat(actual.stat) };
+  }
+  async completionReceipt(owner, id, entryId, authorize) {
+    const r = this.owned(owner, id),
+      e = r.entries.get(entryId);
+    if (!e || e.result?.state !== "completed")
+      throw Error("DOWNLOAD_NOT_READY");
+    await this.parentsUnchanged(r, e, authorize);
+    const actual = await inspectDownloadTarget(e.path, () =>
+      this.guard(r, authorize),
+    );
+    if (!actual || actual.stat.size !== e.size || actual.sha256 !== e.sha256)
+      throw Error("DOWNLOAD_RESULT_UNVERIFIED");
+    return {
+      entryId,
+      receipt: { sha256: actual.sha256, stat: checkpointStat(actual.stat) },
+      view: e.completed,
+    };
+  }
+  async acceptReconciled(owner, id, entryId, checkpoint, authorize) {
+    const r = this.owned(owner, id),
+      e = r.entries.get(entryId);
+    if (
+      !e ||
+      e.kind !== "file" ||
+      pathKey(e.path) !== pathKey(checkpoint.destination) ||
+      e.size !== checkpoint.spec.size
+    )
+      throw Error("DOWNLOAD_TREE_MEMBER_MISMATCH");
+    await this.parentsUnchanged(r, e, authorize);
+    const actual = await inspectDownloadTarget(e.path, () =>
+      this.guard(r, authorize),
+    );
+    if (
+      !actual ||
+      actual.stat.size !== e.size ||
+      actual.sha256 !== checkpoint.spec.sha256
+    )
+      throw Error("DOWNLOAD_RESULT_UNVERIFIED");
+    e.sha256 = actual.sha256;
+    e.result = { state: "completed" };
+    e.completed = {
+      id: checkpoint.id,
+      path: e.path,
+      size: e.size,
+      writtenBytes: e.size,
+      state: "completed",
+      sha256: e.sha256,
+    };
+    return {
+      entryId,
+      receipt: { sha256: e.sha256, stat: checkpointStat(actual.stat) },
+      view: e.completed,
+    };
+  }
   complete(owner, id, entryId) {
     const r = this.owned(owner, id),
       e = r.entries.get(entryId);
+    if (e?.result?.state === "completed" && e.completed)
+      return structuredClone(e.completed);
     if (!e?.child) throw Error("DOWNLOAD_NOT_FOUND");
     const record = this.sink.owned(owner, e.child),
       view = this.sink.view(record);

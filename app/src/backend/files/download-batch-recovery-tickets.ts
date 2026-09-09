@@ -171,10 +171,21 @@ export class DownloadBatchRecoveryTickets {
       throw error;
     }
   }
-  proof(token: string, id: string, entryId: string, sourceId: string) {
+  proof(
+    token: string,
+    id: string,
+    entryId: string,
+    sourceId: string,
+    verified = false,
+  ) {
     const t = this.owned(token, id);
     if (!t.claimed || !t.treeId || t.kind !== "restore")
       throw Error("DOWNLOAD_BATCH_TICKET_INVALID");
+    if (
+      verified &&
+      this.downloads.get({ userId: t.userId }, sourceId).state !== "verified"
+    )
+      throw Error("DOWNLOAD_NOT_READY");
     const source = this.trees.memberProof(
       { userId: t.userId },
       t.treeId,

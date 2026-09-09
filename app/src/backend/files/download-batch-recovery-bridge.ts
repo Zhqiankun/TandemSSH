@@ -22,7 +22,13 @@ const schema = z.discriminatedUnion("method", [
     })
     .strict(),
   z
-    .object({ ...base, method: z.literal("proof"), entryId: id, sourceId: id })
+    .object({
+      ...base,
+      method: z.literal("proof"),
+      entryId: id,
+      sourceId: id,
+      verified: z.boolean().optional(),
+    })
     .strict(),
   z.object({ ...base, method: z.literal("snapshot") }).strict(),
   z
@@ -92,6 +98,7 @@ export function registerDownloadBatchRecoveryBridge(
               r.ticketId,
               r.entryId,
               r.sourceId,
+              r.verified,
             );
           case "snapshot":
             return service.snapshot(r.windowToken, r.ticketId);
