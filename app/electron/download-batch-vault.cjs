@@ -63,53 +63,62 @@ class DownloadBatchVault {
   async lease(user) {
     const dir = await this.directory(user, true),
       lock = path.join(dir, ".writer"),
-      owner = process.pid + "-" + randomUUID() + ".owner";
-    for (let attempt = 0; attempt < 4; attempt++) {
-      try {
-        await fs.mkdir(lock);
-      } catch (error) {
-        if (error.code !== "EEXIST") throw error;
-        const info = await fs.lstat(lock);
-        if (!info.isDirectory() || info.isSymbolicLink())
-          throw Error("DOWNLOAD_BATCH_PATH_INVALID");
-        const names = await fs.readdir(lock);
-        for (const name of names) {
-          const match = /^([1-9][0-9]*)-[a-f0-9-]{36}\.owner$/.exec(name);
-          if (!match || this.isAlive(Number(match[1])))
-            throw Error("DOWNLOAD_BATCH_BUSY");
-          await fs.unlink(path.join(lock, name)).catch((e) => {
-            if (e.code !== "ENOENT") throw e;
-          });
+      owner = process.pid + "-" + randomUUID() + ".owner",
+      staged = path.join(dir, ".writer-" + owner);
+    let created = false,
+      published = false,
+      acquired = false;
+    const release = async (base) => {
+      await fs.unlink(path.join(base, owner)).catch((e) => {
+        if (e.code !== "ENOENT") throw e;
+      });
+      await fs.rmdir(base).catch((e) => {
+        if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(e.code)) throw e;
+      });
+    };
+    try {
+      await fs.mkdir(staged);
+      created = true;
+      const handle = await fs.open(path.join(staged, owner), "wx", 0o600);
+      await handle.close();
+      // A visible lock is always published together with its owner file.
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          await fs.rename(staged, lock);
+          published = true;
+        } catch (error) {
+          if (!["EEXIST", "ENOTEMPTY", "EPERM"].includes(error.code))
+            throw error;
+          try {
+            const info = await fs.lstat(lock);
+            if (!info.isDirectory() || info.isSymbolicLink())
+              throw Error("DOWNLOAD_BATCH_PATH_INVALID");
+            for (const name of await fs.readdir(lock)) {
+              const match = /^([1-9][0-9]*)-[a-f0-9-]{36}\.owner$/.exec(name);
+              if (!match || this.isAlive(Number(match[1])))
+                throw Error("DOWNLOAD_BATCH_BUSY");
+              await fs.unlink(path.join(lock, name)).catch((e) => {
+                if (e.code !== "ENOENT") throw e;
+              });
+            }
+            await fs.rmdir(lock).catch((e) => {
+              if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(e.code)) throw e;
+            });
+          } catch (inspect) {
+            if (inspect.code !== "ENOENT") throw inspect;
+          }
+          continue;
         }
-        await fs.rmdir(lock).catch((e) => {
-          if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(e.code)) throw e;
-        });
-        continue;
-      }
-      const owned = path.join(lock, owner);
-      let created = false;
-      try {
-        const handle = await fs.open(owned, "wx", 0o600);
-        created = true;
-        await handle.close();
         const names = await fs.readdir(lock);
         if (names.length !== 1 || names[0] !== owner)
           throw Error("DOWNLOAD_BATCH_BUSY");
-        return async () => {
-          await fs.unlink(owned).catch((e) => {
-            if (e.code !== "ENOENT") throw e;
-          });
-          await fs.rmdir(lock).catch((e) => {
-            if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(e.code)) throw e;
-          });
-        };
-      } catch (error) {
-        if (created) await fs.unlink(owned).catch(() => {});
-        if (error.code === "ENOENT") continue;
-        throw error;
+        acquired = true;
+        return () => release(lock);
       }
+      throw Error("DOWNLOAD_BATCH_BUSY");
+    } finally {
+      if (created && !acquired) await release(published ? lock : staged);
     }
-    throw Error("DOWNLOAD_BATCH_BUSY");
   }
   async directory(user, create = false) {
     if (typeof user !== "string" || !user || user.length > 256)
