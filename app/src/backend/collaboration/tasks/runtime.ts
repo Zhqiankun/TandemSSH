@@ -1056,6 +1056,8 @@ export class TaskRuntime {
       let checkpoint: TaskExecutionCheckpoint;
       for (;;) {
         try {
+          this.recoverySnapshot(actor, taskId);
+          await this.prepareDirectoryRecovery(task);
           checkpoint = this.recoverySnapshot(actor, taskId);
           break;
         } catch (error) {
@@ -1238,6 +1240,7 @@ export class TaskRuntime {
     if (ai && (actor.kind !== "agent" || !task.recoveryAgent))
       throw Error("TASK_RECOVERY_OWNER_MISMATCH");
     if (!this.ports.persistRecovery) throw Error("TASK_RECOVERY_UNAVAILABLE");
+    await this.prepareDirectoryRecovery(task);
     const checkpoint = this.captureRecovery(task);
     if (ai) checkpoint.ai = structuredClone(ai);
     await this.ports.persistRecovery(
@@ -1250,9 +1253,20 @@ export class TaskRuntime {
     task.recoveryEnabled = true;
     task.recoveryRestoring = false;
   }
+  private async prepareDirectoryRecovery(task: RecordTask) {
+    const cursor = task.steps[task.view.nextStep]?.directoryCursor;
+    if (!cursor?.prepareCheckpoint || cursor.done) return;
+    const version = task.generation,
+      guard = () => {
+        if (task.generation !== version) throw Error("TASK_RECOVERY_BUSY");
+      };
+    await cursor.prepareCheckpoint(guard);
+    guard();
+  }
   private async persistRecovery(task: RecordTask, inFlight?: string) {
     if (task.recoveryEnabled) {
       if (!this.ports.persistRecovery) throw Error("TASK_RECOVERY_UNAVAILABLE");
+      if (!inFlight) await this.prepareDirectoryRecovery(task);
       await this.ports.persistRecovery(
         this.captureRecovery(task, inFlight),
         terminalState(task.view.state),

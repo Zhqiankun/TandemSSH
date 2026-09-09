@@ -70,6 +70,7 @@ interface Record {
   local?: LocalDownloadTreePreview;
   choicesDigest?: string;
   recoveryChoices?: DirectoryStepCheckpoint["choices"];
+  downloadCheckpoint?: DirectoryStepCheckpoint;
 }
 const code = (e: unknown) =>
   e instanceof Error && /^[A-Z][A-Z0-9_]{1,80}$/.test(e.message)
@@ -106,8 +107,10 @@ export class DirectoryTransfers {
       key = this.recoveryKey(c);
     if (
       checkpoint.remoteTree.userId !== c.userId ||
-      action.direction !== "upload" ||
-      checkpoint.remoteTree.path !== action.path
+      action.direction !== checkpoint.direction ||
+      (checkpoint.direction === "upload"
+        ? checkpoint.remoteTree.path
+        : checkpoint.path) !== action.path
     )
       throw Error("DIRECTORY_RECOVERY_INVALID");
     if (this.closed || this.recovery.has(key) || this.recovery.size >= 128)
@@ -126,7 +129,6 @@ export class DirectoryTransfers {
     const r = this.owned(c, id);
     if (
       r.busy ||
-      !r.upload ||
       r.view.state !== "confirmed" ||
       [...r.entries.values()].some(
         (e) =>
@@ -136,6 +138,8 @@ export class DirectoryTransfers {
       )
     )
       return undefined;
+    if (r.download) return r.downloadCheckpoint;
+    if (!r.upload) return undefined;
     const local = this.grants.directory(
       c,
       r.action,
@@ -163,9 +167,168 @@ export class DirectoryTransfers {
     const r = this.owned(c, id);
     return r.recoveryChoices ? structuredClone(r.recoveryChoices) : undefined;
   }
+  async prepareCheckpoint(
+    c: FileTaskContext,
+    id: string,
+    stepId: string,
+    guard: () => void,
+  ) {
+    const r = this.owned(c, id);
+    guard();
+    if (
+      !r.download ||
+      r.downloadCheckpoint ||
+      r.busy ||
+      r.view.state !== "confirmed" ||
+      [...r.entries.values()].some(
+        (e) =>
+          e.binary ||
+          e.resultData?.status === "unknown" ||
+          e.resultData?.result?.transfer?.cleanupRequired,
+      )
+    )
+      return;
+    const local = this.grants.directory(
+      c,
+      r.action,
+      guard,
+      new AbortController().signal,
+    );
+    if (!local.downloadCheckpoint || !r.local) return;
+    r.busy = true;
+    try {
+      const nativeTarget = await local.downloadCheckpoint(r.local.id);
+      guard();
+      r.downloadCheckpoint = readDirectoryStepCheckpoint({
+        schemaVersion: 1,
+        stepId,
+        direction: "download",
+        path: r.action.path,
+        canonicalRoot: r.rootCanonical,
+        remoteTree: r.downloadTrees.checkpoint(
+          { userId: c.userId },
+          r.download.id,
+        ),
+        nativeTarget,
+        entries: r.entries.size,
+        completedEntryIds: [...r.entries.values()]
+          .filter((e) => e.resultData?.status === "succeeded")
+          .map((e) => e.id),
+        choices: [...r.entries.values()].map((e) => ({
+          id: e.id,
+          action: e.action,
+        })),
+      });
+    } finally {
+      r.busy = false;
+    }
+  }
+  private async restoreDownloadPreview(
+    r: Record,
+    saved: Extract<
+      ReturnType<typeof readDirectoryStepCheckpoint>,
+      { direction: "download" }
+    >,
+  ) {
+    const s = this.current(r),
+      local = this.grants.directory(
+        s.context,
+        r.action,
+        () => s.guard(),
+        s.signal,
+      );
+    if (!local.restoreDownload || saved.canonicalRoot !== r.rootCanonical)
+      throw Error("DIRECTORY_RECOVERY_INVALID");
+    r.download = await r.downloadTrees.restore(
+      { userId: s.context.userId, signal: s.signal },
+      saved.remoteTree,
+      s.context.sessionId,
+    );
+    r.local = await local.restoreDownload(saved.nativeTarget);
+    const completed = new Set(saved.completedEntryIds);
+    for (const entry of r.local.entries) {
+      const source = r.download.entries.find((e) => e.id === entry.id);
+      if (!source || source.kind !== entry.kind || source.error)
+        throw Error("DIRECTORY_RECOVERY_INVALID");
+      const e: Entry = {
+        id: entry.id,
+        parentId: entry.parentId,
+        relativePath: entry.relativePath,
+        sourceRelativePath: source.relativePath,
+        path: source.path,
+        kind: entry.kind,
+        size: entry.size,
+        status: entry.status,
+        error: entry.error,
+        sourceId: entry.id,
+        lastModified: source.modifiedAt,
+      };
+      if (completed.has(e.id)) {
+        if (
+          !["created", "merged", "completed"].includes(
+            entry.result?.state ?? "",
+          )
+        )
+          throw Error("DOWNLOAD_RESULT_UNVERIFIED");
+        e.result = {
+          status: "succeeded",
+          state: e.kind === "directory" ? "merged" : "succeeded",
+        };
+      }
+      r.entries.set(e.id, e);
+    }
+    for (const e of r.download.entries.filter(
+      (e) => e.error || !["file", "directory"].includes(e.kind),
+    ))
+      r.entries.set(e.id, {
+        id: e.id,
+        parentId: e.parentId,
+        relativePath: e.relativePath,
+        sourceRelativePath: e.relativePath,
+        path: e.path,
+        kind: "excluded",
+        size: 0,
+        status: "blocked",
+        error: e.error ?? "DOWNLOAD_TREE_SPECIAL_SKIPPED",
+        sourceId: e.id,
+        lastModified: e.modifiedAt,
+      });
+    if (r.entries.size !== saved.entries)
+      throw Error("DIRECTORY_RECOVERY_INVALID");
+    r.recoveryChoices = saved.choices.map((choice) => ({
+      id: choice.id,
+      action: completed.has(choice.id)
+        ? r.entries.get(choice.id)?.kind === "directory"
+          ? "merge"
+          : "skip"
+        : choice.action,
+    }));
+    for (const e of r.entries.values())
+      if (e.kind !== "excluded") s.target.check("read", e.path, e.path);
+    this.recount(r);
+    for (const e of r.entries.values())
+      if (completed.has(e.id))
+        e.resultData = {
+          status: "succeeded",
+          result: {
+            directoryTransfer: {
+              ...this.result(r, "entry", e),
+              entryState: e.result!.state,
+            },
+          },
+        };
+    s.guard();
+    r.previewFinished = true;
+    return {
+      status: "succeeded" as const,
+      result: { directoryTransfer: this.result(r, "preview") },
+    };
+  }
   private async restorePreview(r: Record, raw: DirectoryStepCheckpoint) {
-    const saved = readDirectoryStepCheckpoint(raw),
-      s = this.current(r),
+    const saved = readDirectoryStepCheckpoint(raw);
+    if (saved.direction === "download")
+      return this.restoreDownloadPreview(r, saved);
+    const s = this.current(r),
       local = this.grants.directory(
         s.context,
         r.action,
@@ -641,7 +804,9 @@ export class DirectoryTransfers {
       return { status: "failed" as const, error: "DIRECTORY_BLOCKED" };
     if (
       a.stopOnConflict &&
-      [...r.entries.values()].some((e) => e.status === "conflict")
+      [...r.entries.values()].some(
+        (e) => e.status === "conflict" && e.resultData?.status !== "succeeded",
+      )
     )
       return { status: "failed" as const, error: "DIRECTORY_CONFLICT" };
     const s = this.current(r),
@@ -721,6 +886,7 @@ export class DirectoryTransfers {
       e.status === "blocked"
     )
       throw Error("DIRECTORY_NOT_CONFIRMED");
+    r.downloadCheckpoint = undefined;
     e.operationId = s.context.operationId;
     if (e.resultData?.status === "succeeded")
       return structuredClone(e.resultData);
@@ -983,6 +1149,10 @@ export class DirectoryTransfers {
                         const reason = code(error);
                         if (
                           [
+                            "DOWNLOAD_SOURCE_CHANGED",
+                            "DOWNLOAD_TARGET_CHANGED",
+                            "DOWNLOAD_RESULT_UNVERIFIED",
+                            "DOWNLOAD_HOST_IDENTITY_CHANGED",
                             "UPLOAD_SOURCE_CHANGED",
                             "UPLOAD_RESULT_UNVERIFIED",
                             "FILE_TARGET_CHANGED",

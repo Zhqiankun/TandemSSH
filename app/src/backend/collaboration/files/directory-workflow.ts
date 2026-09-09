@@ -94,6 +94,15 @@ export class DirectoryWorkflowSteps implements DirectoryStepPort {
       };
     };
     return {
+      async prepareCheckpoint(guard) {
+        if (!closed && phase === "entries")
+          await directories.prepareCheckpoint(
+            context(),
+            previewId!,
+            step.stepId,
+            guard,
+          );
+      },
       checkpoint() {
         return phase === "done"
           ? undefined

@@ -279,3 +279,19 @@ it("shows saved upload directory progress and requires a new source selection", 
   expect(screen.getByText("已完成 2 / 3 项")).toBeInTheDocument();
   expect(screen.getByText(/重新选择原上传目录并授权后/)).toBeInTheDocument();
 });
+
+it("shows saved download directory progress and local target verification", async () => {
+  api.detail.mockResolvedValueOnce({
+    summary: {
+      ...summary,
+      directoryProgress: { direction: "download", completed: 2, entries: 3 },
+    },
+    steps: [],
+    operations: [],
+  });
+  render(<TaskRecovery sessionId="new-session" onRestored={vi.fn()} />);
+  await open();
+  expect(screen.getByText("下载目录进度")).toBeInTheDocument();
+  expect(screen.getByText("已完成 2 / 3 项")).toBeInTheDocument();
+  expect(screen.getByText(/重新选择原下载目录并授权后/)).toBeInTheDocument();
+});

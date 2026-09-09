@@ -32,6 +32,7 @@ export class TaskRecoveryService {
     return {
       directoryProgress: c.directoryState
         ? {
+            direction: c.directoryState.direction,
             completed: c.directoryState.completedEntryIds.length,
             entries: c.directoryState.entries,
           }

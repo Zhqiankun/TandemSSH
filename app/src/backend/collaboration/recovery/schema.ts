@@ -77,7 +77,7 @@ export const checkpointSchema = z
         step.kind !== "directory-transfer" ||
         step.direction !== d.direction ||
         step.stepId !== d.stepId ||
-        step.path !== d.remoteTree.path ||
+        step.path !== (d.direction === "upload" ? d.remoteTree.path : d.path) ||
         d.remoteTree.userId !== v.userId ||
         d.remoteTree.peer !== v.host.peer
       )

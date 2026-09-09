@@ -216,6 +216,39 @@ class TaskLocalDirectories {
           () => r.uploads.delete(entryId),
         );
       },
+      downloadCheckpoint: (previewId) =>
+        busy(async () => {
+          direction("download");
+          plan(previewId);
+          if (r.downloads.size) throw Error("FILE_LOCAL_GRANT_BUSY");
+          return this.targets.checkpoint(r.owner, previewId, guard);
+        }),
+      restoreDownload: (checkpoint) =>
+        busy(async () => {
+          direction("download");
+          await this.unchanged(r, guard);
+          const chosen = await this.targets.choose(
+            r.owner,
+            async () => r.path,
+            guard,
+          );
+          let current = chosen.id;
+          try {
+            const restored = await this.targets.restore(
+              r.owner,
+              chosen.id,
+              checkpoint,
+              guard,
+            );
+            current = restored.id;
+            guard();
+            r.plans.add(current);
+            return restored;
+          } catch (error) {
+            this.targets.forget(r.owner, current);
+            throw error;
+          }
+        }),
       previewDownload: (entries) =>
         busy(async () => {
           direction("download");

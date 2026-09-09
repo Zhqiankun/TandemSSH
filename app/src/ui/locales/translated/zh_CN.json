@@ -5009,7 +5009,10 @@
         "AI_TASK_BUSY": "AI 执行器尚未结束，请稍后归档。",
         "AI_TASK_ARCHIVED": "AI 任务已归档，旧创建请求不会重新执行。",
         "DIRECTORY_RECOVERY_INVALID": "目录进度与原计划或来源不一致，已停止恢复。",
-        "UPLOAD_RESULT_UNVERIFIED": "已完成的远端文件与原校验收据不一致，已停止恢复。"
+        "UPLOAD_RESULT_UNVERIFIED": "已完成的远端文件与原校验收据不一致，已停止恢复。",
+        "DOWNLOAD_RESULT_UNVERIFIED": "已完成的本地文件与保存的校验收据不一致，已停止恢复。",
+        "DOWNLOAD_SOURCE_CHANGED": "远端来源与保存的目录清单不一致，已停止恢复。",
+        "DOWNLOAD_TARGET_CHANGED": "本地下载目录或文件身份已变化，已停止恢复。"
       },
       "allowedPrograms": "本次允许的程序（每行一个）",
       "operationProgress": "已完成 {{done}} / {{total}} 条命令",
@@ -6359,6 +6362,8 @@
     "parentScope": "以上程序范围也用于流程结束后的父任务。原流程的确切命令仍按本次计划审核，旧授权不会恢复。",
     "directoryTitle": "上传目录进度",
     "directoryProgress": "已完成 {{done}} / {{total}} 项",
-    "directoryHint": "重新选择原上传目录并授权后，将核验来源与远端已完成内容，再继续剩余条目。已完成项不会重新写入。"
+    "directoryHint": "重新选择原上传目录并授权后，将核验来源与远端已完成内容，再继续剩余条目。已完成项不会重新写入。",
+    "downloadDirectoryTitle": "下载目录进度",
+    "downloadDirectoryHint": "重新选择原下载目录并授权后，将核验远端来源和本地已完成文件，再继续剩余条目。已完成文件不会重新下载。"
   }
 }

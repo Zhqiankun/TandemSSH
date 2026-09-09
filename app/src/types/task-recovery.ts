@@ -38,7 +38,11 @@ export interface TaskExecutionCheckpoint {
   savedAt: number;
 }
 export interface TaskRecoverySummary {
-  directoryProgress?: { completed: number; entries: number };
+  directoryProgress?: {
+    direction?: "upload" | "download";
+    completed: number;
+    entries: number;
+  };
   activeWorkflowName?: string;
   resourceRecoveryRequired: boolean;
   id: string;

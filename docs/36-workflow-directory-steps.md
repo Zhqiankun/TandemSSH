@@ -60,3 +60,5 @@
 最终构建与解包包日志为 .cache/workflow-directory-final-build.log、workflow-directory-final-package.log；打包 MCP stdio 与真实 Codex 发现复核 2 文件 / 3 项通过，.cache/workflow-directory-packaged-mcp.log，工具数保持 34。最终源码类型检查通过，.cache/workflow-directory-delivery-types.log。
 
 后续上传目录的完整条目边界已接入任务恢复，并通过真实 Windows 自动/协作重启验证；下载目录及部分传输资源仍需继续，见 [第 47 份文档](47-task-directory-recovery.md)。
+
+下载目录的完整条目边界后续也已接入任务恢复，并通过真实 Windows 自动/协作重启验证；部分文件与独立目录协调器仍需继续，见 [第 48 份文档](48-task-download-directory-recovery.md)。

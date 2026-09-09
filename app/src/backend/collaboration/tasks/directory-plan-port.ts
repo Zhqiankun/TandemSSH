@@ -6,6 +6,7 @@ import type {
 import type { DirectoryAction } from "../../../types/directory-transfer.js";
 import type { OperationView } from "../operations/gateway.js";
 export interface DirectoryStepCursor {
+  prepareCheckpoint?(guard: () => void): Promise<void>;
   checkpoint?(): DirectoryStepCheckpoint | undefined;
   readonly done: boolean;
   readonly requestIndex: number;

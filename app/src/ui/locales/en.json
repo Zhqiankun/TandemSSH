@@ -5009,7 +5009,10 @@
         "AI_TASK_BUSY": "The AI runner has not finished yet.",
         "AI_TASK_ARCHIVED": "AI task archived. The old request will not restart it.",
         "DIRECTORY_RECOVERY_INVALID": "Directory progress does not match the original plan or source. Recovery stopped.",
-        "UPLOAD_RESULT_UNVERIFIED": "A completed remote file does not match its saved verification receipt. Recovery stopped."
+        "UPLOAD_RESULT_UNVERIFIED": "A completed remote file does not match its saved verification receipt. Recovery stopped.",
+        "DOWNLOAD_RESULT_UNVERIFIED": "A completed local file does not match its saved verification receipt. Recovery stopped.",
+        "DOWNLOAD_SOURCE_CHANGED": "The remote source no longer matches the saved directory manifest. Recovery stopped.",
+        "DOWNLOAD_TARGET_CHANGED": "The local download directory or file identity changed. Recovery stopped."
       },
       "allowedPrograms": "Programs allowed for this task (one per line)",
       "operationProgress": "{{done}} / {{total}} commands completed",
@@ -6359,6 +6362,8 @@
     "parentScope": "These program scopes also apply after the workflow returns to its parent task. The workflow commands are reviewed as this plan; old authorization is not restored.",
     "directoryTitle": "Upload directory progress",
     "directoryProgress": "Completed {{done}} / {{total}} entries",
-    "directoryHint": "Select the original upload directory and authorize again. The source and completed remote contents will be verified before remaining entries continue. Completed entries will not be written again."
+    "directoryHint": "Select the original upload directory and authorize again. The source and completed remote contents will be verified before remaining entries continue. Completed entries will not be written again.",
+    "downloadDirectoryTitle": "Download directory progress",
+    "downloadDirectoryHint": "Select the original download directory and authorize again. Remote sources and completed local files will be verified before remaining entries continue. Completed files will not be downloaded again."
   }
 }
