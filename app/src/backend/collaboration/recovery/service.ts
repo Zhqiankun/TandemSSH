@@ -35,6 +35,9 @@ export class TaskRecoveryService {
       hostId: c.host.id,
       hostName: c.host.name,
       source: c.source,
+      activeWorkflowName: c.workflowState?.runs.find(
+        (r) => r.summary.id === c.workflowState?.activeRunId,
+      )?.summary.name,
       mode: c.mode,
       nextStep: c.nextStep,
       stepCount: c.steps.length,
@@ -42,11 +45,14 @@ export class TaskRecoveryService {
       resourceRecoveryRequired: c.resourceRecoveryRequired,
       state:
         row.state === "available" &&
-        (c.ai
-          ? ["completed", "completed-with-errors"].includes(c.ai.view.phase)
-          : c.steps.length > 0 && c.nextStep === c.steps.length) &&
+        (c.completed ||
+          (c.ai
+            ? ["completed", "completed-with-errors"].includes(c.ai.view.phase)
+            : !c.workflowState?.activeRunId &&
+              c.steps.length > 0 &&
+              c.nextStep === c.steps.length)) &&
         !c.reconciliationRequired
-          ? "consumed"
+          ? "completed"
           : this.store.interrupted(row)
             ? "interrupted"
             : row.state === "live"
@@ -70,6 +76,8 @@ export class TaskRecoveryService {
       operations: row.checkpoint.operations,
       cwd: row.checkpoint.cwd,
       ai: row.checkpoint.ai?.view,
+      workflowRuns: row.checkpoint.workflowState?.runs.map((r) => r.summary),
+      activeWorkflowRunId: row.checkpoint.workflowState?.activeRunId,
     }) as TaskRecoveryDetail;
   }
   async save(actor: TaskActor, id: string) {

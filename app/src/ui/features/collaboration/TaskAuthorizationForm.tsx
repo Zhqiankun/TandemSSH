@@ -78,13 +78,14 @@ export function TaskAuthorizationForm({
           maxOperations: budget,
           durationMinutes: minutes,
           allowReviewedPlan: reviewed,
-          matches: task.stepCount
-            ? undefined
-            : allowedPrograms
-                .split(/\r?\n/)
-                .map((program) => program.trim())
-                .filter(Boolean)
-                .map((program) => ({ kind: "program" as const, program })),
+          matches:
+            task.stepCount && !task.activeWorkflowRunId
+              ? undefined
+              : allowedPrograms
+                  .split(/\r?\n/)
+                  .map((program) => program.trim())
+                  .filter(Boolean)
+                  .map((program) => ({ kind: "program" as const, program })),
           fileScopes: fileScopes.length ? fileScopes : undefined,
           fileBindings: Object.keys(fileBindings).length
             ? fileBindings
@@ -103,12 +104,12 @@ export function TaskAuthorizationForm({
           ))}
         </ol>
       )}
-      {task.stepCount === 0 && (
+      {(task.stepCount === 0 || !!task.activeWorkflowRunId) && (
         <p className="tandem-task-help">
           {t("tandem.collaboration.externalScope")}
         </p>
       )}
-      {task.stepCount === 0 && (
+      {(task.stepCount === 0 || !!task.activeWorkflowRunId) && (
         <label>
           {t("tandem.collaboration.allowedPrograms")}
           <textarea
@@ -116,9 +117,12 @@ export function TaskAuthorizationForm({
             onChange={(e) => setAllowedPrograms(e.target.value)}
             rows={4}
             maxLength={4096}
-            required={!fileScopes.length}
+            required={task.stepCount === 0 && !fileScopes.length}
           />
         </label>
+      )}
+      {task.activeWorkflowRunId && (
+        <p className="tandem-task-help">{t("taskRecovery.parentScope")}</p>
       )}
       <TaskWorkflowFiles
         taskId={task.id}

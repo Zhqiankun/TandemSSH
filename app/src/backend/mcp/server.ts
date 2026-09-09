@@ -419,7 +419,7 @@ export function createTandemMcpServer(bridge: CoreBridgePort): McpServer {
       "save_task_progress",
       "recovery.save",
       "暂停并保存任务进度",
-      "停止当前任务后续执行，等待在途动作收敛并加密保存检查点。保存成功后旧任务停止。部分目录和内置 AI 父流程仍需专用恢复。",
+      "停止当前任务后续执行，等待在途动作收敛并加密保存检查点。保存成功后旧任务停止。父任务中的命令流程可恢复；部分文件与目录内部进度仍需专用恢复。",
       false,
     ],
     [

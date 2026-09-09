@@ -62,7 +62,6 @@ export function TaskRecovery({
   return (
     <>
       {task &&
-        !task.activeWorkflowRunId &&
         !["completed", "completed-with-errors", "cancelled"].includes(
           task.state,
         ) && (
@@ -204,6 +203,28 @@ export function TaskRecovery({
                       ))}
                     </div>
                   </details>
+                </div>
+              )}
+              {!!detail.workflowRuns?.length && (
+                <div className="rounded border border-border p-3 space-y-2 text-sm">
+                  <h3>{t("taskRecovery.parentWorkflows")}</h3>
+                  <p>{t("taskRecovery.parentHint")}</p>
+                  {detail.workflowRuns.map((run) => (
+                    <div key={run.id}>
+                      <strong>{run.name}</strong>
+                      <span>
+                        {" "}
+                        · {run.nextStep} / {run.stepCount} ·{" "}
+                        {t("tandem.collaboration.states." + run.state)}
+                      </span>
+                      <p className="text-xs">
+                        {t("tandem.workflow.runRevision", {
+                          version: run.workflow.version,
+                          revision: run.workflow.revision,
+                        })}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               )}
               <h3>{t("taskRecovery.plan")}</h3>

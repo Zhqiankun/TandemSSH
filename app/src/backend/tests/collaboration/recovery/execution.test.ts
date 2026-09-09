@@ -1,3 +1,5 @@
+import { WorkflowLibrary } from "../../../collaboration/workflows/library.js";
+import { readCheckpoint } from "../../../collaboration/recovery/schema.js";
 import type { OperationView } from "../../../collaboration/operations/gateway.js";
 import { afterEach, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
@@ -120,8 +122,8 @@ function fixture(
             control.takeover();
         },
       }),
-      persistRecovery: async (cp) => {
-        await store.save(cp.userId, cp, true);
+      persistRecovery: async (cp, finished) => {
+        await store.save(cp.userId, cp, !finished);
       },
     }),
     service = new TaskRecoveryService(runtime, store);
@@ -129,6 +131,7 @@ function fixture(
     runtime.authorize(user, task.id, {
       ...control.snapshot(),
       policyRevision: 1,
+      planRevision: task.planRevision,
       shellReady: true,
       maxOperations: 10,
       durationMinutes: 10,
@@ -394,9 +397,9 @@ it("cannot authorize a new task before its recovery claim and checkpoint are dur
   );
 });
 
-it("marks an active parent workflow checkpoint as requiring coordinator recovery", async () => {
+async function savedParent(mode: "automatic" | "collaborative") {
   const s = await storage(),
-    f = fixture(s.store),
+    f = fixture(s.store, { takeoverAfterFirst: mode === "automatic" }),
     client: TaskActor = {
       kind: "mcp",
       userId: user.userId,
@@ -408,37 +411,272 @@ it("marks an active parent workflow checkpoint as requiring coordinator recovery
   const task = await f.runtime.create(client, {
     sessionId: f.id,
     requestId: randomUUID(),
-    title: "parent workflow",
-    mode: "automatic",
+    title: "parent deployment",
+    mode,
   });
-  await f.authorize(task, { matches: [{ kind: "program", program: "pwd" }] });
-  f.runtime.enableRecovery(client, task.id);
-  await f.runtime.attachWorkflow(client, task.id, {
+  await f.authorize(task, {
+    matches: [
+      { kind: "program", program: "deploy_phase_one" },
+      { kind: "program", program: "deploy_phase_two" },
+      { kind: "program", program: "pwd" },
+    ],
+  });
+  const workflow = await f.runtime.attachWorkflow(client, task.id, {
     requestId: randomUUID(),
-    name: "child",
+    name: "saved child",
     workflow: {
       id: randomUUID(),
       revision: 1,
       version: "1.0.0",
       shellState: "explicit-cwd",
     },
-    commands: [{ program: "pwd", args: [] }],
+    commands: [
+      { program: "deploy_phase_one", args: [] },
+      { program: "deploy_phase_two", args: [] },
+    ],
     expectedControl: f.control.snapshot(),
   });
-  await vi.waitFor(async () =>
-    expect(
-      (await s.store.get(user.userId, task.id))?.checkpoint
-        .resourceRecoveryRequired,
-    ).toBe(true),
-  );
-  const next = fixture(new TaskRecoveryStore(s.root, s.keys, () => false)),
-    newClient = { ...client, connectionId: randomUUID() };
-  next.runtime.connectClient(newClient.connectionId);
-  await expect(
-    next.service.restore(newClient, task.id, {
+  if (mode === "collaborative") {
+    await vi.waitFor(() =>
+      expect(f.runtime.get(user, task.id).state).toBe("awaiting-approval"),
+    );
+    await f.approve(task.id);
+    await vi.waitFor(() =>
+      expect(f.runtime.get(user, task.id)).toMatchObject({
+        nextStep: 1,
+        state: "awaiting-approval",
+      }),
+    );
+  } else
+    await vi.waitFor(() =>
+      expect(f.runtime.get(user, task.id).state).toBe("paused-human"),
+    );
+  const saved = await f.service.save(client, task.id),
+    record = await s.store.get(user.userId, saved.id);
+  expect(record?.checkpoint).toMatchObject({
+    nextStep: 1,
+    resourceRecoveryRequired: false,
+    workflowState: { activeRunId: workflow.id, initialPlan: { steps: [] } },
+  });
+  return { s, f, client, task, workflow, saved, record };
+}
+it.each(["automatic", "collaborative"] as const)(
+  "restores %s parent workflow, preserves old results and returns to the parent task",
+  async (mode) => {
+    const { s, f, client, task, workflow, saved } = await savedParent(mode),
+      next = fixture(new TaskRecoveryStore(s.root, s.keys)),
+      newClient = { ...client, connectionId: randomUUID() };
+    next.runtime.connectClient(newClient.connectionId);
+    const restored = await next.service.restore(newClient, saved.id, {
       sessionId: next.id,
       reviewed: true,
+    });
+    expect(restored).toMatchObject({
+      state: "awaiting-authorization",
+      nextStep: 1,
+      activeWorkflowRunId: workflow.id,
+    });
+    expect(next.writes).toEqual([]);
+    const old = f.runtime.workflowOperation(
+      client,
+      task.id,
+      workflow.id,
+      f.runtime.workflowRunSummary(client, task.id, workflow.id)
+        .operationIds[0],
+    );
+    expect(
+      next.runtime.workflowOperation(
+        newClient,
+        restored.id,
+        workflow.id,
+        old.id,
+      ).status,
+    ).toBe("succeeded");
+    expect(() =>
+      next.runtime.operation(newClient, restored.id, old.id),
+    ).toThrow("OPERATION_NOT_FOUND");
+    await expect(
+      next.runtime.approve(user, restored.id, old.id, old.digest, 1),
+    ).rejects.toThrow("STALE_APPROVAL");
+    await next.authorize(restored, {
+      allowReviewedPlan: true,
+      matches: [{ kind: "program", program: "pwd" }],
+    });
+    if (mode === "collaborative") {
+      await vi.waitFor(() =>
+        expect(next.runtime.get(user, restored.id).state).toBe(
+          "awaiting-approval",
+        ),
+      );
+      await next.approve(restored.id);
+    }
+    await vi.waitFor(() =>
+      expect(next.runtime.get(user, restored.id)).toMatchObject({
+        state: "ready",
+        activeWorkflowRunId: undefined,
+        stepCount: 0,
+      }),
+    );
+    const library = new WorkflowLibrary({
+        read: () => {
+          throw Error("Restored result must not read mutable template");
+        },
+        write: async () => {},
+        ownsHost: async () => true,
+        target: () => ({
+          hostId: 1,
+          groups: [],
+          control: next.control.snapshot(),
+        }),
+        policy: () => ({ revision: 1, sets: [] }),
+        tasks: next.runtime,
+        audit: async () => {},
+      }),
+      result = library.result(newClient, restored.id, workflow.id);
+    expect(result.error).toBeUndefined();
+    expect(result).toMatchObject({
+      state: "completed",
+      nextStep: 2,
+      stepCount: 2,
+      restoredFromTaskId: task.id,
+    });
+    expect(
+      result.operations
+        .filter((o) => o.status === "succeeded")
+        .map((o) => o.program),
+    ).toEqual(["deploy_phase_one", "deploy_phase_two"]);
+    expect(next.writes.filter((v) => v !== "context")).toEqual([
+      "deploy_phase_two",
+    ]);
+    await next.runtime.submit(
+      newClient,
+      restored.id,
+      { program: "pwd", args: [] },
+      "parent-continues",
+    );
+    if (mode === "collaborative") {
+      await vi.waitFor(() =>
+        expect(next.runtime.get(user, restored.id).state).toBe(
+          "awaiting-approval",
+        ),
+      );
+      await next.approve(restored.id);
+    }
+    await vi.waitFor(() =>
+      expect(
+        next.runtime.get(user, restored.id).operations.at(-1)?.status,
+      ).toBe("succeeded"),
+    );
+    expect(next.writes.filter((v) => v !== "context")).toEqual([
+      "deploy_phase_two",
+      "pwd",
+    ]);
+    await vi.waitFor(() =>
+      expect(next.runtime.get(user, restored.id).state).toBe("ready"),
+    );
+    await next.runtime.finish(newClient, restored.id);
+    expect(
+      (await next.service.list(newClient)).find((r) => r.id === restored.id)
+        ?.state,
+    ).toBe("completed");
+    await expect(
+      next.service.restore(newClient, restored.id, {
+        sessionId: next.id,
+        reviewed: true,
+      }),
+    ).rejects.toThrow("TASK_RECOVERY_NOT_AVAILABLE");
+  },
+);
+it("rejects orphan parent operation IDs and a changed restored plan", async () => {
+  const { record } = await savedParent("collaborative"),
+    cp = record!.checkpoint;
+  const orphan = structuredClone(cp);
+  orphan.workflowState!.runs[0].summary.operationIds.push(randomUUID());
+  expect(() => readCheckpoint(orphan)).toThrow("TASK_RECOVERY_INVALID");
+  const changed = structuredClone(cp);
+  changed.workflowState!.runs[0].steps[0] = { program: "unexpected", args: [] };
+  expect(() => readCheckpoint(changed)).toThrow("TASK_RECOVERY_INVALID");
+});
+
+it("records the human decision for an unknown parent step and retains the workflow failure status", async () => {
+  const s = await storage(),
+    f = fixture(s.store, { fail: true }),
+    client: TaskActor = {
+      kind: "mcp",
+      userId: user.userId,
+      clientId: randomUUID(),
+      connectionId: randomUUID(),
+      allowedHostIds: [1],
+    };
+  f.runtime.connectClient(client.connectionId);
+  const task = await f.runtime.create(client, {
+    sessionId: f.id,
+    requestId: randomUUID(),
+    title: "unknown child",
+    mode: "automatic",
+  });
+  await f.authorize(task, {
+    matches: [
+      { kind: "program", program: "pwd" },
+      { kind: "program", program: "printf" },
+    ],
+  });
+  const run = await f.runtime.attachWorkflow(client, task.id, {
+    requestId: randomUUID(),
+    name: "child",
+    workflow: {
+      id: randomUUID(),
+      revision: 1,
+      version: "1",
+      shellState: "explicit-cwd",
+    },
+    commands: [
+      { program: "pwd", args: [] },
+      { program: "printf", args: [] },
+    ],
+    expectedControl: f.control.snapshot(),
+  });
+  await vi.waitFor(() =>
+    expect(f.runtime.get(user, task.id).operations[0]?.status).toBe("unknown"),
+  );
+  const saved = await f.service.save(client, task.id),
+    next = fixture(new TaskRecoveryStore(s.root, s.keys)),
+    newClient = { ...client, connectionId: randomUUID() };
+  next.runtime.connectClient(newClient.connectionId);
+  const restored = await next.service.restore(newClient, saved.id, {
+    sessionId: next.id,
+    reviewed: true,
+  });
+  expect(restored.reconciliationRequired).toBe(true);
+  await expect(next.authorize(restored)).rejects.toThrow(
+    "RECONCILIATION_REQUIRED",
+  );
+  await next.authorize(restored, { reconciliation: "skip" });
+  await vi.waitFor(() =>
+    expect(next.runtime.get(user, restored.id)).toMatchObject({
+      state: "ready",
+      activeWorkflowRunId: undefined,
     }),
-  ).rejects.toThrow("TASK_RECOVERY_RESOURCES_REQUIRED");
-  expect(next.writes).toEqual([]);
+  );
+  const summary = next.runtime.workflowRunSummary(
+    newClient,
+    restored.id,
+    run.id,
+  );
+  expect(summary).toMatchObject({
+    state: "completed-with-errors",
+    hasFailures: true,
+    nextStep: 2,
+  });
+  const original = next.runtime.workflowOperation(
+    newClient,
+    restored.id,
+    run.id,
+    summary.operationIds[0],
+  );
+  expect(original).toMatchObject({
+    status: "unknown",
+    reviewed: { decision: "skip" },
+  });
+  expect(next.writes.filter((v) => v !== "context")).toEqual(["printf"]);
 });

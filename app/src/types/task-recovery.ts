@@ -3,9 +3,18 @@ import type {
   TaskMode,
   TaskOperation,
   WorkflowReference,
+  TaskWorkflowRun,
 } from "./collaboration-task.js";
 import type { TaskPlanStep } from "./task-plan.js";
+export interface WorkflowExecutionCheckpoint {
+  initialPlan: { steps: TaskPlanStep[]; workflow?: WorkflowReference };
+  activeRunId?: string;
+  runs: Array<{ summary: TaskWorkflowRun; steps: TaskPlanStep[] }>;
+}
 export interface TaskExecutionCheckpoint {
+  completed?: boolean;
+  workflowState?: WorkflowExecutionCheckpoint;
+  workflowCwd?: string;
   ai?: AiExecutionCheckpoint;
   schemaVersion: 1;
   id: string;
@@ -27,6 +36,7 @@ export interface TaskExecutionCheckpoint {
   savedAt: number;
 }
 export interface TaskRecoverySummary {
+  activeWorkflowName?: string;
   resourceRecoveryRequired: boolean;
   id: string;
   title: string;
@@ -37,10 +47,12 @@ export interface TaskRecoverySummary {
   nextStep: number;
   stepCount: number;
   reconciliationRequired: boolean;
-  state: "available" | "claimed" | "interrupted" | "consumed";
+  state: "available" | "claimed" | "interrupted" | "consumed" | "completed";
   savedAt: number;
 }
 export interface TaskRecoveryDetail {
+  workflowRuns?: TaskWorkflowRun[];
+  activeWorkflowRunId?: string;
   ai?: AiExecutionCheckpoint["view"];
   summary: TaskRecoverySummary;
   steps: TaskPlanStep[];

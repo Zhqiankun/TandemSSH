@@ -1,3 +1,4 @@
+import { TaskAuthorizationForm } from "@/features/collaboration/TaskAuthorizationForm";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
@@ -8,7 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { TaskRecovery } from "@/features/collaboration/TaskRecovery";
-import type { TaskView } from "@/types/collaboration-task";
+import type { TaskView, TaskAuthorization } from "@/types/collaboration-task";
 import i18n from "@/i18n/i18n";
 const api = vi.hoisted(() => ({
   list: vi.fn(),
@@ -174,4 +175,94 @@ it("shows an AI save action and the saved conversation and model budget before r
   expect(
     screen.getByRole("button", { name: "恢复为待授权任务" }),
   ).toBeEnabled();
+});
+
+it("shows the parent workflow version and preserved position before recovery", async () => {
+  api.detail.mockResolvedValue({
+    summary,
+    steps: [{ program: "pwd", args: [] }],
+    operations: [],
+    activeWorkflowRunId: "run",
+    workflowRuns: [
+      {
+        id: "run",
+        taskId: "saved",
+        name: "部署子流程",
+        workflow: {
+          id: "flow",
+          revision: 2,
+          version: "1.2.0",
+          shellState: "explicit-cwd",
+        },
+        state: "paused-human",
+        nextStep: 1,
+        stepCount: 2,
+        operationIds: [],
+        createdAt: 1,
+      },
+    ],
+  });
+  render(<TaskRecovery sessionId="session" onRestored={vi.fn()} />);
+  await open();
+  expect(screen.getByText("父任务中的流程")).toBeVisible();
+  expect(screen.getByText("部署子流程")).toBeVisible();
+  expect(screen.getByText(/1\.2\.0/)).toBeVisible();
+});
+it("lets the user choose parent program scopes without requiring broader permission", async () => {
+  const onAuthorize = vi.fn(async (_scope: TaskAuthorization) => {}),
+    task = {
+      id: "parent",
+      sessionId: "session",
+      hostId: 1,
+      hostName: "host",
+      title: "parent",
+      source: "assistant",
+      mode: "automatic",
+      state: "awaiting-authorization",
+      commands: [{ program: "pwd", args: [] }],
+      nextStep: 0,
+      stepCount: 1,
+      operations: [],
+      control: {
+        sessionId: "session",
+        generation: 1,
+        controlEpoch: 0,
+        controller: { kind: "human" },
+        closed: false,
+      },
+      policyRevision: 1,
+      createdAt: 1,
+      activeWorkflowRunId: "run",
+      planRevision: 1,
+    } as TaskView;
+  render(
+    <TaskAuthorizationForm
+      task={task}
+      localGrants={[]}
+      disabled={false}
+      revision={1}
+      onAuthorize={onAuthorize}
+    />,
+  );
+  const programs = screen.getByLabelText(
+    i18n.t("tandem.collaboration.allowedPrograms"),
+  );
+  expect(programs).not.toBeRequired();
+  fireEvent.change(programs, { target: { value: "printf\npwd" } });
+  fireEvent.click(
+    screen.getByLabelText(i18n.t("tandem.collaboration.shellReady")),
+  );
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: i18n.t("tandem.collaboration.authorize"),
+    }),
+  );
+  await waitFor(() => expect(onAuthorize).toHaveBeenCalled());
+  expect(onAuthorize.mock.calls[0][0]).toMatchObject({
+    planRevision: 1,
+    matches: [
+      { kind: "program", program: "printf" },
+      { kind: "program", program: "pwd" },
+    ],
+  });
 });

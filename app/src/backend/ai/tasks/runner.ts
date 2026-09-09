@@ -97,6 +97,8 @@ export interface AiTaskPorts {
   audit(userId: string, type: string, data: unknown): Promise<void>;
 }
 interface Run {
+  waitingWorkflow?: { id: string; callId?: string };
+  recoveredWorkflow?: { id: string; callId?: string };
   providerIdentity?: string;
   saving?: boolean;
   mutating?: boolean;
@@ -310,6 +312,7 @@ export class AiTaskCoordinator {
       throw Error("AI_RECOVERY_MODEL_IDENTITY_REQUIRED");
     return readAiRecovery({
       schemaVersion: 1,
+      waitingWorkflow: run.waitingWorkflow ?? run.recoveredWorkflow,
       providerIdentity: run.providerIdentity,
       view,
       history: [
@@ -338,8 +341,8 @@ export class AiTaskCoordinator {
     );
     if (!run) throw Error("AI_TASK_NOT_FOUND");
     if (run.saving || run.mutating) throw Error("AI_RECOVERY_BUSY");
-    if (this.ports.tasks.state(run.actor, taskId).activeWorkflowRunId)
-      throw Error("TASK_RECOVERY_AGENT_ADAPTER_REQUIRED");
+    if (run.waitingWorkflow)
+      run.recoveredWorkflow = structuredClone(run.waitingWorkflow);
     run.saving = true;
     if (run.view.question)
       run.pendingQuestion = { ...run.view.question, answer: run.answer };
@@ -391,6 +394,11 @@ export class AiTaskCoordinator {
       throw Error("AI_DISABLED");
     if (provider.identity !== saved.providerIdentity)
       throw Error("MODEL_CONFIGURATION_CHANGED");
+    if (
+      (saved.waitingWorkflow || checkpoint.workflowState?.activeRunId) &&
+      !this.ports.workflows
+    )
+      throw Error("WORKFLOW_UNAVAILABLE");
     const task = await this.ports.tasks.restoreRecovery(
         actor,
         checkpoint,
@@ -405,6 +413,11 @@ export class AiTaskCoordinator {
       userId,
       actor,
       history: structuredClone(saved.history),
+      recoveredWorkflow:
+        saved.waitingWorkflow ??
+        (checkpoint.workflowState?.activeRunId
+          ? { id: checkpoint.workflowState.activeRunId }
+          : undefined),
       abort: new AbortController(),
       controlChanged: true,
       pendingQuestion: question,
@@ -456,6 +469,50 @@ export class AiTaskCoordinator {
         run.view.phase = "cancelled";
       },
     };
+  }
+  private async deliverRecoveredWorkflow(run: Run) {
+    const waiting = run.recoveredWorkflow;
+    if (!waiting) return;
+    if (!this.ports.workflows) throw Error("WORKFLOW_UNAVAILABLE");
+    const result = this.ports.workflows.result(
+      run.actor,
+      run.view.taskId,
+      waiting.id,
+    );
+    if (!terminal(result.state)) throw Error("WORKFLOW_IN_PROGRESS");
+    const content = JSON.stringify(redact(result));
+    let replaced = false;
+    if (waiting.callId)
+      for (const group of [...run.history].reverse()) {
+        if (
+          !group[0]?.toolCalls?.some(
+            (c) => c.id === waiting.callId && c.name === "run_workflow",
+          )
+        )
+          continue;
+        const reply = group.find(
+          (m) =>
+            m.role === "tool" &&
+            m.toolCallId === waiting.callId &&
+            m.toolName === "run_workflow",
+        );
+        if (reply) {
+          reply.content = content;
+          replaced = true;
+          break;
+        }
+      }
+    if (!replaced)
+      run.history.push([
+        {
+          role: "user",
+          content:
+            "恢复后的流程已结束，以下为只读实际结果；不要重跑已完成步骤：\n" +
+            content,
+        },
+      ]);
+    run.recoveredWorkflow = undefined;
+    await this.persistRecovery(run);
   }
   private async answerAfterRecovery(
     run: Run,
@@ -1112,31 +1169,43 @@ export class AiTaskCoordinator {
         p.previewId,
         "agent-flow-" + randomUUID(),
       );
-      for (;;) {
-        const progress = this.ports.tasks.workflowRunSummary(
-            run.actor,
-            state.id,
-            workflow.id,
-          ),
-          current = this.ports.tasks.state(run.actor, state.id, false);
-        if (terminal(progress.state) || !sameControl(control, current.control))
-          return this.ports.workflows.result(run.actor, state.id, workflow.id);
-        run.view.phase =
-          current.state === "awaiting-approval"
-            ? "awaiting-approval"
-            : current.state.startsWith("paused")
-              ? "paused-human"
-              : "executing";
-        if (
-          current.authorization?.expiresAt &&
-          Date.now() >= current.authorization.expiresAt
-        )
-          this.ports.tasks.suspend(
-            run.actor,
-            state.id,
-            "TASK_AUTHORIZATION_EXPIRED",
-          );
-        await this.tick(run);
+      run.waitingWorkflow = { id: workflow.id, callId: call.id };
+      try {
+        for (;;) {
+          const progress = this.ports.tasks.workflowRunSummary(
+              run.actor,
+              state.id,
+              workflow.id,
+            ),
+            current = this.ports.tasks.state(run.actor, state.id, false);
+          if (
+            terminal(progress.state) ||
+            !sameControl(control, current.control)
+          )
+            return this.ports.workflows.result(
+              run.actor,
+              state.id,
+              workflow.id,
+            );
+          run.view.phase =
+            current.state === "awaiting-approval"
+              ? "awaiting-approval"
+              : current.state.startsWith("paused")
+                ? "paused-human"
+                : "executing";
+          if (
+            current.authorization?.expiresAt &&
+            Date.now() >= current.authorization.expiresAt
+          )
+            this.ports.tasks.suspend(
+              run.actor,
+              state.id,
+              "TASK_AUTHORIZATION_EXPIRED",
+            );
+          await this.tick(run);
+        }
+      } finally {
+        run.waitingWorkflow = undefined;
       }
     }
     if (call.name === "run_command") {
@@ -1243,6 +1312,7 @@ export class AiTaskCoordinator {
         }
         run.controlChanged = false;
         try {
+          await this.deliverRecoveredWorkflow(run);
           await this.answerAfterRecovery(run, ready.control);
           const round = await this.model(run, false, ready.control);
           if (!round.calls.length) {

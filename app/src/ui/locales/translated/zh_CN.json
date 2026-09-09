@@ -6305,7 +6305,7 @@
     "done": "已完成",
     "pending": "待执行",
     "progress": "步骤 {{done}} / {{total}}",
-    "resources": "此记录仍有父流程或部分文件、目录内部进度，需要专门恢复后才能继续。",
+    "resources": "此记录仍有部分文件或目录内部进度，需要专门恢复后才能继续。",
     "external": "MCP 任务由原客户端领取，领取后仍需在桌面重新授权。",
     "reconcile": "核实远端实际结果后，选择当前未确定步骤的处理方式。",
     "retry": "我已核实，重新执行当前步骤。",
@@ -6319,7 +6319,8 @@
       "available": "可恢复",
       "claimed": "正在使用",
       "interrupted": "上次运行已中断",
-      "consumed": "已领取"
+      "consumed": "已领取",
+      "completed": "已完成"
     },
     "errors": {
       "TASK_RECOVERY_BUSY": "任务仍在收敛或记录正被使用，请稍后重试。",
@@ -6327,8 +6328,8 @@
       "TASK_RECOVERY_HOST_KEY_REQUIRED": "当前连接没有可核对的 SSH 公钥，不能保存执行进度。",
       "TASK_RECOVERY_REVIEW_REQUIRED": "请先核对原计划和执行结果。",
       "TASK_RECOVERY_OWNER_MISMATCH": "此恢复入口不属于原任务的用户或客户端。",
-      "TASK_RECOVERY_RESOURCES_REQUIRED": "父流程或部分文件、目录进度需要专门恢复，当前任务已暂停。",
-      "TASK_RECOVERY_AGENT_ADAPTER_REQUIRED": "父流程内部进度仍需专门恢复，未保存为普通任务。",
+      "TASK_RECOVERY_RESOURCES_REQUIRED": "部分文件或目录进度需要专门恢复，当前任务已暂停。",
+      "TASK_RECOVERY_AGENT_ADAPTER_REQUIRED": "此任务缺少完整的 AI 协调状态，无法仅凭任务快照恢复。",
       "TASK_RECOVERY_DECRYPT_FAILED": "无法解密或校验执行进度。",
       "TASK_RECOVERY_ENCRYPTION_UNAVAILABLE": "系统加密不可用，未保存执行进度。",
       "TASK_RECOVERY_KEY_MISSING": "无法读取系统中的恢复密钥。",
@@ -6341,13 +6342,18 @@
       "MODEL_PROVIDER_UNAVAILABLE": "原模型配置不可用，请恢复或启用该配置后重试。",
       "AI_DISABLED": "内置 AI 已关闭，请启用后再恢复。",
       "MODEL_CONFIGURATION_CHANGED": "原模型的地址、类型或名称已改变，请先核对模型配置。",
-      "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "无法核验模型配置，未保存 AI 恢复记录。"
+      "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "无法核验模型配置，未保存 AI 恢复记录。",
+      "TASK_RECOVERY_NOT_AVAILABLE": "任务已完成，可查看或移除记录，无需继续执行。"
     },
     "aiHint": "保留已使用的模型轮次；恢复后先重新授权，原工具调用不会自动重放。",
     "aiQuestion": "保存时的问题",
     "aiConversation": "查看已保存的 AI 对话",
     "aiUser": "你",
     "aiAssistant": "AI 助手",
-    "aiRestored": "已恢复原对话与模型预算。请核对当前服务器和任务范围后重新授权。"
+    "aiRestored": "已恢复原对话与模型预算。请核对当前服务器和任务范围后重新授权。",
+    "parentWorkflows": "父任务中的流程",
+    "parentHint": "保留原版本、已完成结果和步骤位置。重新授权后完成剩余步骤，再将结果交回原任务。",
+    "parentRestored": "此流程从执行检查点恢复，已完成步骤和结果已保留。",
+    "parentScope": "以上程序范围也用于流程结束后的父任务。原流程的确切命令仍按本次计划审核，旧授权不会恢复。"
   }
 }

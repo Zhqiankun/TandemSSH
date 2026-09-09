@@ -1,3 +1,7 @@
+import {
+  workflowStateSchema,
+  workflowReferenceSchema,
+} from "./workflow-state.js";
 import { aiRecoverySchema } from "../../ai/tasks/recovery-state.js";
 import { z } from "zod";
 import { validateTaskPlan } from "../tasks/plan.js";
@@ -7,6 +11,9 @@ import type { TaskPlanStep } from "../../../types/task-plan.js";
 export const checkpointSchema = z
   .object({
     ai: aiRecoverySchema.optional(),
+    completed: z.boolean().optional(),
+    workflowState: workflowStateSchema.optional(),
+    workflowCwd: z.string().startsWith("/").max(4096).optional(),
     schemaVersion: z.literal(1),
     id: z.string().uuid(),
     userId: z.string().min(1).max(256),
@@ -26,15 +33,7 @@ export const checkpointSchema = z
       .max(100)
       .transform((steps) => validateTaskPlan(steps as TaskPlanStep[])),
     nextStep: z.number().int().nonnegative(),
-    workflow: z
-      .object({
-        id: z.string().min(1).max(256),
-        revision: z.number().int().positive(),
-        version: z.string().max(128),
-        shellState: z.enum(["explicit-cwd", "stateful-shell"]),
-      })
-      .strict()
-      .optional(),
+    workflow: workflowReferenceSchema.optional(),
     cwd: z.string().startsWith("/").max(4096).optional(),
     hasFailures: z.boolean(),
     resourceRecoveryRequired: z.boolean(),
@@ -65,7 +64,58 @@ export const checkpointSchema = z
           v.ai.view.goal === v.title &&
           v.ai.view.mode === v.mode
         : !v.ai),
-  );
+  )
+  .superRefine((v, ctx) => {
+    const w = v.workflowState;
+    if (!w) {
+      if (v.ai?.waitingWorkflow)
+        ctx.addIssue({ code: "custom", message: "WORKFLOW_RECOVERY_INVALID" });
+      return;
+    }
+    const fail = () =>
+      ctx.addIssue({ code: "custom", message: "WORKFLOW_RECOVERY_INVALID" });
+    const ids = new Set(w.runs.map((r) => r.summary.id)),
+      operations = new Map(v.operations.map((op) => [op.id, op]));
+    if (
+      ids.size !== w.runs.length ||
+      operations.size !== v.operations.length ||
+      w.initialPlan.steps.length
+    )
+      fail();
+    for (const r of w.runs) {
+      if (
+        r.summary.taskId !== v.id ||
+        r.summary.stepCount !== r.steps.length ||
+        r.summary.nextStep > r.steps.length ||
+        new Set(r.summary.operationIds).size !== r.summary.operationIds.length
+      )
+        fail();
+      for (const id of r.summary.operationIds)
+        if (operations.get(id)?.workflowRunId !== r.summary.id) fail();
+    }
+    for (const op of v.operations)
+      if (
+        op.workflowRunId &&
+        !w.runs.some(
+          (r) =>
+            r.summary.id === op.workflowRunId &&
+            r.summary.operationIds.includes(op.id),
+        )
+      )
+        fail();
+    const active = w.runs.find((r) => r.summary.id === w.activeRunId);
+    if (
+      w.activeRunId &&
+      (!active ||
+        JSON.stringify(active.steps) !== JSON.stringify(v.steps) ||
+        JSON.stringify(active.summary.workflow) !==
+          JSON.stringify(v.workflow) ||
+        active.summary.nextStep !== v.nextStep)
+    )
+      fail();
+    if (!w.activeRunId && v.steps.length) fail();
+    if (v.ai?.waitingWorkflow && !ids.has(v.ai.waitingWorkflow.id)) fail();
+  });
 export function readCheckpoint(raw: unknown): TaskExecutionCheckpoint {
   try {
     const cp = checkpointSchema.parse(raw);

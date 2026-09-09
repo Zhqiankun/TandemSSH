@@ -484,7 +484,7 @@ export class WorkflowLibrary {
     const run = this.ports.tasks.workflowRunSummary(actor, taskId, runId);
     let remaining = 12000;
     const operations = run.operationIds
-      .map((id) => this.ports.tasks.operation(actor, taskId, id))
+      .map((id) => this.ports.tasks.workflowOperation(actor, taskId, runId, id))
       .reverse()
       .map((op) => {
         const limit = Math.min(4000, remaining);

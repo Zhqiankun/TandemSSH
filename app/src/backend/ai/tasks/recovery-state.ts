@@ -22,6 +22,10 @@ const message = z
 export const aiRecoverySchema = z
   .object({
     schemaVersion: z.literal(1),
+    waitingWorkflow: z
+      .object({ id, callId: z.string().min(1).max(256).optional() })
+      .strict()
+      .optional(),
     providerIdentity: z.string().min(1).max(128),
     view: z
       .object({
@@ -87,6 +91,16 @@ export const aiRecoverySchema = z
       Buffer.byteLength(JSON.stringify(v.history)) > 256000
     )
       ctx.addIssue({ code: "custom", message: "AI_RECOVERY_LIMIT" });
+    if (
+      v.waitingWorkflow?.callId &&
+      !v.history.some((group) =>
+        group[0]?.toolCalls?.some(
+          (c) =>
+            c.id === v.waitingWorkflow!.callId && c.name === "run_workflow",
+        ),
+      )
+    )
+      ctx.addIssue({ code: "custom", message: "AI_RECOVERY_WORKFLOW_INVALID" });
     for (const group of v.history) {
       const calls = group[0]?.toolCalls ?? [],
         results = group.filter((m) => m.role === "tool");

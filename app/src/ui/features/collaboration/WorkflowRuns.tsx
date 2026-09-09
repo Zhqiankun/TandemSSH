@@ -18,6 +18,11 @@ export function WorkflowRuns({
               {t("tandem.collaboration.states." + run.state)}
             </span>
           </div>
+          {run.restoredFromTaskId && (
+            <p className="tandem-task-help">
+              {t("taskRecovery.parentRestored")}
+            </p>
+          )}
           <small>
             {t("tandem.workflow.runRevision", {
               version: run.workflow.version,

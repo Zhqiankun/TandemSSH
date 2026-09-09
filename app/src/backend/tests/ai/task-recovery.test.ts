@@ -1,3 +1,5 @@
+import { WorkflowLibrary } from "../../collaboration/workflows/library.js";
+import type { TaskAuthorization } from "../../../types/collaboration-task.js";
 import { afterEach, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -49,6 +51,7 @@ function fixture(
   stream: (r: ChatRequest, index: number) => AsyncIterable<ChatChunk>,
   invalidProvider = false,
   providerIdentity = "fixture-provider",
+  withWorkflows = false,
 ) {
   const store = new TaskRecoveryStore(s.root, s.keys),
     sessionId = randomUUID(),
@@ -104,7 +107,22 @@ function fixture(
       await store.save(c.userId, c, !finished);
     },
   });
+  let workflowData: string | undefined;
+  const workflows = withWorkflows
+    ? new WorkflowLibrary({
+        read: () => workflowData,
+        write: async (_u, text) => {
+          workflowData = text;
+        },
+        ownsHost: async () => true,
+        target: () => ({ hostId: 1, groups: [], control: control.snapshot() }),
+        policy: () => ({ revision: 1, sets: [] }),
+        tasks: runtime,
+        audit: async () => {},
+      })
+    : undefined;
   const coordinator = new AiTaskCoordinator({
+      workflows,
       tasks: runtime,
       validate: async () => {
         if (invalidProvider) throw Error("MODEL_PROVIDER_UNAVAILABLE");
@@ -130,11 +148,12 @@ function fixture(
       mode,
       maxTurns,
     });
-  const authorize = (id: string) =>
+  const authorize = (id: string, extra: Partial<TaskAuthorization> = {}) =>
     runtime.authorize(human, id, {
       ...control.snapshot(),
       shellReady: true,
       policyRevision: 1,
+      planRevision: runtime.get(human, id).planRevision,
       maxOperations: 10,
       durationMinutes: 10,
       allowReviewedPlan: false,
@@ -142,6 +161,7 @@ function fixture(
         { kind: "program", program: "pwd" },
         { kind: "program", program: "printf" },
       ],
+      ...extra,
     });
   const approve = async (id: string) => {
     const op = runtime.get(human, id).operations.at(-1)!;
@@ -160,6 +180,7 @@ function fixture(
   });
   return {
     store,
+    workflows,
     sessionId,
     requests,
     writes,
@@ -504,3 +525,152 @@ it("refuses to send saved conversation to a changed model endpoint under the sam
   expect(next.coordinator.list("owner")).toEqual([]);
   expect((await next.store.get("owner", saved.id))?.state).toBe("available");
 });
+
+it.each(["automatic", "collaborative"] as const)(
+  "returns restored %s child-workflow results to AI before another model call",
+  async (mode) => {
+    const s = await storage();
+    let workflowId = "";
+    const first = fixture(
+      s,
+      async function* (request, index) {
+        if (index === 1)
+          yield { type: "text", text: "先执行已保存流程，再完成父任务。" };
+        else if (index === 2)
+          yield call("preview_workflow", { workflowId, parameters: {} });
+        else {
+          const preview = JSON.parse(
+            request.messages
+              .filter(
+                (m) => m.role === "tool" && m.toolName === "preview_workflow",
+              )
+              .at(-1)!.content,
+          );
+          yield call("run_workflow", { previewId: preview.id });
+        }
+      },
+      false,
+      "fixture-provider",
+      true,
+    );
+    const definition = {
+      schemaVersion: 1 as const,
+      id: "child",
+      name: "子流程",
+      version: "1.0.0",
+      parameters: {},
+      defaults: { cwd: "/srv" },
+      steps: [
+        {
+          id: "one",
+          name: "首步",
+          action: { type: "command" as const, program: "pwd", args: [] },
+        },
+        {
+          id: "two",
+          name: "后续",
+          action: {
+            type: "script" as const,
+            shell: "sh" as const,
+            source: "printf remaining",
+          },
+        },
+      ],
+    };
+    workflowId = (
+      await first.workflows!.save("owner", { definition, allowedHostIds: [1] })
+    ).id;
+    const created = await first.start(mode);
+    await first.authorize(created.task.id);
+    if (mode === "collaborative") {
+      await vi.waitFor(() =>
+        expect(first.runtime.get(human, created.task.id).state).toBe(
+          "awaiting-approval",
+        ),
+      );
+      await first.approve(created.task.id);
+    }
+    await vi.waitFor(() =>
+      expect(first.runtime.get(human, created.task.id)).toMatchObject({
+        nextStep: 1,
+        state: "awaiting-approval",
+      }),
+    );
+    const old = first.runtime.get(human, created.task.id),
+      runId = old.activeWorkflowRunId!,
+      saved = await first.service.save(human, created.task.id),
+      record = await first.store.get("owner", saved.id);
+    expect(record?.checkpoint.ai?.waitingWorkflow).toMatchObject({ id: runId });
+    expect(record?.checkpoint.workflowState?.activeRunId).toBe(runId);
+    const next = fixture(
+        s,
+        async function* (request, index) {
+          if (index === 1) {
+            const returned = JSON.parse(
+              request.messages
+                .filter(
+                  (m) => m.role === "tool" && m.toolName === "run_workflow",
+                )
+                .at(-1)!.content,
+            );
+            expect(returned).toMatchObject({
+              id: runId,
+              state: "completed",
+              nextStep: 2,
+            });
+            expect(
+              returned.operations
+                .filter((op: { status: string }) => op.status === "succeeded")
+                .map((op: { program: string }) => op.program),
+            ).toEqual(["pwd", "sh"]);
+            yield call("run_command", {
+              program: "printf",
+              args: ["parent continues"],
+            });
+          } else yield call("finish_task", { summary: "父任务已继续并完成" });
+        },
+        false,
+        "fixture-provider",
+        true,
+      ),
+      rerun = vi.spyOn(next.workflows!, "run");
+    const task = await next.service.restore(human, saved.id, {
+        sessionId: next.sessionId,
+        reviewed: true,
+      }),
+      agent = next.coordinator.list("owner")[0];
+    expect(next.requests).toHaveLength(0);
+    await next.authorize(task.id, { allowReviewedPlan: true });
+    if (mode === "collaborative") {
+      await vi.waitFor(() =>
+        expect(next.runtime.get(human, task.id).state).toBe(
+          "awaiting-approval",
+        ),
+      );
+      expect(next.requests).toHaveLength(0);
+      await next.approve(task.id);
+      await vi.waitFor(() =>
+        expect(
+          next.runtime.get(human, task.id).operations.at(-1)?.action,
+        ).toMatchObject({ program: "printf" }),
+      );
+      await vi.waitFor(() =>
+        expect(next.runtime.get(human, task.id).state).toBe(
+          "awaiting-approval",
+        ),
+      );
+      expect(next.writes.filter((v) => v !== "context")).toEqual(["sh"]);
+      await next.approve(task.id);
+    }
+    await vi.waitFor(() =>
+      expect(next.coordinator.get("owner", agent.id).phase).toBe("completed"),
+    );
+    expect(next.writes.filter((v) => v !== "context")).toEqual([
+      "sh",
+      "printf",
+    ]);
+    expect(first.writes.filter((v) => v !== "context")).toEqual(["pwd"]);
+    expect(rerun).not.toHaveBeenCalled();
+    expect(next.coordinator.get("owner", agent.id).turns).toBe(5);
+  },
+);

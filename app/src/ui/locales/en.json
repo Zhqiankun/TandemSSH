@@ -6305,7 +6305,7 @@
     "done": "Completed",
     "pending": "Pending",
     "progress": "Step {{done}} / {{total}}",
-    "resources": "This record still contains parent-workflow or partial transfer progress that requires coordinator recovery.",
+    "resources": "This record still contains partial file or directory progress that needs dedicated recovery.",
     "external": "MCP tasks are claimed by the original client and still require fresh desktop authorization.",
     "reconcile": "Verify the remote outcome before choosing how to handle the unresolved step.",
     "retry": "I verified the outcome; retry this step.",
@@ -6319,7 +6319,8 @@
       "available": "Available",
       "claimed": "In use",
       "interrupted": "Previous run interrupted",
-      "consumed": "Claimed"
+      "consumed": "Claimed",
+      "completed": "Completed"
     },
     "errors": {
       "TASK_RECOVERY_BUSY": "The task is still settling or this record is in use. Retry shortly.",
@@ -6327,8 +6328,8 @@
       "TASK_RECOVERY_HOST_KEY_REQUIRED": "This connection has no verified SSH key for recovery.",
       "TASK_RECOVERY_REVIEW_REQUIRED": "Review the original plan and results first.",
       "TASK_RECOVERY_OWNER_MISMATCH": "The user or client does not match the original task.",
-      "TASK_RECOVERY_RESOURCES_REQUIRED": "Parent-workflow or partial transfer progress requires dedicated recovery. The task is paused.",
-      "TASK_RECOVERY_AGENT_ADAPTER_REQUIRED": "An active parent workflow requires its complete coordinator state.",
+      "TASK_RECOVERY_RESOURCES_REQUIRED": "Partial file or directory progress requires dedicated recovery. The task is paused.",
+      "TASK_RECOVERY_AGENT_ADAPTER_REQUIRED": "The task lacks complete AI coordinator state and cannot be restored from a task snapshot alone.",
       "TASK_RECOVERY_DECRYPT_FAILED": "Unable to decrypt or verify task progress.",
       "TASK_RECOVERY_ENCRYPTION_UNAVAILABLE": "System encryption is unavailable. Progress was not saved.",
       "TASK_RECOVERY_KEY_MISSING": "The system recovery key is unavailable.",
@@ -6341,13 +6342,18 @@
       "MODEL_PROVIDER_UNAVAILABLE": "The original model configuration is unavailable. Restore or enable it first.",
       "AI_DISABLED": "Built-in AI is disabled. Enable it before recovery.",
       "MODEL_CONFIGURATION_CHANGED": "The original model endpoint, type, or name changed. Review its configuration first.",
-      "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "The model configuration cannot be verified. AI recovery was not saved."
+      "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "The model configuration cannot be verified. AI recovery was not saved.",
+      "TASK_RECOVERY_NOT_AVAILABLE": "The task is complete. View or remove its record; execution does not need to resume."
     },
     "aiHint": "Used model turns are retained. Authorize again after recovery; old tool calls are not replayed.",
     "aiQuestion": "Saved question",
     "aiConversation": "View saved AI conversation",
     "aiUser": "You",
     "aiAssistant": "AI assistant",
-    "aiRestored": "Conversation and model budget restored. Review the current server and task scope before authorizing again."
+    "aiRestored": "Conversation and model budget restored. Review the current server and task scope before authorizing again.",
+    "parentWorkflows": "Workflows within this task",
+    "parentHint": "The original version, results and step position are retained. Authorize again to finish remaining steps and return results to the parent task.",
+    "parentRestored": "This workflow was restored with completed steps and results retained.",
+    "parentScope": "These program scopes also apply after the workflow returns to its parent task. The workflow commands are reviewed as this plan; old authorization is not restored."
   }
 }

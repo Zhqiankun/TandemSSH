@@ -632,6 +632,24 @@ export class TaskRuntime {
         : {}),
     });
   }
+  workflowOperation(
+    actor: TaskActor,
+    taskId: string,
+    runId: string,
+    operationId: string,
+  ): TaskOperation {
+    const task = this.owned(actor, taskId),
+      run = task.workflowRuns.get(runId);
+    if (!run?.summary.operationIds.includes(operationId))
+      throw Error("OPERATION_NOT_FOUND");
+    if (task.operationIds.includes(operationId))
+      return this.projectOperation(task, operationId);
+    const historical = task.recoveryHistory?.find(
+      (op) => op.id === operationId && op.workflowRunId === runId,
+    );
+    if (!historical) throw Error("OPERATION_NOT_FOUND");
+    return redact(structuredClone(historical)) as TaskOperation;
+  }
   workflowRunSummary(actor: TaskActor, taskId: string, runId: string) {
     return this.workflowSummary(this.owned(actor, taskId), runId);
   }
@@ -849,7 +867,11 @@ export class TaskRuntime {
       task,
       task.steps,
       fileBindings,
-      task.view.nextStep + (prior && scope.reconciliation === "skip" ? 1 : 0),
+      task.view.nextStep +
+        ((prior || task.recoveryDecisionRequired) &&
+        scope.reconciliation === "skip"
+          ? 1
+          : 0),
     );
     await this.ports.audit(actor.userId).record("task.authorization", {
       taskId,
@@ -920,12 +942,14 @@ export class TaskRuntime {
       task.attempts.clear();
       task.view.error = undefined;
       if (task.recoveryDecisionRequired) {
-        for (const op of task.recoveryHistory ?? [])
-          if (["unknown", "failed"].includes(op.status) && !op.reviewed)
-            op.reviewed = { decision: scope.reconciliation!, at: Date.now() };
+        this.recordRecoveryReview(task, scope.reconciliation!);
         if (scope.reconciliation === "skip") {
           if (task.view.nextStep < task.steps.length) task.view.nextStep++;
           task.view.hasFailures = true;
+          if (task.activeWorkflowRunId)
+            task.workflowRuns.get(
+              task.activeWorkflowRunId,
+            )!.summary.hasFailures = true;
         }
         task.recoveryDecisionRequired = false;
       }
@@ -970,6 +994,7 @@ export class TaskRuntime {
               args: step.args,
             }))
         : (scope.matches ?? []);
+      if (task.activeWorkflowRunId) matches.push(...(scope.matches ?? []));
       if (
         JSON.stringify([...task.session.groups()].sort()) !==
         JSON.stringify(groups)
@@ -1018,9 +1043,8 @@ export class TaskRuntime {
     if (task.recoverySaving || task.recoveryRestoring)
       throw Error("TASK_RECOVERY_BUSY");
     if (
-      (task.view.source === "assistant" &&
-        (!task.recoveryAgent || actor.kind !== "agent")) ||
-      task.activeWorkflowRunId
+      task.view.source === "assistant" &&
+      (!task.recoveryAgent || actor.kind !== "agent")
     )
       throw Error("TASK_RECOVERY_AGENT_ADAPTER_REQUIRED");
     task.recoverySaving = true;
@@ -1058,10 +1082,7 @@ export class TaskRuntime {
   /** Captures trusted runtime state; no external transport may supply a snapshot. */
   recoverySnapshot(actor: TaskActor, taskId: string): TaskExecutionCheckpoint {
     const task = this.owned(actor, taskId);
-    if (
-      (task.view.source === "assistant" && !task.recoveryAgent) ||
-      task.activeWorkflowRunId
-    )
+    if (task.view.source === "assistant" && !task.recoveryAgent)
       throw Error("TASK_RECOVERY_AGENT_ADAPTER_REQUIRED");
     if (
       task.pumping !== undefined ||
@@ -1120,8 +1141,30 @@ export class TaskRuntime {
         !current.directoryCursor.done) ||
       !!operation?.fileResult?.temporaryPath ||
       !!operation?.fileResult?.transfer?.cleanupRequired;
+    const steps = task.steps.map(
+      ({ operationId: _id, directoryCursor: _cursor, ...step }) =>
+        structuredClone(step),
+    );
+    const workflowState = task.workflowRuns.size
+      ? {
+          initialPlan: structuredClone(task.initialPlan),
+          activeRunId: task.activeWorkflowRunId,
+          runs: [...task.workflowRuns].map(([id, run]) => ({
+            summary: {
+              ...this.workflowSummary(task, id),
+              ...(id === task.activeWorkflowRunId ? { nextStep } : {}),
+            },
+            steps: structuredClone(run.plan ?? run.commands),
+          })),
+        }
+      : undefined;
     return {
       schemaVersion: 1,
+      completed: ["completed", "completed-with-errors"].includes(
+        task.view.state,
+      ),
+      workflowState,
+      workflowCwd: task.workflowCwd,
       ai: task.recoveryAgent?.(),
       id: task.view.id,
       userId: task.userId,
@@ -1134,17 +1177,13 @@ export class TaskRuntime {
       source: task.view.source,
       clientId: task.clientId,
       mode: task.view.mode,
-      steps: task.steps.map(
-        ({ operationId: _id, directoryCursor: _cursor, ...step }) =>
-          structuredClone(step),
-      ),
+      steps,
       nextStep,
       workflow: task.view.workflow,
-      cwd: task.workflowCwd ?? task.view.cwd,
+      cwd: task.view.cwd,
       hasFailures: !!task.view.hasFailures,
       resourceRecoveryRequired:
         resourceRecoveryRequired ||
-        !!task.activeWorkflowRunId ||
         !!task.directoryReservation ||
         operations.some(
           (op) =>
@@ -1203,6 +1242,18 @@ export class TaskRuntime {
       );
     }
   }
+  private recordRecoveryReview(task: RecordTask, decision: "retry" | "skip") {
+    const op = [...(task.recoveryHistory ?? [])]
+      .reverse()
+      .find(
+        (op) =>
+          !op.reviewed &&
+          ["unknown", "failed", "running"].includes(op.status) &&
+          (!task.activeWorkflowRunId ||
+            op.workflowRunId === task.activeWorkflowRunId),
+      );
+    if (op) op.reviewed = { decision, at: Date.now() };
+  }
   async restoreRecovery(
     actor: TaskActor,
     checkpoint: TaskExecutionCheckpoint,
@@ -1230,6 +1281,7 @@ export class TaskRuntime {
       session.acceptedHostKey !== checkpoint.host.peer
     )
       throw Error("TASK_RECOVERY_HOST_CHANGED");
+    if (checkpoint.completed) throw Error("TASK_RECOVERY_NOT_AVAILABLE");
     if (checkpoint.resourceRecoveryRequired)
       throw Error("TASK_RECOVERY_RESOURCES_REQUIRED");
     if (
@@ -1250,8 +1302,10 @@ export class TaskRuntime {
       requestId: input.requestId,
       title: checkpoint.title,
       mode: checkpoint.mode,
-      plan: steps,
-      workflow: checkpoint.workflow,
+      plan: checkpoint.workflowState?.initialPlan.steps ?? steps,
+      workflow: checkpoint.workflowState
+        ? checkpoint.workflowState.initialPlan.workflow
+        : checkpoint.workflow,
     });
     const task = this.owned(actor, created.id);
     task.recoveryRestoring = true;
@@ -1267,13 +1321,51 @@ export class TaskRuntime {
       (checkpoint.reconciliationRequired && input.reconciliation === "skip");
     task.recoveryDecisionRequired =
       checkpoint.reconciliationRequired && !input.reconciliation;
-    task.workflowCwd = checkpoint.cwd;
+    task.workflowCwd =
+      checkpoint.workflowCwd ??
+      (checkpoint.workflowState ? undefined : checkpoint.cwd);
     task.view.cwd = checkpoint.cwd;
     task.view.recovery = {
       recordId: checkpoint.id,
       completedSteps: checkpoint.nextStep,
     };
     task.recoveryHistory = structuredClone(checkpoint.operations);
+    if (checkpoint.workflowState) {
+      for (const saved of checkpoint.workflowState.runs) {
+        const summary = structuredClone(saved.summary);
+        summary.taskId = task.view.id;
+        summary.restoredFromTaskId = checkpoint.id;
+        task.workflowRuns.set(summary.id, {
+          summary,
+          commands: saved.steps.filter(
+            (step): step is TaskCommand => !isTaskFileStep(step),
+          ),
+          plan: structuredClone(saved.steps),
+          fileBindings: {},
+        });
+      }
+      task.activeWorkflowRunId = checkpoint.workflowState.activeRunId;
+      if (task.activeWorkflowRunId) {
+        const active = task.workflowRuns.get(task.activeWorkflowRunId)!;
+        task.steps = structuredClone(steps);
+        task.view.commands = steps.filter(
+          (step): step is TaskCommand => !isTaskFileStep(step),
+        );
+        task.view.plan = steps.some(isTaskFileStep)
+          ? structuredClone(steps)
+          : undefined;
+        task.view.stepCount = steps.length;
+        task.view.workflow = structuredClone(active.summary.workflow);
+        task.view.planRevision = 1;
+        if (
+          checkpoint.reconciliationRequired &&
+          input.reconciliation === "skip"
+        )
+          active.summary.hasFailures = true;
+      }
+    }
+    if (checkpoint.reconciliationRequired && input.reconciliation)
+      this.recordRecoveryReview(task, input.reconciliation);
     try {
       await this.ports.audit(actor.userId).record("task.recovered", {
         taskId: task.view.id,
@@ -1491,6 +1583,7 @@ export class TaskRuntime {
           run.summary.state = run.summary.hasFailures
             ? "completed-with-errors"
             : "completed";
+          run.summary.error = undefined;
           run.summary.nextStep = task.steps.length;
           run.summary.endedAt = Date.now();
           task.activeWorkflowRunId = undefined;
@@ -1506,6 +1599,8 @@ export class TaskRuntime {
           task.view.workflow = task.initialPlan.workflow;
           task.view.planRevision = (task.view.planRevision ?? 0) + 1;
           task.view.state = "ready";
+          await this.persistRecovery(task);
+          this.progress(task);
         } else {
           task.view.state = task.view.hasFailures
             ? "completed-with-errors"
@@ -1928,8 +2023,10 @@ export class TaskRuntime {
     viewOptions?: TaskViewOptions,
   ): Promise<TaskView> {
     const task = this.owned(actor, taskId);
-    if (["completed", "completed-with-errors"].includes(task.view.state))
+    if (["completed", "completed-with-errors"].includes(task.view.state)) {
+      await this.persistRecovery(task);
       return this.view(task, viewOptions);
+    }
     if (
       task.directoryReservation ||
       task.steps.length ||
@@ -1961,6 +2058,7 @@ export class TaskRuntime {
       ? "completed-with-errors"
       : "completed";
     this.returnControl(task);
+    await this.persistRecovery(task);
     return this.view(task, viewOptions);
   }
   async archive(

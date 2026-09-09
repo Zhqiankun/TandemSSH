@@ -34,6 +34,7 @@ export interface WorkflowReference {
   shellState: "explicit-cwd" | "stateful-shell";
 }
 export interface TaskWorkflowRun {
+  restoredFromTaskId?: string;
   operationCount?: number;
   id: string;
   taskId: string;
