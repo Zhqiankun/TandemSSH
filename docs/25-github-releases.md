@@ -80,3 +80,7 @@ CI 和 Release 均增加实际安装/启动/卸载门槛，报告与中文窗口
 安装证据 artifact 10042976204 的 ZIP SHA-256 为 67c21cd9187d6eb72f6414ab6fde38226e743d4a8ab3d3b25dc45a4fc282a886，已下载校验至 .cache/installer-passed-evidence.zip。installation.json 中 installed/native/desktop/uninstalled/dataPreserved 均为 true，failures 为空；实际安装版 desktop.json 为 installed=true，更新来源为本仓库，中文截图已查看。用户数据检查覆盖本次初始化的加密数据库与验证文件，不等于未保存草稿或进行中任务的跨版本恢复已验收。真实跨版本在线升级、正式 Release 和完整产品验收仍在后续范围。
 
 桌面目录验收中观察到 electron-updater 默认日志会输出未发布版本请求的原始 HTTP 响应头。现关闭库的原始 logger，版本状态和错误仍经 UpdateService 的脱敏错误码反馈；更新专项 6 项回归通过。
+
+## 真实更新库下载验证
+
+第 46 阶段已补充真实 NsisUpdater / GenericProvider / 摘要流的回环 HTTP 集成测试，版本比较、显式下载、逐字节校验、损坏拒绝、取消后重试及不自动安装共与既有更新服务组合 9 项通过。测试只改写测试进程的 HTTP 传输，产品固定 GitHub 更新源不变。真实两个版本的安装/升级和已发布渠道验收仍未完成，见 [在线更新验收](46-online-update-acceptance.md)。
