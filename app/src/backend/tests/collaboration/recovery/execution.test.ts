@@ -88,6 +88,7 @@ function fixture(
         }),
       },
     };
+  const recoveryWrites = new Set<Promise<unknown>>();
   const runtime = new TaskRuntime({
       getSession: (s) => (s === id ? session : null),
       policy: async () => ({
@@ -123,7 +124,13 @@ function fixture(
         },
       }),
       persistRecovery: async (cp, finished) => {
-        await store.save(cp.userId, cp, !finished);
+        const write = store.save(cp.userId, cp, !finished);
+        recoveryWrites.add(write);
+        try {
+          await write;
+        } finally {
+          recoveryWrites.delete(write);
+        }
       },
     }),
     service = new TaskRecoveryService(runtime, store);
@@ -156,6 +163,14 @@ function fixture(
     const op = runtime.get(user, taskId).operations.at(-1)!;
     await runtime.approve(user, taskId, op.id, op.digest, 1);
   };
+  cleanup.push(async () => {
+    control.close();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    while (recoveryWrites.size) {
+      await Promise.allSettled([...recoveryWrites]);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  });
   return { id, writes, control, runtime, service, authorize, create, approve };
 }
 async function savedAfterFirst(
