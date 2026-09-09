@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   directoryAutomation,
   fileAutomation,
@@ -19,6 +20,20 @@ import { redactString } from "../../privacy/redaction.js";
 import { onAiAccessChanged } from "../access-events.js";
 import { AiTaskCoordinator } from "./runner.js";
 import { workflows } from "../../collaboration/workflows/production.js";
+function modelIdentity(
+  provider: { providerType: string; baseUrl?: string | null },
+  model: string,
+) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        provider.providerType,
+        provider.baseUrl?.trim().replace(/\/+$/, "") ?? null,
+        model,
+      ]),
+    )
+    .digest("hex");
+}
 async function validate(userId: string, providerId: number, model: string) {
   if (!model.trim() || model.length > 256) throw new Error("MODEL_REQUIRED");
   if (!(await resolveAiAccess(userId)).enabled) throw new Error("AI_DISABLED");
@@ -32,7 +47,7 @@ async function validate(userId: string, providerId: number, model: string) {
     !isAiProviderType(provider.providerType)
   )
     throw new Error("MODEL_PROVIDER_UNAVAILABLE");
-  return { label: provider.label };
+  return { label: provider.label, identity: modelIdentity(provider, model) };
 }
 async function* stream(
   userId: string,
@@ -50,6 +65,11 @@ async function* stream(
     !provider.enabled
   )
     throw new Error("MODEL_PROVIDER_UNAVAILABLE");
+  if (
+    request.expectedProviderIdentity &&
+    modelIdentity(provider, request.model) !== request.expectedProviderIdentity
+  )
+    throw Error("MODEL_CONFIGURATION_CHANGED");
   if (request.signal?.aborted) throw new Error("AGENT_CONTEXT_CHANGED");
   const config = {
     providerType: provider.providerType,

@@ -1,3 +1,7 @@
+import type { AiExecutionCheckpoint } from "../../../types/ai-task-recovery.js";
+import type { TaskExecutionCheckpoint } from "../../../types/task-recovery.js";
+import type { RecoveredAgentTask } from "../../collaboration/recovery/agent-port.js";
+import { readAiRecovery } from "./recovery-state.js";
 import type { DirectoryAutomation } from "../../collaboration/files/directories.js";
 import { aiDirectorySchemas, aiDirectoryTools } from "./directory-tools.js";
 import type { TransferAutomation } from "../../collaboration/files/transfers.js";
@@ -84,7 +88,7 @@ export interface AiTaskPorts {
     userId: string,
     providerId: number,
     model: string,
-  ): Promise<{ label: string }>;
+  ): Promise<{ label: string; identity?: string }>;
   stream(
     userId: string,
     providerId: number,
@@ -93,6 +97,25 @@ export interface AiTaskPorts {
   audit(userId: string, type: string, data: unknown): Promise<void>;
 }
 interface Run {
+  providerIdentity?: string;
+  saving?: boolean;
+  mutating?: boolean;
+  recoveryEnabled?: boolean;
+  pendingGroup?: ChatMessage[];
+  activeCallId?: string;
+  pendingQuestion?: { id: string; text: string; answer?: string };
+  recoveryContext?: {
+    previousTaskId: string;
+    reconciliation?: string;
+    operations: Array<{
+      id: string;
+      status: string;
+      action: string;
+      output?: string;
+      error?: string;
+    }>;
+  };
+
   creationKey: string;
   finished?: boolean;
   view: AiTaskView;
@@ -101,6 +124,7 @@ interface Run {
   history: ChatMessage[][];
   abort: AbortController;
   modelAbort?: AbortController;
+  modelPending?: boolean;
   answer?: string;
   controlChanged: boolean;
   closed?: () => void;
@@ -179,6 +203,7 @@ export class AiTaskCoordinator {
     });
     const run: Run = {
       creationKey: JSON.stringify([userId, input.requestId]),
+      providerIdentity: provider.identity,
       userId,
       actor,
       history: [],
@@ -219,18 +244,262 @@ export class AiTaskCoordinator {
       throw new Error("AI_DISABLED");
     }
     this.runs.set(id, run);
-    run.closed = this.ports.tasks.observeControl(actor, task.id, () => {
-      const state = this.ports.tasks.state(actor, task.id);
-      if (terminal(state.state) || state.control.closed) {
-        run.abort.abort();
-        run.modelAbort?.abort();
-      } else if (state.state.startsWith("paused")) {
-        run.controlChanged = true;
-        run.modelAbort?.abort();
-      }
-    });
+    this.bindRecovery(run);
     void this.work(run);
     return { task, run: this.view(run) };
+  }
+  private bindRecovery(run: Run) {
+    this.ports.tasks.bindRecoveryAgent(run.actor, run.view.taskId, () =>
+      this.captureRecovery(run),
+    );
+    run.closed = this.ports.tasks.observeControl(
+      run.actor,
+      run.view.taskId,
+      () => {
+        const state = this.ports.tasks.state(run.actor, run.view.taskId);
+        if (terminal(state.state) || state.control.closed) {
+          run.abort.abort();
+          run.modelAbort?.abort();
+        } else if (state.state.startsWith("paused")) {
+          run.controlChanged = true;
+          run.modelAbort?.abort();
+        }
+      },
+    );
+  }
+  private completePendingGroup(run: Run): ChatMessage[] {
+    const group = structuredClone(run.pendingGroup ?? []);
+    for (const call of group[0]?.toolCalls ?? [])
+      if (!group.some((m) => m.role === "tool" && m.toolCallId === call.id))
+        group.push({
+          role: "tool",
+          toolCallId: call.id,
+          toolName: call.name,
+          content: JSON.stringify({
+            status:
+              run.activeCallId === call.id && call.name !== "ask_user"
+                ? "unknown"
+                : "not-executed",
+            reason:
+              call.name === "ask_user" && run.pendingQuestion
+                ? "QUESTION_PRESERVED"
+                : "AI_RECOVERY_INTERRUPTED",
+          }),
+        });
+    return group;
+  }
+  private captureRecovery(run: Run): AiExecutionCheckpoint {
+    const view = structuredClone(run.view);
+    view.messages = view.messages.map((m) => ({
+      ...m,
+      status: m.status === "streaming" ? "interrupted" : m.status,
+    }));
+    if (view.messages.length > 80)
+      view.messages.splice(1, view.messages.length - 80);
+    const question = run.pendingQuestion
+      ? structuredClone(run.pendingQuestion)
+      : run.view.question
+        ? { ...run.view.question, answer: run.answer }
+        : undefined;
+    if (question)
+      view.question =
+        question.answer === undefined
+          ? { id: question.id, text: question.text }
+          : undefined;
+    if (!run.providerIdentity)
+      throw Error("AI_RECOVERY_MODEL_IDENTITY_REQUIRED");
+    return readAiRecovery({
+      schemaVersion: 1,
+      providerIdentity: run.providerIdentity,
+      view,
+      history: [
+        ...structuredClone(run.history),
+        ...(run.pendingGroup ? [this.completePendingGroup(run)] : []),
+      ],
+      question,
+      interruptedModel: !!run.modelAbort || !!run.modelPending,
+    });
+  }
+  private async persistRecovery(run: Run, checkpoint?: AiExecutionCheckpoint) {
+    if (run.recoveryEnabled)
+      await this.ports.tasks.persistRecoveryState(
+        run.actor,
+        run.view.taskId,
+        checkpoint ?? this.captureRecovery(run),
+      );
+  }
+  async saveRecovery(
+    userId: string,
+    taskId: string,
+    persist: (checkpoint: TaskExecutionCheckpoint) => Promise<void>,
+  ) {
+    const run = [...this.runs.values()].find(
+      (r) => r.userId === userId && r.view.taskId === taskId,
+    );
+    if (!run) throw Error("AI_TASK_NOT_FOUND");
+    if (run.saving || run.mutating) throw Error("AI_RECOVERY_BUSY");
+    if (this.ports.tasks.state(run.actor, taskId).activeWorkflowRunId)
+      throw Error("TASK_RECOVERY_AGENT_ADAPTER_REQUIRED");
+    run.saving = true;
+    if (run.view.question)
+      run.pendingQuestion = { ...run.view.question, answer: run.answer };
+    run.modelAbort?.abort();
+    try {
+      return await this.ports.tasks.saveRecovery(
+        run.actor,
+        taskId,
+        async (checkpoint) => {
+          await persist(checkpoint);
+          run.recoveryEnabled = false;
+        },
+      );
+    } finally {
+      run.saving = false;
+      if (!run.abort.signal.aborted && run.pendingQuestion)
+        run.view.question =
+          run.pendingQuestion.answer === undefined
+            ? {
+                id: run.pendingQuestion.id,
+                text: run.pendingQuestion.text,
+              }
+            : undefined;
+    }
+  }
+  async prepareRecovery(
+    userId: string,
+    checkpoint: TaskExecutionCheckpoint,
+    input: {
+      sessionId: string;
+      requestId: string;
+      reconciliation?: "retry" | "skip";
+    },
+  ): Promise<RecoveredAgentTask> {
+    if (this.globalDisabled || this.disabledUsers.has(userId))
+      throw Error("AI_DISABLED");
+    if (checkpoint.userId !== userId || checkpoint.source !== "assistant")
+      throw Error("TASK_RECOVERY_OWNER_MISMATCH");
+    if (this.runs.size >= 64) throw Error("AI_TASK_LIMIT");
+    const saved = readAiRecovery(checkpoint.ai),
+      provider = await this.ports.validate(
+        userId,
+        saved.view.providerId,
+        saved.view.model,
+      ),
+      id = randomUUID(),
+      actor: TaskActor = { kind: "agent", userId, agentRunId: id };
+    if (this.globalDisabled || this.disabledUsers.has(userId))
+      throw Error("AI_DISABLED");
+    if (provider.identity !== saved.providerIdentity)
+      throw Error("MODEL_CONFIGURATION_CHANGED");
+    const task = await this.ports.tasks.restoreRecovery(
+        actor,
+        checkpoint,
+        input,
+      ),
+      question = saved.question
+        ? { ...saved.question, id: randomUUID() }
+        : undefined;
+    const run: Run = {
+      creationKey: JSON.stringify([userId, input.requestId]),
+      providerIdentity: provider.identity,
+      userId,
+      actor,
+      history: structuredClone(saved.history),
+      abort: new AbortController(),
+      controlChanged: true,
+      pendingQuestion: question,
+      answer: question?.answer,
+      recoveryContext: {
+        previousTaskId: checkpoint.id,
+        reconciliation: input.reconciliation,
+        operations: checkpoint.operations.slice(-20).map((op) => ({
+          id: op.id,
+          status: op.status,
+          action: op.action.type,
+          output: op.output?.slice(-1000),
+          error: op.error,
+        })),
+      },
+      view: {
+        ...structuredClone(saved.view),
+        id,
+        taskId: task.id,
+        sessionId: task.sessionId,
+        providerLabel: provider.label,
+        phase: "awaiting-authorization",
+        question:
+          question && question.answer === undefined
+            ? { id: question.id, text: question.text }
+            : undefined,
+        error: undefined,
+        recoveredFrom: { runId: saved.view.id, taskId: checkpoint.id },
+      },
+    };
+    this.runs.set(id, run);
+    this.bindRecovery(run);
+    let active = false;
+    return {
+      task,
+      activate: () => {
+        if (active) return;
+        active = true;
+        run.recoveryEnabled = true;
+        void this.work(run, true);
+      },
+      cancel: () => {
+        run.abort.abort();
+        run.modelAbort?.abort();
+        run.closed?.();
+        run.closed = undefined;
+        this.ports.tasks.cancel(actor, task.id);
+        run.finished = true;
+        run.view.phase = "cancelled";
+      },
+    };
+  }
+  private async answerAfterRecovery(
+    run: Run,
+    control: { generation: number; controlEpoch: number },
+  ) {
+    const question = run.pendingQuestion;
+    if (!question) return;
+    run.view.question = { id: question.id, text: question.text };
+    run.view.phase = "awaiting-answer";
+    while (run.answer === undefined) {
+      if (
+        run.saving ||
+        !sameControl(
+          control,
+          this.ports.tasks.state(run.actor, run.view.taskId).control,
+        )
+      )
+        throw Error("AGENT_CONTEXT_CHANGED");
+      const state = this.ports.tasks.state(run.actor, run.view.taskId, false);
+      if (
+        state.authorization?.expiresAt &&
+        Date.now() >= state.authorization.expiresAt
+      )
+        this.ports.tasks.suspend(
+          run.actor,
+          run.view.taskId,
+          "TASK_AUTHORIZATION_EXPIRED",
+        );
+      await this.tick(run);
+    }
+    run.history.push([
+      {
+        role: "user",
+        content:
+          "恢复前的问题：" +
+          question.text +
+          "\n用户回答：" +
+          redactString(run.answer),
+      },
+    ]);
+    run.pendingQuestion = undefined;
+    run.view.question = undefined;
+    run.answer = undefined;
+    await this.persistRecovery(run);
   }
   assertArchiveReady(userId: string, taskId: string) {
     if (
@@ -285,7 +554,7 @@ export class AiTaskCoordinator {
     id: string,
     questionId: string,
     answer: string,
-  ): AiTaskView {
+  ): AiTaskView | Promise<AiTaskView> {
     const run = this.owned(userId, id);
     if (
       run.view.question?.id !== questionId ||
@@ -293,7 +562,13 @@ export class AiTaskCoordinator {
       run.abort.signal.aborted
     )
       throw new Error("STALE_QUESTION");
+    if (run.saving || run.mutating) throw Error("AI_RECOVERY_BUSY");
+    if (run.recoveryEnabled) return this.persistAnswer(run, answer);
     run.answer = answer;
+    if (run.pendingQuestion) {
+      run.pendingQuestion.answer = answer;
+      run.view.question = undefined;
+    }
     run.view.messages.push({
       id: randomUUID(),
       role: "user",
@@ -301,6 +576,37 @@ export class AiTaskCoordinator {
       status: "complete",
     });
     return this.view(run);
+  }
+  private async persistAnswer(run: Run, answer: string) {
+    run.mutating = true;
+    try {
+      const checkpoint = this.captureRecovery(run),
+        message = {
+          id: randomUUID(),
+          role: "user" as const,
+          content: answer,
+          status: "complete" as const,
+        };
+      if (!checkpoint.question) throw Error("STALE_QUESTION");
+      checkpoint.question.answer = answer;
+      checkpoint.view.messages.push(message);
+      if (checkpoint.view.messages.length > 80)
+        checkpoint.view.messages.splice(
+          1,
+          checkpoint.view.messages.length - 80,
+        );
+      await this.persistRecovery(run, checkpoint);
+      if (run.abort.signal.aborted) throw Error("AGENT_CANCELLED");
+      run.answer = answer;
+      if (run.pendingQuestion) {
+        run.pendingQuestion.answer = answer;
+        run.view.question = undefined;
+      }
+      run.view.messages = checkpoint.view.messages;
+      return this.view(run);
+    } finally {
+      run.mutating = false;
+    }
   }
   stop(userId: string, id: string): AiTaskView {
     const run = this.owned(userId, id);
@@ -322,7 +628,11 @@ export class AiTaskCoordinator {
       if ((!userId || run.userId === userId) && !terminal(run.view.phase))
         this.stop(run.userId, run.view.id);
   }
-  extendBudget(userId: string, id: string, maxTurns: number): AiTaskView {
+  extendBudget(
+    userId: string,
+    id: string,
+    maxTurns: number,
+  ): AiTaskView | Promise<AiTaskView> {
     const run = this.owned(userId, id);
     if (
       !Number.isInteger(maxTurns) ||
@@ -331,8 +641,23 @@ export class AiTaskCoordinator {
       terminal(run.view.phase)
     )
       throw new Error("INVALID_MODEL_BUDGET");
+    if (run.saving || run.mutating) throw Error("AI_RECOVERY_BUSY");
+    if (run.recoveryEnabled) return this.persistBudget(run, maxTurns);
     run.view.maxTurns = maxTurns;
     return this.view(run);
+  }
+  private async persistBudget(run: Run, maxTurns: number) {
+    run.mutating = true;
+    try {
+      const checkpoint = this.captureRecovery(run);
+      checkpoint.view.maxTurns = maxTurns;
+      await this.persistRecovery(run, checkpoint);
+      if (run.abort.signal.aborted) throw Error("AGENT_CANCELLED");
+      run.view.maxTurns = maxTurns;
+      return this.view(run);
+    } finally {
+      run.mutating = false;
+    }
   }
   private owned(userId: string, id: string): Run {
     const run = this.runs.get(id);
@@ -358,6 +683,10 @@ export class AiTaskCoordinator {
     for (;;) {
       if (run.abort.signal.aborted) throw new Error("AGENT_CANCELLED");
       const state = this.ports.tasks.state(run.actor, run.view.taskId, false);
+      if (run.saving) {
+        await this.tick(run);
+        continue;
+      }
       if (state.state === "ready" && !state.activeWorkflowRunId) {
         if (
           state.authorization?.expiresAt &&
@@ -399,9 +728,20 @@ export class AiTaskCoordinator {
     planning: boolean,
     expected?: { generation: number; controlEpoch: number },
   ) {
+    if (run.saving) throw Error("AGENT_CONTEXT_CHANGED");
     if (run.view.turns >= run.view.maxTurns)
       throw new Error("MODEL_BUDGET_EXCEEDED");
-    await this.ports.validate(run.userId, run.view.providerId, run.view.model);
+    const provider = await this.ports.validate(
+      run.userId,
+      run.view.providerId,
+      run.view.model,
+    );
+    if (
+      run.recoveryEnabled &&
+      (!provider.identity || provider.identity !== run.providerIdentity)
+    )
+      throw Error("MODEL_CONFIGURATION_CHANGED");
+    run.providerIdentity = provider.identity;
     if (run.abort.signal.aborted) throw new Error("AGENT_CANCELLED");
     const state = this.ports.tasks.state(run.actor, run.view.taskId);
     if (
@@ -413,7 +753,29 @@ export class AiTaskCoordinator {
     )
       throw new Error("AGENT_CONTEXT_CHANGED");
     run.view.phase = planning ? "planning" : "thinking";
+    const previousTurns = run.view.turns;
     run.view.turns++;
+    run.modelPending = true;
+    try {
+      await this.persistRecovery(run);
+    } catch (error) {
+      run.view.turns = previousTurns;
+      run.modelPending = false;
+      throw error;
+    }
+    if (
+      run.saving ||
+      run.abort.signal.aborted ||
+      (!planning &&
+        (!expected ||
+          !sameControl(
+            expected,
+            this.ports.tasks.state(run.actor, run.view.taskId).control,
+          )))
+    ) {
+      run.modelPending = false;
+      throw Error("AGENT_CONTEXT_CHANGED");
+    }
     const message = {
       id: randomUUID(),
       role: "assistant" as const,
@@ -437,6 +799,7 @@ export class AiTaskCoordinator {
           programs: state.authorization?.matches.map((match) => match.program),
           fileScopes: state.authorization?.fileScopes,
           controlChanged: run.controlChanged,
+          recovery: run.recoveryContext,
         });
     try {
       for await (const chunk of this.ports.stream(
@@ -444,6 +807,7 @@ export class AiTaskCoordinator {
         run.view.providerId,
         {
           model: run.view.model,
+          expectedProviderIdentity: run.providerIdentity,
           system,
           messages: this.messages(run),
           tools: planning
@@ -478,6 +842,7 @@ export class AiTaskCoordinator {
       controller.abort();
       run.abort.signal.removeEventListener("abort", abort);
       if (run.modelAbort === controller) run.modelAbort = undefined;
+      run.modelPending = false;
     }
   }
   private async result(run: Run, operationId: string) {
@@ -516,6 +881,8 @@ export class AiTaskCoordinator {
     call: ToolCall,
     control: { generation: number; controlEpoch: number },
   ): Promise<unknown> {
+    if (run.saving || run.abort.signal.aborted)
+      throw Error("AGENT_CONTEXT_CHANGED");
     if (
       !sameControl(
         control,
@@ -801,6 +1168,7 @@ export class AiTaskCoordinator {
       run.view.question = { id: randomUUID(), text: parsed.data.question };
       run.view.phase = "awaiting-answer";
       run.answer = undefined;
+      await this.persistRecovery(run);
       try {
         while (run.answer === undefined) {
           const state = this.ports.tasks.state(run.actor, run.view.taskId);
@@ -848,11 +1216,13 @@ export class AiTaskCoordinator {
     }
     return { error: "TOOL_NOT_AVAILABLE" };
   }
-  private async work(run: Run) {
+  private async work(run: Run, recovered = false) {
     try {
       try {
-        const plan = await this.model(run, true);
-        run.history.push([{ role: "assistant", content: plan.text }]);
+        if (!recovered) {
+          const plan = await this.model(run, true);
+          run.history.push([{ role: "assistant", content: plan.text }]);
+        }
       } catch (error) {
         if (!run.abort.signal.aborted) {
           run.view.error = codeOf(error);
@@ -873,6 +1243,7 @@ export class AiTaskCoordinator {
         }
         run.controlChanged = false;
         try {
+          await this.answerAfterRecovery(run, ready.control);
           const round = await this.model(run, false, ready.control);
           if (!round.calls.length) {
             if (
@@ -893,6 +1264,7 @@ export class AiTaskCoordinator {
           const group: ChatMessage[] = [
             { role: "assistant", content: round.text, toolCalls: round.calls },
           ];
+          run.pendingGroup = group;
           let interrupted = false,
             interruptedReason = "AGENT_CONTEXT_CHANGED";
           for (const call of round.calls) {
@@ -904,6 +1276,7 @@ export class AiTaskCoordinator {
               };
             else
               try {
+                run.activeCallId = call.id;
                 result = await this.execute(run, call, round.control);
               } catch (error) {
                 result = { error: codeOf(error), status: "not-executed" };
@@ -915,6 +1288,8 @@ export class AiTaskCoordinator {
               toolName: call.name,
               content: JSON.stringify(redact(result)),
             });
+            run.activeCallId = undefined;
+            await this.persistRecovery(run);
             if (
               [
                 "list_directory",
@@ -947,9 +1322,17 @@ export class AiTaskCoordinator {
             )
               interrupted = true;
           }
-          run.history.push(group);
+          run.history.push(this.completePendingGroup(run));
+          run.pendingGroup = undefined;
+          run.activeCallId = undefined;
+          await this.persistRecovery(run);
           if (run.view.phase.startsWith("completed")) break;
         } catch (error) {
+          if (run.pendingGroup) {
+            run.history.push(this.completePendingGroup(run));
+            run.pendingGroup = undefined;
+            run.activeCallId = undefined;
+          }
           if (run.abort.signal.aborted) break;
           if (run.controlChanged || codeOf(error) === "AGENT_CONTEXT_CHANGED")
             continue;
@@ -963,13 +1346,18 @@ export class AiTaskCoordinator {
     } finally {
       run.closed?.();
       run.closed = undefined;
-      run.finished = true;
       run.modelAbort?.abort();
       run.view.question = undefined;
       if (!run.view.phase.startsWith("completed"))
         run.view.phase = run.abort.signal.aborted
           ? "cancelled"
           : "paused-error";
+      try {
+        await this.persistRecovery(run);
+      } catch (error) {
+        run.view.error = codeOf(error);
+      }
+      run.finished = true;
     }
   }
 }

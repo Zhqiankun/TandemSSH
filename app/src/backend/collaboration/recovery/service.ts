@@ -1,3 +1,7 @@
+import type {
+  AgentTaskRecoveryPort,
+  RecoveredAgentTask,
+} from "./agent-port.js";
 import type { TaskRuntime, TaskActor } from "../tasks/runtime.js";
 import type { TaskRecoveryStore } from "./store.js";
 import type { TaskRecoveryRecord } from "./schema.js";
@@ -11,6 +15,7 @@ export class TaskRecoveryService {
   constructor(
     private tasks: TaskRuntime,
     private store: TaskRecoveryStore,
+    private agents?: AgentTaskRecoveryPort,
   ) {}
   private canRead(actor: TaskActor, row: TaskRecoveryRecord) {
     return (
@@ -37,8 +42,9 @@ export class TaskRecoveryService {
       resourceRecoveryRequired: c.resourceRecoveryRequired,
       state:
         row.state === "available" &&
-        c.steps.length > 0 &&
-        c.nextStep === c.steps.length &&
+        (c.ai
+          ? ["completed", "completed-with-errors"].includes(c.ai.view.phase)
+          : c.steps.length > 0 && c.nextStep === c.steps.length) &&
         !c.reconciliationRequired
           ? "consumed"
           : this.store.interrupted(row)
@@ -63,13 +69,23 @@ export class TaskRecoveryService {
       steps: row.checkpoint.steps,
       operations: row.checkpoint.operations,
       cwd: row.checkpoint.cwd,
+      ai: row.checkpoint.ai?.view,
     }) as TaskRecoveryDetail;
   }
   async save(actor: TaskActor, id: string) {
     let saved: TaskRecoveryRecord | undefined;
-    await this.tasks.saveRecovery(actor, id, async (c) => {
+    const persist = async (
+      c: import("../../../types/task-recovery.js").TaskExecutionCheckpoint,
+    ) => {
       saved = await this.store.save(actor.userId, c);
-    });
+    };
+    if (
+      this.tasks.get(actor, id, { operationLimit: 0 }).source === "assistant"
+    ) {
+      if (actor.kind !== "human" || !this.agents)
+        throw Error("TASK_RECOVERY_AGENT_ADAPTER_REQUIRED");
+      await this.agents.saveRecovery(actor.userId, id, persist);
+    } else await this.tasks.saveRecovery(actor, id, persist);
     return this.summary(saved!);
   }
   async restore(
@@ -86,14 +102,26 @@ export class TaskRecoveryService {
     if (!before || !this.canRead(actor, before))
       throw Error("TASK_RECOVERY_NOT_FOUND");
     const record = await this.store.claim(actor.userId, id);
-    let created: string | undefined;
+    let created: string | undefined, agent: RecoveredAgentTask | undefined;
     try {
       const checkpoint = readCheckpoint(record.checkpoint),
-        task = await this.tasks.restoreRecovery(actor, checkpoint, {
+        request = {
           sessionId: input.sessionId,
           requestId: "recovery-" + record.claim!.id,
           reconciliation: input.reconciliation,
-        });
+        };
+      if (checkpoint.source === "assistant") {
+        if (actor.kind !== "human" || !this.agents)
+          throw Error("TASK_RECOVERY_AGENT_ADAPTER_REQUIRED");
+        agent = await this.agents.prepareRecovery(
+          actor.userId,
+          checkpoint,
+          request,
+        );
+      }
+      const task =
+        agent?.task ??
+        (await this.tasks.restoreRecovery(actor, checkpoint, request));
       created = task.id;
       await this.store.save(
         actor.userId,
@@ -107,8 +135,10 @@ export class TaskRecoveryService {
         "consumed",
       );
       this.tasks.enableRecovery(actor, task.id);
-      return task;
+      agent?.activate();
+      return this.tasks.get(actor, task.id);
     } catch (error) {
+      agent?.cancel();
       if (created) {
         try {
           this.tasks.cancel(actor, created);

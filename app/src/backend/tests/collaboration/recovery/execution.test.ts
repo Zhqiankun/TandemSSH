@@ -393,3 +393,52 @@ it("cannot authorize a new task before its recovery claim and checkpoint are dur
     expect(next.runtime.get(user, restored.id).state).toBe("completed"),
   );
 });
+
+it("marks an active parent workflow checkpoint as requiring coordinator recovery", async () => {
+  const s = await storage(),
+    f = fixture(s.store),
+    client: TaskActor = {
+      kind: "mcp",
+      userId: user.userId,
+      clientId: randomUUID(),
+      connectionId: randomUUID(),
+      allowedHostIds: [1],
+    };
+  f.runtime.connectClient(client.connectionId);
+  const task = await f.runtime.create(client, {
+    sessionId: f.id,
+    requestId: randomUUID(),
+    title: "parent workflow",
+    mode: "automatic",
+  });
+  await f.authorize(task, { matches: [{ kind: "program", program: "pwd" }] });
+  f.runtime.enableRecovery(client, task.id);
+  await f.runtime.attachWorkflow(client, task.id, {
+    requestId: randomUUID(),
+    name: "child",
+    workflow: {
+      id: randomUUID(),
+      revision: 1,
+      version: "1.0.0",
+      shellState: "explicit-cwd",
+    },
+    commands: [{ program: "pwd", args: [] }],
+    expectedControl: f.control.snapshot(),
+  });
+  await vi.waitFor(async () =>
+    expect(
+      (await s.store.get(user.userId, task.id))?.checkpoint
+        .resourceRecoveryRequired,
+    ).toBe(true),
+  );
+  const next = fixture(new TaskRecoveryStore(s.root, s.keys, () => false)),
+    newClient = { ...client, connectionId: randomUUID() };
+  next.runtime.connectClient(newClient.connectionId);
+  await expect(
+    next.service.restore(newClient, task.id, {
+      sessionId: next.id,
+      reviewed: true,
+    }),
+  ).rejects.toThrow("TASK_RECOVERY_RESOURCES_REQUIRED");
+  expect(next.writes).toEqual([]);
+});

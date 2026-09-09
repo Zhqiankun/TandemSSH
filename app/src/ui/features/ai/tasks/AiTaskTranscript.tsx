@@ -25,6 +25,9 @@ export function AiTaskTranscript({ run }: { run: AiTaskView }) {
         <strong>{run.providerLabel}</strong>
         <span className="text-muted-foreground text-[10px]">{run.model}</span>
       </div>
+      {run.recoveredFrom && (
+        <p className="tandem-task-help">{t("taskRecovery.aiRestored")}</p>
+      )}
       <div className="tandem-task-meta">
         <span>{t("tandem.agent.phases." + run.phase)}</span>
         <span>
@@ -33,10 +36,19 @@ export function AiTaskTranscript({ run }: { run: AiTaskView }) {
       </div>
       <div className="tandem-agent-messages">
         {run.messages
-          .filter((message) => message.role === "assistant" && (message.content.trim() || message.status !== "complete"))
+          .filter(
+            (message) =>
+              message.role === "assistant" &&
+              (message.content.trim() || message.status !== "complete"),
+          )
           .map((message) => (
             <div key={message.id} className="tandem-agent-message">
-              <p>{message.content || (message.status === "streaming" ? t("tandem.agent.thinking") : t("tandem.agent.interrupted"))}</p>
+              <p>
+                {message.content ||
+                  (message.status === "streaming"
+                    ? t("tandem.agent.thinking")
+                    : t("tandem.agent.interrupted"))}
+              </p>
               {message.status === "interrupted" && !!message.content && (
                 <small>{t("tandem.agent.interrupted")}</small>
               )}

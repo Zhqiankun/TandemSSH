@@ -1,3 +1,4 @@
+import type { AiExecutionCheckpoint } from "./ai-task-recovery.js";
 import type {
   TaskMode,
   TaskOperation,
@@ -5,6 +6,7 @@ import type {
 } from "./collaboration-task.js";
 import type { TaskPlanStep } from "./task-plan.js";
 export interface TaskExecutionCheckpoint {
+  ai?: AiExecutionCheckpoint;
   schemaVersion: 1;
   id: string;
   userId: string;
@@ -39,6 +41,7 @@ export interface TaskRecoverySummary {
   savedAt: number;
 }
 export interface TaskRecoveryDetail {
+  ai?: AiExecutionCheckpoint["view"];
   summary: TaskRecoverySummary;
   steps: TaskPlanStep[];
   operations: TaskOperation[];

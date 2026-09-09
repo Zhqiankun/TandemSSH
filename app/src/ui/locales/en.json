@@ -5105,7 +5105,14 @@
         "FILE_PROPOSAL_CHANGED": "The proposal or content hash changed. Operation stopped.",
         "FILE_REVIEW_REQUIRED": "Load and review this file change in the desktop before approving.",
         "FILE_REVIEW_UNAVAILABLE": "No file change review is available for this operation.",
-        "FILE_SFTP_UNAVAILABLE": "Cannot open SFTP on the current SSH connection."
+        "FILE_SFTP_UNAVAILABLE": "Cannot open SFTP on the current SSH connection.",
+        "AI_RECOVERY_BUSY": "AI state is being saved. Retry shortly.",
+        "AI_RECOVERY_INVALID": "Invalid AI recovery state. Automatic calls have stopped.",
+        "TASK_RECOVERY_BUSY": "The recovery record is busy. Retry shortly.",
+        "TASK_RECOVERY_ENCRYPTION_UNAVAILABLE": "Unable to encrypt progress. New model calls have paused.",
+        "TASK_RECOVERY_LIMIT": "Progress storage reached its limit. Remove old records.",
+        "MODEL_CONFIGURATION_CHANGED": "The original model endpoint, type, or name changed. Review its configuration first.",
+        "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "The model configuration cannot be verified. AI recovery was not saved."
       },
       "budget": "Model call budget (including planning)"
     },
@@ -6298,8 +6305,8 @@
     "done": "Completed",
     "pending": "Pending",
     "progress": "Step {{done}} / {{total}}",
-    "resources": "Partial files or directory progress require resource recovery before continuing.",
-    "external": "MCP tasks must be claimed by the original client. Built-in AI conversation recovery is being integrated.",
+    "resources": "This record still contains parent-workflow or partial transfer progress that requires coordinator recovery.",
+    "external": "MCP tasks are claimed by the original client and still require fresh desktop authorization.",
     "reconcile": "Verify the remote outcome before choosing how to handle the unresolved step.",
     "retry": "I verified the outcome; retry this step.",
     "skip": "I verified the outcome; skip this step and retain the unresolved history.",
@@ -6320,14 +6327,27 @@
       "TASK_RECOVERY_HOST_KEY_REQUIRED": "This connection has no verified SSH key for recovery.",
       "TASK_RECOVERY_REVIEW_REQUIRED": "Review the original plan and results first.",
       "TASK_RECOVERY_OWNER_MISMATCH": "The user or client does not match the original task.",
-      "TASK_RECOVERY_RESOURCES_REQUIRED": "Partial files or directory progress require dedicated recovery. The task is paused.",
-      "TASK_RECOVERY_AGENT_ADAPTER_REQUIRED": "Built-in AI and parent workflow recovery require their complete coordinator state.",
+      "TASK_RECOVERY_RESOURCES_REQUIRED": "Parent-workflow or partial transfer progress requires dedicated recovery. The task is paused.",
+      "TASK_RECOVERY_AGENT_ADAPTER_REQUIRED": "An active parent workflow requires its complete coordinator state.",
       "TASK_RECOVERY_DECRYPT_FAILED": "Unable to decrypt or verify task progress.",
       "TASK_RECOVERY_ENCRYPTION_UNAVAILABLE": "System encryption is unavailable. Progress was not saved.",
       "TASK_RECOVERY_KEY_MISSING": "The system recovery key is unavailable.",
       "TASK_RECOVERY_LIMIT": "Execution checkpoints reached the storage limit.",
       "TASK_RECOVERY_INVALID": "Invalid execution checkpoint.",
-      "TASK_RECOVERY_SAVING": "Task paused while saving progress."
-    }
+      "TASK_RECOVERY_SAVING": "Task paused while saving progress.",
+      "AI_RECOVERY_BUSY": "AI state is being saved or changed. Retry shortly.",
+      "AI_RECOVERY_INVALID": "Invalid AI conversation or budget checkpoint.",
+      "AI_TASK_NOT_FOUND": "The original AI task was not found.",
+      "MODEL_PROVIDER_UNAVAILABLE": "The original model configuration is unavailable. Restore or enable it first.",
+      "AI_DISABLED": "Built-in AI is disabled. Enable it before recovery.",
+      "MODEL_CONFIGURATION_CHANGED": "The original model endpoint, type, or name changed. Review its configuration first.",
+      "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "The model configuration cannot be verified. AI recovery was not saved."
+    },
+    "aiHint": "Used model turns are retained. Authorize again after recovery; old tool calls are not replayed.",
+    "aiQuestion": "Saved question",
+    "aiConversation": "View saved AI conversation",
+    "aiUser": "You",
+    "aiAssistant": "AI assistant",
+    "aiRestored": "Conversation and model budget restored. Review the current server and task scope before authorizing again."
   }
 }

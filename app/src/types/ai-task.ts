@@ -18,6 +18,7 @@ export interface AiTaskMessage {
   status: "streaming" | "complete" | "interrupted";
 }
 export interface AiTaskView {
+  recoveredFrom?: { runId: string; taskId: string };
   id: string;
   taskId: string;
   sessionId: string;

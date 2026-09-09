@@ -5105,7 +5105,14 @@
         "FILE_PROPOSAL_CHANGED": "保存提案或内容摘要不一致，操作已停止。",
         "FILE_REVIEW_REQUIRED": "请先在桌面读取并审阅当前文件改动，再确认保存。",
         "FILE_REVIEW_UNAVAILABLE": "此操作没有可用的文件差异审阅。",
-        "FILE_SFTP_UNAVAILABLE": "无法在当前 SSH 连接中打开 SFTP 通道。"
+        "FILE_SFTP_UNAVAILABLE": "无法在当前 SSH 连接中打开 SFTP 通道。",
+        "AI_RECOVERY_BUSY": "AI 状态正在保存，请稍后重试。",
+        "AI_RECOVERY_INVALID": "AI 恢复检查点无效，已停止自动调用。",
+        "TASK_RECOVERY_BUSY": "恢复记录正在处理，请稍后重试。",
+        "TASK_RECOVERY_ENCRYPTION_UNAVAILABLE": "无法加密保存进度，已暂停新的模型请求。",
+        "TASK_RECOVERY_LIMIT": "执行进度达到存储上限，请清理旧记录。",
+        "MODEL_CONFIGURATION_CHANGED": "原模型的地址、类型或名称已改变，请先核对模型配置。",
+        "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "无法核验模型配置，未保存 AI 恢复记录。"
       },
       "budget": "模型调用预算（含规划）"
     },
@@ -6298,8 +6305,8 @@
     "done": "已完成",
     "pending": "待执行",
     "progress": "步骤 {{done}} / {{total}}",
-    "resources": "此记录需要先恢复部分文件或目录内部进度，当前不能直接继续。",
-    "external": "MCP 任务由原客户端领取；内置 AI 对话恢复仍在接入。",
+    "resources": "此记录仍有父流程或部分文件、目录内部进度，需要专门恢复后才能继续。",
+    "external": "MCP 任务由原客户端领取，领取后仍需在桌面重新授权。",
     "reconcile": "核实远端实际结果后，选择当前未确定步骤的处理方式。",
     "retry": "我已核实，重新执行当前步骤。",
     "skip": "我已核实，跳过当前步骤并保留异常记录。",
@@ -6320,14 +6327,27 @@
       "TASK_RECOVERY_HOST_KEY_REQUIRED": "当前连接没有可核对的 SSH 公钥，不能保存执行进度。",
       "TASK_RECOVERY_REVIEW_REQUIRED": "请先核对原计划和执行结果。",
       "TASK_RECOVERY_OWNER_MISMATCH": "此恢复入口不属于原任务的用户或客户端。",
-      "TASK_RECOVERY_RESOURCES_REQUIRED": "部分文件或目录进度需要专门恢复，当前任务已暂停。",
-      "TASK_RECOVERY_AGENT_ADAPTER_REQUIRED": "内置 AI 或父流程的完整恢复仍在接入，未保存为普通任务。",
+      "TASK_RECOVERY_RESOURCES_REQUIRED": "父流程或部分文件、目录进度需要专门恢复，当前任务已暂停。",
+      "TASK_RECOVERY_AGENT_ADAPTER_REQUIRED": "父流程内部进度仍需专门恢复，未保存为普通任务。",
       "TASK_RECOVERY_DECRYPT_FAILED": "无法解密或校验执行进度。",
       "TASK_RECOVERY_ENCRYPTION_UNAVAILABLE": "系统加密不可用，未保存执行进度。",
       "TASK_RECOVERY_KEY_MISSING": "无法读取系统中的恢复密钥。",
       "TASK_RECOVERY_LIMIT": "执行检查点已达到存储限制。",
       "TASK_RECOVERY_INVALID": "执行检查点格式无效。",
-      "TASK_RECOVERY_SAVING": "任务已暂停，正在保存执行进度。"
-    }
+      "TASK_RECOVERY_SAVING": "任务已暂停，正在保存执行进度。",
+      "AI_RECOVERY_BUSY": "AI 状态正在保存或修改，请稍后重试。",
+      "AI_RECOVERY_INVALID": "AI 对话或预算检查点格式无效。",
+      "AI_TASK_NOT_FOUND": "找不到原 AI 任务。",
+      "MODEL_PROVIDER_UNAVAILABLE": "原模型配置不可用，请恢复或启用该配置后重试。",
+      "AI_DISABLED": "内置 AI 已关闭，请启用后再恢复。",
+      "MODEL_CONFIGURATION_CHANGED": "原模型的地址、类型或名称已改变，请先核对模型配置。",
+      "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "无法核验模型配置，未保存 AI 恢复记录。"
+    },
+    "aiHint": "保留已使用的模型轮次；恢复后先重新授权，原工具调用不会自动重放。",
+    "aiQuestion": "保存时的问题",
+    "aiConversation": "查看已保存的 AI 对话",
+    "aiUser": "你",
+    "aiAssistant": "AI 助手",
+    "aiRestored": "已恢复原对话与模型预算。请核对当前服务器和任务范围后重新授权。"
   }
 }

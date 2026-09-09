@@ -380,7 +380,7 @@ export function TaskPanel({
             )}
             {agent && (
               <Suspense fallback={null}>
-                <AiTaskTranscript run={agent} />
+                <AiTaskTranscript key={agent.id} run={agent} />
               </Suspense>
             )}
             <TaskLocalFiles

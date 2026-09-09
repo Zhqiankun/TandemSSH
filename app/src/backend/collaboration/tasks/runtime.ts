@@ -1,3 +1,4 @@
+import type { AiExecutionCheckpoint } from "../../../types/ai-task-recovery.js";
 import type { TaskExecutionCheckpoint } from "../../../types/task-recovery.js";
 import type {
   DirectoryStepCursor,
@@ -126,6 +127,7 @@ type RuntimeStep = TaskPlanStep & {
   directoryCursor?: DirectoryStepCursor;
 };
 interface RecordTask {
+  recoveryAgent?: () => AiExecutionCheckpoint;
   recoveryEnabled?: boolean;
   recoverySaving?: boolean;
   recoveryRestoring?: boolean;
@@ -1015,7 +1017,11 @@ export class TaskRuntime {
     const task = this.owned(actor, taskId);
     if (task.recoverySaving || task.recoveryRestoring)
       throw Error("TASK_RECOVERY_BUSY");
-    if (task.view.source === "assistant" || task.activeWorkflowRunId)
+    if (
+      (task.view.source === "assistant" &&
+        (!task.recoveryAgent || actor.kind !== "agent")) ||
+      task.activeWorkflowRunId
+    )
       throw Error("TASK_RECOVERY_AGENT_ADAPTER_REQUIRED");
     task.recoverySaving = true;
     try {
@@ -1052,7 +1058,10 @@ export class TaskRuntime {
   /** Captures trusted runtime state; no external transport may supply a snapshot. */
   recoverySnapshot(actor: TaskActor, taskId: string): TaskExecutionCheckpoint {
     const task = this.owned(actor, taskId);
-    if (task.view.source === "assistant" || task.activeWorkflowRunId)
+    if (
+      (task.view.source === "assistant" && !task.recoveryAgent) ||
+      task.activeWorkflowRunId
+    )
       throw Error("TASK_RECOVERY_AGENT_ADAPTER_REQUIRED");
     if (
       task.pumping !== undefined ||
@@ -1113,6 +1122,7 @@ export class TaskRuntime {
       !!operation?.fileResult?.transfer?.cleanupRequired;
     return {
       schemaVersion: 1,
+      ai: task.recoveryAgent?.(),
       id: task.view.id,
       userId: task.userId,
       host: {
@@ -1134,6 +1144,7 @@ export class TaskRuntime {
       hasFailures: !!task.view.hasFailures,
       resourceRecoveryRequired:
         resourceRecoveryRequired ||
+        !!task.activeWorkflowRunId ||
         !!task.directoryReservation ||
         operations.some(
           (op) =>
@@ -1150,6 +1161,33 @@ export class TaskRuntime {
       createdAt: task.view.createdAt,
       savedAt: Date.now(),
     };
+  }
+  bindRecoveryAgent(
+    actor: TaskActor,
+    taskId: string,
+    capture: () => AiExecutionCheckpoint,
+  ) {
+    const task = this.owned(actor, taskId);
+    if (actor.kind !== "agent" || task.view.source !== "assistant")
+      throw Error("TASK_RECOVERY_OWNER_MISMATCH");
+    task.recoveryAgent = capture;
+  }
+  async persistRecoveryState(
+    actor: TaskActor,
+    taskId: string,
+    ai?: AiExecutionCheckpoint,
+  ) {
+    const task = this.owned(actor, taskId);
+    if (!task.recoveryEnabled) return;
+    if (ai && (actor.kind !== "agent" || !task.recoveryAgent))
+      throw Error("TASK_RECOVERY_OWNER_MISMATCH");
+    if (!this.ports.persistRecovery) throw Error("TASK_RECOVERY_UNAVAILABLE");
+    const checkpoint = this.captureRecovery(task);
+    if (ai) checkpoint.ai = structuredClone(ai);
+    await this.ports.persistRecovery(
+      checkpoint,
+      terminalState(task.view.state),
+    );
   }
   enableRecovery(actor: TaskActor, taskId: string) {
     const task = this.owned(actor, taskId);
@@ -1177,8 +1215,9 @@ export class TaskRuntime {
     const session = this.sessionFor(actor, input.sessionId);
     if (
       checkpoint.userId !== actor.userId ||
-      checkpoint.source === "assistant" ||
-      actor.kind === "agent" ||
+      (checkpoint.source === "assistant"
+        ? actor.kind !== "agent" || !checkpoint.ai
+        : actor.kind === "agent") ||
       (checkpoint.source === "mcp" &&
         (actor.kind !== "mcp" || checkpoint.clientId !== actor.clientId)) ||
       (checkpoint.source === "workflow" && actor.kind !== "human")

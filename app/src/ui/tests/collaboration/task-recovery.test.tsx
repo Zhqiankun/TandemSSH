@@ -118,3 +118,60 @@ it("does not let a late restore response select a task in a different session", 
   await new Promise((r) => setTimeout(r, 0));
   expect(onRestored).not.toHaveBeenCalled();
 });
+
+it("shows an AI save action and the saved conversation and model budget before restoring", async () => {
+  const aiSummary = {
+      ...summary,
+      source: "assistant",
+      nextStep: 0,
+      stepCount: 0,
+    },
+    ai = {
+      providerLabel: "自建模型",
+      model: "fixture",
+      turns: 3,
+      maxTurns: 8,
+      messages: [
+        {
+          id: "message",
+          role: "assistant",
+          content: "已经检查首步，等待回答。",
+          status: "complete",
+        },
+      ],
+      question: { id: "q", text: "接下来检查什么？" },
+    };
+  api.list.mockResolvedValue([aiSummary]);
+  api.detail.mockResolvedValue({
+    summary: aiSummary,
+    steps: [],
+    operations: [],
+    ai,
+  });
+  render(
+    <TaskRecovery
+      sessionId="session"
+      task={
+        {
+          id: "live-ai",
+          source: "assistant",
+          state: "paused-human",
+        } as TaskView
+      }
+      onRestored={vi.fn()}
+    />,
+  );
+  expect(
+    screen.getByRole("button", { name: "暂停并保存任务进度" }),
+  ).toBeEnabled();
+  await open();
+  expect(screen.getByText(/自建模型/)).toBeVisible();
+  expect(screen.getByText(/3.*8/)).toBeVisible();
+  expect(screen.getByText(/接下来检查什么/)).toBeVisible();
+  fireEvent.click(screen.getByText("查看已保存的 AI 对话"));
+  expect(screen.getByText("已经检查首步，等待回答。")).toBeVisible();
+  fireEvent.click(screen.getByRole("checkbox"));
+  expect(
+    screen.getByRole("button", { name: "恢复为待授权任务" }),
+  ).toBeEnabled();
+});

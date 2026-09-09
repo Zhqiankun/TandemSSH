@@ -1,3 +1,4 @@
+import { aiRecoverySchema } from "../../ai/tasks/recovery-state.js";
 import { z } from "zod";
 import { validateTaskPlan } from "../tasks/plan.js";
 import type { TaskExecutionCheckpoint } from "../../../types/task-recovery.js";
@@ -5,6 +6,7 @@ import type { TaskOperation } from "../../../types/collaboration-task.js";
 import type { TaskPlanStep } from "../../../types/task-plan.js";
 export const checkpointSchema = z
   .object({
+    ai: aiRecoverySchema.optional(),
     schemaVersion: z.literal(1),
     id: z.string().uuid(),
     userId: z.string().min(1).max(256),
@@ -54,7 +56,15 @@ export const checkpointSchema = z
   })
   .strict()
   .refine(
-    (v) => v.nextStep <= v.steps.length && (v.source !== "mcp" || !!v.clientId),
+    (v) =>
+      v.nextStep <= v.steps.length &&
+      (v.source !== "mcp" || !!v.clientId) &&
+      (v.source === "assistant"
+        ? !!v.ai &&
+          v.ai.view.taskId === v.id &&
+          v.ai.view.goal === v.title &&
+          v.ai.view.mode === v.mode
+        : !v.ai),
   );
 export function readCheckpoint(raw: unknown): TaskExecutionCheckpoint {
   try {

@@ -62,7 +62,6 @@ export function TaskRecovery({
   return (
     <>
       {task &&
-        task.source !== "assistant" &&
         !task.activeWorkflowRunId &&
         !["completed", "completed-with-errors", "cancelled"].includes(
           task.state,
@@ -166,6 +165,47 @@ export function TaskRecovery({
           ))}
           {detail && row && (
             <section className="border-t border-border pt-3 space-y-3">
+              {detail.ai && (
+                <div className="rounded border border-border p-3 space-y-2 text-sm">
+                  <strong>
+                    {detail.ai.providerLabel} · {detail.ai.model}
+                  </strong>
+                  <p>
+                    {t("tandem.agent.turns", {
+                      used: detail.ai.turns,
+                      max: detail.ai.maxTurns,
+                    })}
+                  </p>
+                  <p>{t("taskRecovery.aiHint")}</p>
+                  {detail.ai.question && (
+                    <p>
+                      {t("taskRecovery.aiQuestion")}: {detail.ai.question.text}
+                    </p>
+                  )}
+                  <details>
+                    <summary>{t("taskRecovery.aiConversation")}</summary>
+                    <div className="max-h-64 overflow-auto space-y-3">
+                      {detail.ai.messages.map((m) => (
+                        <div key={m.id} className="border-b border-border pb-2">
+                          <strong>
+                            {t(
+                              m.role === "user"
+                                ? "taskRecovery.aiUser"
+                                : "taskRecovery.aiAssistant",
+                            )}
+                          </strong>
+                          <p className="whitespace-pre-wrap break-all">
+                            {m.content}
+                          </p>
+                          {m.status === "interrupted" && (
+                            <small>{t("tandem.agent.interrupted")}</small>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                </div>
+              )}
               <h3>{t("taskRecovery.plan")}</h3>
               <ol className="space-y-2">
                 {detail.steps.map((step, i) => (
@@ -202,9 +242,9 @@ export function TaskRecovery({
               {row.resourceRecoveryRequired && (
                 <p>{t("taskRecovery.resources")}</p>
               )}
-              {row.source !== "workflow" && <p>{t("taskRecovery.external")}</p>}
+              {row.source === "mcp" && <p>{t("taskRecovery.external")}</p>}
               {["available", "interrupted"].includes(row.state) &&
-                row.source === "workflow" &&
+                row.source !== "mcp" &&
                 !row.resourceRecoveryRequired && (
                   <>
                     {row.reconciliationRequired && (
