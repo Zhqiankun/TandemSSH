@@ -116,6 +116,7 @@ describe("resolveAgentSocket", () => {
   });
 
   it("returns error when neither SSH_AUTH_SOCK nor explicit path is set", async () => {
+    Object.defineProperty(process, "platform", { value: "linux" });
     const result = await resolveAgentSocket({});
 
     expect(result).toHaveProperty("error");
@@ -123,6 +124,7 @@ describe("resolveAgentSocket", () => {
   });
 
   it("returns error when terminalConfig is undefined and SSH_AUTH_SOCK is not set", async () => {
+    Object.defineProperty(process, "platform", { value: "linux" });
     const result = await resolveAgentSocket(undefined);
 
     expect(result).toHaveProperty("error");
@@ -139,6 +141,15 @@ describe("resolveAgentSocket", () => {
     expect((result as { error: string }).error).toContain(
       "/tmp/missing-agent.sock",
     );
+  });
+
+  it("uses the standard Windows OpenSSH pipe without changing the environment", async () => {
+    Object.defineProperty(process, "platform", { value: "win32" });
+    expect(await resolveAgentSocket({})).toEqual({
+      socketPath: "\\\\.\\pipe\\openssh-ssh-agent",
+    });
+    expect(process.env.SSH_AUTH_SOCK).toBeUndefined();
+    expect(mockAccess).not.toHaveBeenCalled();
   });
 
   it("skips file existence check on Windows", async () => {
@@ -228,3 +239,22 @@ describe("FilteredAgent", () => {
     expect(identities).toHaveLength(0);
   });
 });
+
+it.each(["sha256", "sha512"] as const)(
+  "MemoryAgent signs RSA with the negotiated %s hash",
+  async (hash) => {
+    const pair = generateKeyPairSync("rsa", { modulusLength: 2048 }),
+      key = ssh2Pkg.utils.parseKey(
+        pair.privateKey.export({ type: "pkcs1", format: "pem" }),
+      ) as ParsedKey,
+      agent = new MemoryAgent(key),
+      data = Buffer.from("negotiated RSA agent authentication");
+    const signature = await new Promise<Buffer>((resolve, reject) =>
+      agent.sign(key, data, { hash }, (error, value) =>
+        error ? reject(error) : resolve(value!),
+      ),
+    );
+    expect(Buffer.isBuffer(signature)).toBe(true);
+    expect(key.verify(data, signature, hash)).toBe(true);
+  },
+);

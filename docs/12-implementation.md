@@ -638,3 +638,11 @@ cd933c9 的 CI 34372828543 已成功完成真实测试包在线升级：旧版�
 真实 Windows 后端、HTTP 查看会话和回环 SSH 完成待指纹取消零认证、第二查看者复用连接、关闭首个后继续采样、关闭最后一个释放连接/两周期无命令，以及验证码取消后旧请求被拒绝（服务端验证码回复 0）。证据 `.cache/desktop-observation-report-dadf3685-eeaf-445c-80e6-1ab782408c11`。中文页面按钮回归也通过，证据 `.cache/desktop-observation-report-e290b708-4bc8-449f-855a-202a6a744b08`；两次正常退出。包内 MCP 自动/协作与本机 Codex 发现 3 项，原生依赖 13 项通过。
 
 上一提交 d1244fa 的 CI 34393427761 已全部成功。全部共享凭据/证书和交互认证重试组合、Windows agent、真实 Linux/OpenSSH 验收、备份/正式 Release 等原始剩余项继续，整体目标保持进行中。
+
+## 2026-09-10 Windows agent 与私钥认证兼容
+
+监控已接入既有 SSH agent 适配器，读取主机保存的 socket/指定公钥；Windows 无显式路径和 SSH_AUTH_SOCK 时使用标准 OpenSSH 管道。中文配置提示同步更新。复用已有终端/文件/跳板认证入口，没有新增共享模块、依赖或 MCP 工具，见 [第 53 份文档](53-ssh-agent-authentication.md)。
+
+真实协议组合 16 项通过，完整应用组 472 文件 / 3376 项通过、5 项条件跳过；类型、lint（0 错误/100 既有警告）、中文键、构建和 Windows 包通过。真实 Windows 独立 agent 管道在监控、SFTP 目录读取、终端 shell 通道登录中共查询/签名 3 次，始终使用指定公钥；指纹确认前为 0。另一个加密私钥配置独立登录成功且不调用 agent。证据 `.cache/desktop-observation-report-3d23095b-b36a-4967-8670-53130cfa80c0`，应用正常退出；终端夹具仅验证登录通道和标记，不替代真实 Shell 自动/协作验收。
+
+包内原生依赖 13 项与 MCP 自动/协作/本机 Codex 发现 3 项通过。上一 649f56a 的 CI 34399189478 全部成功。其余隧道 agent、其他认证组合、Linux/OpenSSH、备份与正式 Release 等完整目标继续。

@@ -977,7 +977,7 @@
     "agentAuthenticationDesc": "使用 SSH 代理中的密钥来验证此连接。将套接字路径留空以使用 SSH_AUTH_SOCK。",
     "agentSocketPathLabel": "代理套接字路径",
     "agentSocketPathPlaceholder": "留空以使用 SSH_AUTH_SOCK",
-    "agentSocketPathHint": "留空以从 SSH_AUTH_SOCK 环境变量自动检测，或输入自定义套接字路径（例如 /run/user/1000/gnupg/S.gpg-agent.ssh）。",
+    "agentSocketPathHint": "留空时使用 SSH_AUTH_SOCK；Windows 未设置该变量时使用系统 OpenSSH agent 管道。也可填写自定义套接字或命名管道路径。",
     "agentIdentityLabel": "代理身份（公钥）",
     "agentIdentityPlaceholder": "留空以尝试代理提供的所有密钥",
     "agentIdentityHint": "粘贴公钥（例如 ssh-ed25519 AAAA...）以仅允许代理提供该密钥。当代理持有大量密钥时，建议这样做，以避免超出服务器的最大身份验证尝试次数 (MaxAuthTries)。",

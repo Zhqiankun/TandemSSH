@@ -977,7 +977,7 @@
     "agentAuthenticationDesc": "Use keys from an SSH agent to authenticate this connection. Leave the socket path empty to use SSH_AUTH_SOCK.",
     "agentSocketPathLabel": "Agent Socket Path",
     "agentSocketPathPlaceholder": "Leave empty to use SSH_AUTH_SOCK",
-    "agentSocketPathHint": "Leave empty to auto-detect from the SSH_AUTH_SOCK environment variable, or enter a custom socket path (e.g. /run/user/1000/gnupg/S.gpg-agent.ssh).",
+    "agentSocketPathHint": "Leave empty to use SSH_AUTH_SOCK. On Windows, the standard OpenSSH agent pipe is used when the variable is unset. You can also enter a custom socket or named pipe.",
     "agentIdentityLabel": "Agent Identity (Public Key)",
     "agentIdentityPlaceholder": "Leave empty to try all keys from the agent",
     "agentIdentityHint": "Paste a public key (e.g. ssh-ed25519 AAAA...) to only offer that key from the agent. Recommended when the agent holds many keys, to avoid exceeding the server's MaxAuthTries.",

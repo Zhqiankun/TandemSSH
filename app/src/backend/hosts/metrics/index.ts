@@ -1,3 +1,4 @@
+import { applyAgentAuth } from "../terminal-auth-helpers.js";
 import { randomUUID } from "node:crypto";
 import {
   pendingMonitoringConnections,
@@ -121,6 +122,7 @@ interface SSHHostWithCredentials {
   tags: string[];
   pin: boolean;
   authType: string;
+  terminalConfig?: Record<string, unknown>;
   password?: string;
   key?: string;
   keyPassword?: string;
@@ -1237,6 +1239,22 @@ async function resolveHostCredentials(
         : [],
       jumpHosts: host.jumpHosts ? JSON.parse(host.jumpHosts as string) : [],
       statsConfig: host.statsConfig || undefined,
+      terminalConfig: (() => {
+        try {
+          const value =
+            typeof host.terminalConfig === "string"
+              ? JSON.parse(host.terminalConfig)
+              : host.terminalConfig;
+          return value && typeof value === "object"
+            ? {
+                agentSocketPath: value.agentSocketPath,
+                agentIdentity: value.agentIdentity,
+              }
+            : undefined;
+        } catch {
+          return undefined;
+        }
+      })(),
       sudoPassword: (() => {
         const top = host.sudoPassword as string | null | undefined;
         if (top) return top;
@@ -1495,6 +1513,12 @@ async function buildSshConfig(
         cause: keyError,
       });
     }
+  } else if (host.authType === "agent") {
+    const result = await applyAgentAuth(
+      base as unknown as Record<string, unknown>,
+      host.terminalConfig,
+    );
+    if ("error" in result) throw Error(result.error);
   } else if (
     host.authType === "none" ||
     host.authType === "tailscale" ||

@@ -85,7 +85,12 @@ export async function resolveAgentSocket(
   const explicit = (
     terminalConfig?.agentSocketPath as string | undefined
   )?.trim();
-  const resolved = explicit || process.env.SSH_AUTH_SOCK;
+  const resolved =
+    explicit ||
+    process.env.SSH_AUTH_SOCK ||
+    (process.platform === "win32"
+      ? "\\\\.\\pipe\\openssh-ssh-agent"
+      : undefined);
 
   if (!resolved) {
     return {
