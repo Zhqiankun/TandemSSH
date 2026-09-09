@@ -1,4 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+  downloadCheckpointSchema,
+  type DownloadCheckpoint,
+} from "./download-checkpoint.js";
 import { posix } from "node:path";
 import { z } from "zod";
 import {
@@ -14,6 +18,8 @@ import type {
 } from "./ports.js";
 export type DownloadTarget = FileDocumentTarget & { io: RemoteTransferIO };
 export interface DownloadSourceConstraint {
+  sha256?: string;
+  hashes?: string[];
   key: string;
   peer?: string;
   canonicalPath: string;
@@ -184,6 +190,14 @@ export class DownloadService {
       constrain(meta);
       const inspected = await t.io.inspectFile(canonicalPath, guard);
       constrain(inspected.stat);
+      if (
+        constraint?.sha256 &&
+        (inspected.sha256 !== constraint.sha256 ||
+          (constraint.hashes &&
+            (inspected.hashes.length !== constraint.hashes.length ||
+              inspected.hashes.some((h, i) => h !== constraint.hashes![i]))))
+      )
+        throw Error("DOWNLOAD_SOURCE_CHANGED");
       guard();
       if ((await t.io.resolve(input.path)) !== canonicalPath)
         throw Error("DOWNLOAD_SOURCE_CHANGED");
@@ -304,6 +318,49 @@ export class DownloadService {
       r.release = undefined;
       return structuredClone(r.view);
     });
+  }
+  checkpoint(actor: DownloadActor, id: string): DownloadCheckpoint {
+    const r = this.owned(actor, id);
+    this.alive(actor, r);
+    if (r.busy || r.view.state !== "paused" || r.release)
+      throw Error("DOWNLOAD_NOT_READY");
+    if (!r.peer) throw Error("DOWNLOAD_HOST_IDENTITY_CHANGED");
+    return downloadCheckpointSchema.parse({
+      schemaVersion: 1,
+      id: r.view.id,
+      userId: r.owner,
+      targetKey: r.key,
+      peer: r.peer,
+      path: r.view.path,
+      canonicalPath: r.view.canonicalPath,
+      stat: r.stat,
+      sha256: r.view.sha256,
+      hashes: r.view.hashes,
+      chunkBytes: DOWNLOAD_CHUNK_BYTES,
+      savedAt: Date.now(),
+    });
+  }
+  /** Called only after an authenticated recovery coordinator decrypts the owned checkpoint. */
+  restore(
+    actor: DownloadActor,
+    raw: unknown,
+    sessionId: string,
+    requestId: string,
+  ): Promise<DownloadSource> {
+    const checkpoint = downloadCheckpointSchema.parse(raw);
+    if (checkpoint.userId !== actor.userId) throw Error("DOWNLOAD_NOT_FOUND");
+    return this.prepare(
+      actor,
+      { sessionId, requestId, path: checkpoint.path },
+      {
+        key: checkpoint.targetKey,
+        peer: checkpoint.peer,
+        canonicalPath: checkpoint.canonicalPath,
+        stat: checkpoint.stat,
+        sha256: checkpoint.sha256,
+        hashes: checkpoint.hashes,
+      },
+    );
   }
   async verify(actor: DownloadActor, id: string, sessionId?: string) {
     return this.run(actor, id, async (r) => {

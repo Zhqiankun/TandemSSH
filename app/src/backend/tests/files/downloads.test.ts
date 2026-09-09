@@ -277,3 +277,65 @@ describe("bounded download sources over real SFTP", () => {
     expect((await fetch(base + "/" + source.id)).status).toBe(404);
   });
 });
+
+it("restores only the owning user's unchanged source on a newly verified connection", async () => {
+  const f = await fixture(),
+    actor = { userId: "owner" };
+  await f.remote.write("/file.bin", "original");
+  const preview = await f.prepare();
+  expect(() => f.service.checkpoint(actor, preview.id)).toThrow(
+    "DOWNLOAD_NOT_READY",
+  );
+  await f.service.pause(actor, preview.id);
+  const checkpoint = f.service.checkpoint(actor, preview.id);
+  expect(() =>
+    f.service.restore(
+      { userId: "other" },
+      checkpoint,
+      "reconnected",
+      randomUUID(),
+    ),
+  ).toThrow("DOWNLOAD_NOT_FOUND");
+  f.change("SHA256:other-server");
+  await expect(
+    f.service.restore(actor, checkpoint, "reconnected", randomUUID()),
+  ).rejects.toThrow("DOWNLOAD_HOST_IDENTITY_CHANGED");
+  expect(f.retained()).toBe(0);
+  f.change(checkpoint.peer);
+  const restored = await f.service.restore(
+    actor,
+    checkpoint,
+    "reconnected",
+    randomUUID(),
+  );
+  expect(restored.id).not.toBe(preview.id);
+  expect((await f.service.chunk(actor, restored.id, 0)).toString()).toBe(
+    "original",
+  );
+  await f.service.cancel(actor, restored.id);
+  f.service.forget(actor, restored.id);
+  // Keep the original stat metadata so this failure must be detected by content hashing.
+  const stat = vi.spyOn(f.remote.io, "stat");
+  stat.mockResolvedValue({ ...checkpoint.stat });
+  const inspect = vi.spyOn(f.remote.io, "inspectFile");
+  inspect.mockResolvedValue({
+    stat: { ...checkpoint.stat },
+    sha256: "0".repeat(64),
+    hashes: ["0".repeat(64)],
+    bytes: checkpoint.stat.size,
+  });
+  await expect(
+    f.service.restore(actor, checkpoint, "reconnected", randomUUID()),
+  ).rejects.toThrow("DOWNLOAD_SOURCE_CHANGED");
+  expect(f.retained()).toBe(0);
+  stat.mockRestore();
+  inspect.mockRestore();
+  expect(() =>
+    f.service.restore(
+      actor,
+      { ...checkpoint, hashes: [] },
+      "reconnected",
+      randomUUID(),
+    ),
+  ).toThrow();
+});

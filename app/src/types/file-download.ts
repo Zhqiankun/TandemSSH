@@ -25,6 +25,7 @@ export interface LocalDownloadSpec {
   hashes: string[];
 }
 export interface LocalDownloadView {
+  recovery?: { verifiedBytes: number; unconfirmedBytes: number };
   id: string;
   path: string;
   temporaryPath?: string;

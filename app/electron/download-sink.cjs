@@ -2,6 +2,10 @@ const fs = require("node:fs/promises");
 const { constants } = require("node:fs");
 const path = require("node:path");
 const { createHash, randomUUID } = require("node:crypto");
+const {
+  readDownloadCheckpoint,
+  checkpointStat,
+} = require("./download-checkpoint.cjs");
 const CHUNK_BYTES = 4 * 1024 * 1024,
   MAX_CHUNKS = 16384;
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -101,6 +105,7 @@ class DownloadSink {
     this.choosing = 0;
     this.choosingBytes = 0;
     this.locks = new Set();
+    this.recovering = new Set();
   }
   view(r) {
     return structuredClone(r.view);
@@ -112,6 +117,7 @@ class DownloadSink {
   }
   guard(r) {
     if (r.cancelled) throw Error("DOWNLOAD_CANCELLED");
+    if (r.preserved) throw Error("DOWNLOAD_CHECKPOINT_IN_USE");
     r.authorize?.();
     r.touched = Date.now();
   }
@@ -201,6 +207,7 @@ class DownloadSink {
   }
   run(owner, id, work) {
     const r = this.owned(owner, id);
+    if (r.detaching) throw Error("DOWNLOAD_BUSY");
     if ((r.pending ?? 0) >= 2 || (this.pending ?? 0) >= 16)
       throw Error("DOWNLOAD_BUSY");
     r.pending = (r.pending ?? 0) + 1;
@@ -212,7 +219,10 @@ class DownloadSink {
       } catch (error) {
         const code = errorCode(error);
         r.view.error = code;
-        if (!["unknown", "completed", "cancelled"].includes(r.view.state))
+        if (
+          !r.preserved &&
+          !["unknown", "completed", "cancelled"].includes(r.view.state)
+        )
           r.view.state = "failed";
         throw Error(code);
       }
@@ -240,6 +250,7 @@ class DownloadSink {
     if (
       !current.isFile() ||
       current.isSymbolicLink() ||
+      current.nlink !== 1 ||
       identity(current) !== r.stageIdentity ||
       identity(await r.handle.stat()) !== r.stageIdentity
     )
@@ -347,6 +358,203 @@ class DownloadSink {
       return this.view(r);
     });
   }
+  /** The callback must durably store this snapshot before resolving. No renderer IPC exposes it. */
+  suspend(owner, id, persist) {
+    if (typeof persist !== "function")
+      throw Error("DOWNLOAD_CHECKPOINT_INVALID");
+    return this.run(owner, id, async (r) => {
+      if (r.view.state !== "paused" || r.pending !== 1)
+        throw Error("DOWNLOAD_NOT_READY");
+      await this.stage(r);
+      await r.handle.sync();
+      const checked = await hashHandle(
+        r.handle,
+        () => this.guard(r),
+        r.view.writtenBytes,
+      );
+      if (
+        checked.stat.nlink !== 1 ||
+        checked.stat.size !== r.view.writtenBytes ||
+        checked.hashes.some((h, i) => h !== r.spec.hashes[i])
+      )
+        throw Error("DOWNLOAD_CHECKPOINT_CHANGED");
+      await this.targetUnchanged(r);
+      const checkpoint = readDownloadCheckpoint({
+        schemaVersion: 1,
+        platform: process.platform,
+        id: r.view.id,
+        savedAt: Date.now(),
+        spec: r.spec,
+        parent: r.parent,
+        parentIdentity: r.parentIdentity,
+        destination: r.view.path,
+        stagePath: r.view.temporaryPath,
+        stageIdentity: r.stageIdentity,
+        writtenBytes: r.view.writtenBytes,
+        previous: r.previous
+          ? { sha256: r.previous.sha256, stat: checkpointStat(r.previous.stat) }
+          : undefined,
+      });
+      r.detaching = true;
+      try {
+        await persist(checkpoint);
+        r.preserved = true;
+        await r.handle.close();
+        r.handle = undefined;
+        this.records.delete(r.view.id);
+        return this.view(r);
+      } finally {
+        r.detaching = false;
+      }
+    });
+  }
+  /** Only a trusted coordinator may pass a decrypted checkpoint and a NEW authorization guard. */
+  async restore(owner, raw, options) {
+    const checkpoint = readDownloadCheckpoint(raw),
+      spec = validateSpec(checkpoint.spec);
+    if (
+      checkpoint.platform !== process.platform ||
+      !path.isAbsolute(checkpoint.parent) ||
+      path.dirname(checkpoint.destination) !== checkpoint.parent ||
+      path.dirname(checkpoint.stagePath) !== checkpoint.parent ||
+      checkpoint.destination === checkpoint.stagePath ||
+      !/^\.tandem-download-[a-f0-9-]{36}\.part$/.test(
+        path.basename(checkpoint.stagePath),
+      )
+    )
+      throw Error("DOWNLOAD_CHECKPOINT_INVALID");
+    if (
+      typeof options?.authorize !== "function" ||
+      typeof options.overwrite !== "boolean"
+    )
+      throw Error("DOWNLOAD_RECOVERY_AUTHORIZATION_REQUIRED");
+    options.authorize();
+    const verified =
+      options.source &&
+      validateSpec({
+        name: spec.name,
+        size: options.source.size,
+        sha256: options.source.sha256,
+        hashes: options.source.hashes,
+      });
+    if (
+      !verified ||
+      verified.size !== spec.size ||
+      verified.sha256 !== spec.sha256 ||
+      verified.hashes.length !== spec.hashes.length ||
+      verified.hashes.some((h, i) => h !== spec.hashes[i])
+    )
+      throw Error("DOWNLOAD_CHECKPOINT_SOURCE_MISMATCH");
+    if (checkpoint.previous && !options.overwrite)
+      throw Error("DOWNLOAD_OVERWRITE_REQUIRED");
+    const key =
+      process.platform === "win32"
+        ? checkpoint.stagePath.toLowerCase()
+        : checkpoint.stagePath;
+    if (
+      this.recovering.has(key) ||
+      [...this.records.values()].some(
+        (r) =>
+          r.view.temporaryPath &&
+          (process.platform === "win32"
+            ? r.view.temporaryPath.toLowerCase()
+            : r.view.temporaryPath) === key,
+      )
+    )
+      throw Error("DOWNLOAD_CHECKPOINT_IN_USE");
+    const bytes = spec.hashes.length * 64;
+    if (
+      this.records.size + this.choosing >= 128 ||
+      bytes +
+        this.choosingBytes +
+        [...this.records.values()].reduce(
+          (sum, r) => sum + r.spec.hashes.length * 64,
+          0,
+        ) >
+        8 * 1024 * 1024
+    )
+      throw Error("DOWNLOAD_LIMIT");
+    this.recovering.add(key);
+    this.choosing++;
+    this.choosingBytes += bytes;
+    let handle;
+    try {
+      const r = {
+        owner,
+        authorize: options.authorize,
+        spec,
+        parent: checkpoint.parent,
+        parentIdentity: checkpoint.parentIdentity,
+        previous: checkpoint.previous,
+        cancelled: false,
+        handle: undefined,
+        stageIdentity: checkpoint.stageIdentity,
+        tail: Promise.resolve(),
+        touched: Date.now(),
+        overwrite: options.overwrite,
+        view: {
+          id: randomUUID(),
+          path: checkpoint.destination,
+          temporaryPath: checkpoint.stagePath,
+          size: spec.size,
+          writtenBytes: checkpoint.writtenBytes,
+          state: "paused",
+          existing: checkpoint.previous
+            ? {
+                size: checkpoint.previous.stat.size,
+                modifiedAt: checkpoint.previous.stat.mtimeMs,
+              }
+            : undefined,
+        },
+      };
+      await this.parent(r);
+      await this.targetUnchanged(r);
+      const before = await fs.lstat(checkpoint.stagePath);
+      if (
+        !before.isFile() ||
+        before.isSymbolicLink() ||
+        before.nlink !== 1 ||
+        identity(before) !== checkpoint.stageIdentity ||
+        before.size < checkpoint.writtenBytes ||
+        before.size > spec.size
+      )
+        throw Error("DOWNLOAD_CHECKPOINT_CHANGED");
+      this.guard(r);
+      handle = await fs.open(checkpoint.stagePath, "r+");
+      r.handle = handle;
+      await this.stage(r);
+      const checked = await hashHandle(
+        handle,
+        () => this.guard(r),
+        checkpoint.writtenBytes,
+      );
+      if (
+        checked.stat.nlink !== 1 ||
+        checked.hashes.some((h, i) => h !== spec.hashes[i])
+      )
+        throw Error("DOWNLOAD_CHECKPOINT_CHANGED");
+      await this.stage(r);
+      await this.targetUnchanged(r);
+      this.guard(r);
+      r.view.recovery = {
+        verifiedBytes: checkpoint.writtenBytes,
+        unconfirmedBytes: checked.stat.size - checkpoint.writtenBytes,
+      };
+      this.records.set(r.view.id, r);
+      handle = undefined;
+      return this.view(r);
+    } catch (error) {
+      throw Error(errorCode(error));
+    } finally {
+      try {
+        if (handle) await handle.close();
+      } finally {
+        this.choosing--;
+        this.choosingBytes -= bytes;
+        this.recovering.delete(key);
+      }
+    }
+  }
   resume(owner, id) {
     return this.run(owner, id, async (r) => {
       if (!["paused", "failed"].includes(r.view.state))
@@ -426,8 +634,16 @@ class DownloadSink {
   }
   cancel(owner, id) {
     const record = this.owned(owner, id);
+    if (record.detaching) throw Error("DOWNLOAD_BUSY");
     record.cancelled = true;
     return this.run(owner, id, async (r) => {
+      if (r.preserved) {
+        if (r.handle) {
+          await r.handle.close();
+          r.handle = undefined;
+        }
+        return this.view(r);
+      }
       if (["completed", "unknown"].includes(r.view.state)) return this.view(r);
       if (r.handle) {
         await r.handle.close();

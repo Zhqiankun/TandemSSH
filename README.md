@@ -71,6 +71,7 @@
 | [目录保存流程](docs/36-workflow-directory-steps.md) | v3 目录槽位、冲突策略、父任务游标与实际桌面双模式验证 |
 | [任务历史与归档](docs/37-task-history-and-retention.md) | 操作分页、重启后脱敏历史、已结束任务资源释放与验证 |
 | [本机加密文件草稿](docs/38-encrypted-file-drafts.md) | 加密快照、重启后三份内容审阅、人工恢复与实际桌面验证 |
+| [下载重启恢复](docs/39-download-recovery.md) | 已验证的检查点核心、独立进程续传与尚待接入的恢复界面 |
 
 ## 产品主线
 
