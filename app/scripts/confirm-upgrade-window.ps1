@@ -24,8 +24,12 @@ try {
       $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $condition)
       foreach ($window in $windows) {
         if ($observed.Count -lt 100) { [void]$observed.Add('Window: ' + $window.Current.Name) }
-        if ($Action -ne 'installer' -and $window.Current.Name -ne '安装同舟 SSH 更新') { continue }
+
         $buttons = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button))
+        if ($Action -ne 'installer') {
+          $names = @($buttons | ForEach-Object { $_.Current.Name.Replace('&','').Trim() })
+          if ($names -notcontains '现在安装' -or $names -notcontains '取消') { continue }
+        }
         foreach ($button in $buttons) {
           $name = $button.Current.Name.Replace('&','').Trim()
           if ($observed.Count -lt 100) { [void]$observed.Add('Button: ' + $name) }

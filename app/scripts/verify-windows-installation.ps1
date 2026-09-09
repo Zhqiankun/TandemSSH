@@ -19,6 +19,7 @@ $marker = Join-Path $installRoot '.tandemssh-installed'
 $start = Get-Date
 $evidence = [ordered]@{ version = $version; installed = $false; native = $false; desktop = $false; upgraded = $false; uninstalled = $false; dataPreserved = $false }
 $failures = [System.Collections.Generic.List[string]]::new()
+$preservationBaselineReady = $false
 function Assert-OwnedInstallPath {
   $full = [IO.Path]::GetFullPath($installRoot)
   if (-not $full.StartsWith($runnerRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Parent $full) -ne $ownedRoot -or (Split-Path -Leaf $full) -ne 'TandemSSH') { throw 'Installer path escaped its disposable directory' }
@@ -83,6 +84,7 @@ try {
   $sentinel = Join-Path $profile 'installer-validation.json'
   [IO.File]::WriteAllText($sentinel, '{"purpose":"uninstall must preserve user data"}')
   $sentinelHash = (Get-FileHash -LiteralPath $sentinel -Algorithm SHA256).Hash
+  $preservationBaselineReady = $true
 } catch { $failures.Add($_.Exception.Message) }
 finally {
   try {
@@ -105,7 +107,7 @@ finally {
       if (-not $removed -or (Test-Path -LiteralPath $startMenuLink) -or (Test-Path -LiteralPath $desktopLink)) { throw 'Uninstall left application files, registration or shortcuts' }
       $evidence.uninstalled = $true
     } elseif ($evidence.installed) { throw 'Installed uninstaller missing' }
-    if ($evidence.desktop) {
+    if ($evidence.desktop -and $preservationBaselineReady) {
       if ((Get-FileHash -LiteralPath $sentinel -Algorithm SHA256).Hash -ne $sentinelHash -or (Get-FileHash -LiteralPath $databaseFile -Algorithm SHA256).Hash -ne $databaseHash) { throw 'Uninstall removed user data' }
       $evidence.dataPreserved = $true
     }

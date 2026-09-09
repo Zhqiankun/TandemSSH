@@ -250,11 +250,31 @@ async function main() {
       `(async()=>{const r=await fetch('http://127.0.0.1:30001'+${JSON.stringify(route)},{method:${JSON.stringify(method)},headers:{Authorization:'Bearer '+localStorage.getItem('jwt'),'Content-Type':'application/json','X-Electron-App':'true'},body:${body === undefined ? "undefined" : JSON.stringify(JSON.stringify(body))}});const value=await r.json();if(!r.ok)throw Error('Upgrade API '+r.status);return value;})()`,
       true,
     );
+  const readyDesktop = async (driver) => {
+    await until(() =>
+      driver.evaluate(
+        "document.documentElement.lang==='zh-CN'&&document.body.innerText.includes('快速连接')",
+      ),
+    );
+    await until(async () => {
+      const skipped = await driver.evaluate(
+        "(()=>{const d=[...document.querySelectorAll('[role=dialog]')].find(e=>e.innerText.replace(/\\s+/g,'').includes('欢迎使用同舟SSH'));if(!d)return false;const b=[...d.querySelectorAll('button')].find(b=>b.textContent.trim()==='跳过设置');if(!b||b.disabled)return false;const r=b.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);if(!r.width||!r.height||!hit||!b.contains(hit))return false;b.click();return true;})()",
+      );
+      if (skipped) return true;
+      const preferences = await api(driver, "/ui-preferences");
+      return preferences.preferences?.onboarding?.completedVersion > 0;
+    }, 30000);
+    await until(() =>
+      driver.evaluate(
+        "![...document.querySelectorAll('[role=dialog]')].some(e=>e.innerText.replace(/\\s+/g,'').includes('欢迎使用同舟SSH'))",
+      ),
+    );
+  };
   const click = (label) =>
     until(
       () =>
         renderer.evaluate(
-          `(()=>{const b=[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});if(!b||b.disabled)return false;b.click();return true;})()`,
+          `(()=>{const b=[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});if(!b||b.disabled)return false;const r=b.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);if(!r.width||!r.height||!hit||!b.contains(hit))return false;b.click();return true;})()`,
         ),
       30000,
     );
@@ -307,32 +327,30 @@ async function main() {
       ports.oldRenderer,
       (t) => t.type === "page" && t.url.split(/[?#]/)[0] === expectedUrl,
     );
-    await until(() =>
-      renderer.evaluate(
-        "document.documentElement.lang==='zh-CN'&&document.body.innerText.includes('快速连接')",
-      ),
-    );
+    await readyDesktop(renderer);
     stage = "retention-seed";
     const markerName = "升级数据保留-" + randomUUID();
-    const host = await api(renderer, "/host/db/host", "POST", {
-      name: markerName,
-      ip: "127.0.0.1",
-      port: 22,
-      username: "upgrade-fixture",
-      password: "local-upgrade-fixture-only",
-      authType: "password",
-      connectionType: "ssh",
-      enableTerminal: true,
-      enableFileManager: true,
-      enableSsh: true,
-      enableTunnel: false,
-      enableDocker: false,
-      statsConfig: { enabled: false },
-      tags: [],
+    const workflow = await api(renderer, "/tandem/workflows", "POST", {
+      allowedHostIds: [],
+      definition: {
+        schemaVersion: 1,
+        id: "upgrade-retention",
+        name: markerName,
+        version: "1.0.0",
+        parameters: {},
+        defaults: { cwd: "/tmp" },
+        steps: [
+          {
+            id: "probe",
+            name: "仅保存不执行",
+            action: { type: "command", program: "pwd", args: [] },
+          },
+        ],
+      },
     });
     fs.writeFileSync(
       path.join(profile, "upgrade-retention.json"),
-      JSON.stringify({ markerName, hostId: host.id }),
+      JSON.stringify({ markerName, workflowId: workflow.id }),
     );
     const retainedDigest = await hash(
       path.join(profile, "upgrade-retention.json"),
@@ -418,15 +436,13 @@ async function main() {
       ports.newRenderer,
       (t) => t.type === "page" && t.url.split(/[?#]/)[0] === expectedUrl,
     );
-    await until(() =>
-      newRenderer.evaluate(
-        "document.documentElement.lang==='zh-CN'&&document.body.innerText.includes('快速连接')",
-      ),
-    );
+    await readyDesktop(newRenderer);
     stage = "retention-check";
-    const hosts = await api(newRenderer, "/host/db/host");
+    const retained = await api(newRenderer, "/tandem/workflows");
     if (
-      !JSON.stringify(hosts).includes(markerName) ||
+      !retained.workflows?.some(
+        (w) => w.id === workflow.id && w.name === markerName,
+      ) ||
       (await hash(path.join(profile, "upgrade-retention.json"))) !==
         retainedDigest ||
       (await newRenderer.evaluate(
@@ -484,7 +500,7 @@ async function main() {
         onlineUpgrade: true,
         oldVersion,
         newVersion,
-        retainedHost: true,
+        retainedWorkflow: true,
         autoStarted: true,
       }),
     );
