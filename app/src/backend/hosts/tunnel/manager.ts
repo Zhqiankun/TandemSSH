@@ -68,6 +68,8 @@ export const lastTunnelErrorTypes = new Map<
 export const tunnelConfigs = new Map<string, TunnelConfig>();
 export const activeTunnelProcesses = new Map<string, ChildProcess>();
 export const pendingTunnelOperations = new Map<string, Promise<void>>();
+// One signal owns preparation, handshakes and listeners for this connection attempt.
+const tunnelConnectionControllers = new Map<string, AbortController>();
 // SSE clients mapped to the user they belong to, so snapshots can be
 // filtered to tunnels that user can actually reach.
 export const tunnelStatusClients = new Map<Response, string>();
@@ -294,6 +296,9 @@ export async function cleanupTunnelResources(
   }
 
   cleanupInProgress.add(tunnelName);
+  const controller = tunnelConnectionControllers.get(tunnelName);
+  tunnelConnectionControllers.delete(tunnelName);
+  controller?.abort(Error("TUNNEL_CONNECTION_CANCELLED"));
 
   const tunnelConfig = tunnelConfigs.get(tunnelName);
   const runtime = activeTunnelRuntimes.get(tunnelName);
@@ -612,12 +617,15 @@ export async function connectEndpointThroughSource(
     keyType?: string;
     authMethod?: string;
   },
+  signal?: AbortSignal,
 ): Promise<Client> {
+  signal?.throwIfAborted();
   const endpointSock = await forwardOut(
     sourceClient,
     tunnelConfig.endpointIP,
     tunnelConfig.endpointSSHPort,
     tunnelConfig.name,
+    signal,
   );
   const endpointOptions: Record<string, unknown> = {
     sock: endpointSock,
@@ -637,6 +645,7 @@ export async function connectEndpointThroughSource(
     tunnelConfig.name,
     "endpoint",
     tunnelConfig,
+    signal,
   );
 }
 
@@ -683,7 +692,9 @@ export function shouldEstablishDirectTunnel(
 export async function establishDirectTunnel(
   sourceClient: Client,
   tunnelConfig: TunnelConfig,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   const tunnelName = tunnelConfig.name;
   const mode = getTunnelMode(tunnelConfig);
   const bindHost = getTunnelBindHost(tunnelConfig);
@@ -697,10 +708,12 @@ export async function establishDirectTunnel(
       sourceClient,
       targetHost,
       sourcePort,
+      signal,
     );
+    signal?.throwIfAborted();
     const sockets = new Set<TcpSocket>();
     sourceClient.on("tcp connection", (info, accept, reject) => {
-      if (info.destPort !== remoteBindPort) {
+      if (signal?.aborted || info.destPort !== remoteBindPort) {
         reject();
         return;
       }
@@ -741,6 +754,10 @@ export async function establishDirectTunnel(
   // Local and dynamic modes: listen locally, forward through SSH
   const sockets = new Set<TcpSocket>();
   const tcpServer = createTcpServer((socket) => {
+    if (signal?.aborted) {
+      socket.destroy();
+      return;
+    }
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
     socket.on("error", () => {
@@ -765,12 +782,20 @@ export async function establishDirectTunnel(
   });
 
   await new Promise<void>((resolve, reject) => {
+    const closed = () =>
+      reject(signal?.reason ?? Error("TUNNEL_LISTENER_CLOSED"));
+    tcpServer.once("close", closed);
     tcpServer.once("error", reject);
-    tcpServer.listen({ host: bindHost, port: sourcePort }, () => {
+    tcpServer.listen({ host: bindHost, port: sourcePort, signal }, () => {
       tcpServer.removeListener("error", reject);
+      tcpServer.removeListener("close", closed);
       resolve();
     });
   });
+  if (signal?.aborted) {
+    tcpServer.close();
+    signal.throwIfAborted();
+  }
 
   tunnelLogger.info("Direct tunnel listener started", {
     operation: "direct_tunnel_listen",
@@ -817,7 +842,9 @@ export async function establishManagedS2STunnel(
     keyType?: string;
     authMethod?: string;
   },
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   const tunnelName = tunnelConfig.name;
   const mode = getTunnelMode(tunnelConfig);
   const bindHost = getTunnelBindHost(tunnelConfig);
@@ -825,7 +852,9 @@ export async function establishManagedS2STunnel(
     sourceClient,
     tunnelConfig,
     endpointCredentials,
+    signal,
   );
+  signal?.throwIfAborted();
 
   const bindClient = mode === "remote" ? endpointClient : sourceClient;
   const outboundClient = mode === "remote" ? sourceClient : endpointClient;
@@ -850,7 +879,13 @@ export async function establishManagedS2STunnel(
     endpointIP: tunnelConfig.endpointIP,
   });
 
-  const actualPort = await bindForwardIn(bindClient, bindHost, bindPort);
+  const actualPort = await bindForwardIn(
+    bindClient,
+    bindHost,
+    bindPort,
+    signal,
+  );
+  signal?.throwIfAborted();
 
   const tcpHandler = (
     info: {
@@ -862,7 +897,7 @@ export async function establishManagedS2STunnel(
     accept: () => ClientChannel,
     reject: () => void,
   ) => {
-    if (info.destPort !== actualPort) {
+    if (signal?.aborted || info.destPort !== actualPort) {
       reject();
       return;
     }
@@ -938,9 +973,18 @@ export async function connectSSHTunnel(
     return;
   }
 
-  tunnelConnecting.add(tunnelName);
-
   await cleanupTunnelResources(tunnelName, true);
+  if (manualDisconnects.has(tunnelName)) return;
+  const controller = new AbortController();
+  const { signal } = controller;
+  tunnelConnectionControllers
+    .get(tunnelName)
+    ?.abort(Error("TUNNEL_CONNECTION_CANCELLED"));
+  tunnelConnectionControllers.set(tunnelName, controller);
+  tunnelConnecting.add(tunnelName);
+  signal.addEventListener("abort", () => tunnelConnecting.delete(tunnelName), {
+    once: true,
+  });
 
   if (retryAttempt === 0) {
     retryExhaustedTunnels.delete(tunnelName);
@@ -1115,6 +1159,8 @@ export async function connectSSHTunnel(
     });
   }
 
+  if (signal.aborted) return;
+
   if (
     !shouldEstablishDirectTunnel(tunnelConfig) &&
     resolvedEndpointCredentials.authMethod === "password" &&
@@ -1158,11 +1204,24 @@ export async function connectSSHTunnel(
   }
 
   const conn = new Client();
+  let connectionTimeout: NodeJS.Timeout | undefined = undefined;
+  const abortConnection = () => {
+    clearTimeout(connectionTimeout);
+    conn.destroy();
+  };
+  signal.addEventListener("abort", abortConnection, { once: true });
+  conn.once("close", () =>
+    signal.removeEventListener("abort", abortConnection),
+  );
+  // The verifier loads asynchronously, so errors already need a listener here.
+  conn.on("error", () => {});
   let trustRefused = false;
   let sourceVerifier;
   try {
     sourceVerifier = await tunnelHostVerifier(conn, tunnelConfig, "source");
+    if (signal.aborted) return;
   } catch (error) {
+    if (signal.aborted) return;
     conn.destroy();
     tunnelConnecting.delete(tunnelName);
     broadcastTunnelStatus(tunnelName, {
@@ -1174,7 +1233,8 @@ export async function connectSSHTunnel(
     return;
   }
 
-  const connectionTimeout = setTimeout(() => {
+  connectionTimeout = setTimeout(() => {
+    if (signal.aborted) return;
     if (conn) {
       if (activeRetryTimers.has(tunnelName)) {
         return;
@@ -1193,6 +1253,7 @@ export async function connectSSHTunnel(
         },
       );
 
+      controller.abort(Error("TUNNEL_CONNECTION_TIMEOUT"));
       try {
         conn.end();
       } catch {
@@ -1213,6 +1274,7 @@ export async function connectSSHTunnel(
 
   conn.on("error", (err) => {
     clearTimeout(connectionTimeout);
+    if (signal.aborted) return;
 
     const errorType = classifyTunnelError(err.message);
     trustRefused = /host denied|host_trust_|tunnel_trust_/i.test(err.message);
@@ -1258,7 +1320,7 @@ export async function connectSSHTunnel(
 
   conn.on("close", () => {
     clearTimeout(connectionTimeout);
-    if (trustRefused) return;
+    if (trustRefused || signal.aborted) return;
 
     tunnelConnecting.delete(tunnelName);
 
@@ -1287,6 +1349,7 @@ export async function connectSSHTunnel(
 
   conn.on("ready", async () => {
     clearTimeout(connectionTimeout);
+    if (signal.aborted) return;
     tunnelLogger.info("Creating managed SSH tunnel", {
       operation: "managed_tunnel_connection_create",
       userId: tunnelConfig.sourceUserId,
@@ -1309,15 +1372,17 @@ export async function connectSSHTunnel(
       }
 
       if (shouldEstablishDirectTunnel(tunnelConfig)) {
-        await establishDirectTunnel(conn, tunnelConfig);
+        await establishDirectTunnel(conn, tunnelConfig, signal);
       } else {
         await establishManagedS2STunnel(
           conn,
           tunnelConfig,
           resolvedEndpointCredentials,
+          signal,
         );
       }
 
+      if (signal.aborted) return;
       tunnelConnecting.delete(tunnelName);
       tunnelLogger.success("Managed tunnel creation complete", {
         operation: "managed_tunnel_create_complete",
@@ -1349,6 +1414,7 @@ export async function connectSSHTunnel(
       });
       setupPingInterval(tunnelName);
     } catch (error) {
+      if (signal.aborted) return;
       const message = getErrorMessage(error, "Failed to create tunnel");
       const errorType = classifyTunnelError(message);
       trustRefused = /host denied|host_trust_|tunnel_trust_/i.test(message);
@@ -1527,14 +1593,20 @@ export async function connectSSHTunnel(
           socks5Password: tunnelConfig.socks5Password,
           socks5ProxyChain: tunnelConfig.socks5ProxyChain,
         },
+        signal,
       );
 
+      if (signal.aborted) {
+        socks5Socket?.destroy();
+        return;
+      }
       if (socks5Socket) {
         connOptions.sock = socks5Socket;
         conn.connect(connOptions);
         return;
       }
     } catch (socks5Error) {
+      if (signal.aborted) return;
       tunnelLogger.error("SOCKS5 connection failed for tunnel", socks5Error, {
         operation: "tunnel_socks5_connection_failed",
         tunnelName,
@@ -1559,7 +1631,9 @@ export async function connectSSHTunnel(
 
   try {
     await resolveSshConnectConfigHost(connOptions);
+    if (signal.aborted) return;
   } catch (error) {
+    if (signal.aborted) return;
     tunnelLogger.error("Tunnel source hostname resolution failed", error, {
       operation: "tunnel_dns_resolve",
       tunnelName,

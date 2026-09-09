@@ -69,61 +69,55 @@ export function applyAuthOptions(
   }
 }
 
+/** The signal owns the SSH client until it closes, including after ready. */
 export async function connectClient(
   connOptions: Record<string, unknown>,
   tunnelName: string,
   role: "source" | "endpoint",
   config: TunnelConfig,
+  signal?: AbortSignal,
 ): Promise<Client> {
   const client = new Client();
-  const closeSocket = () => {
-    (connOptions.sock as { destroy?: () => void } | undefined)?.destroy?.();
-  };
-  try {
-    connOptions = {
-      ...connOptions,
-      hostVerifier: await tunnelHostVerifier(client, config, role),
-    };
-  } catch (error) {
-    closeSocket();
-    client.destroy();
-    throw error;
-  }
   return new Promise((resolve, reject) => {
     let settled = false;
+    const fail = (error: unknown) => {
+      if (!settled) {
+        settled = true;
+        reject(error);
+      }
+      (connOptions.sock as { destroy?: () => void } | undefined)?.destroy?.();
+      client.destroy();
+    };
+    const abort = () =>
+      fail(signal?.reason ?? Error("TUNNEL_CONNECTION_CANCELLED"));
+    signal?.addEventListener("abort", abort, { once: true });
     client.once("ready", () => {
+      if (signal?.aborted || settled) return;
       settled = true;
       resolve(client);
     });
     client.once("close", () => {
-      if (!settled) {
-        settled = true;
-        closeSocket();
-        reject(Error("TUNNEL_CONNECTION_CLOSED"));
-      }
+      signal?.removeEventListener("abort", abort);
+      if (!settled) fail(Error("TUNNEL_CONNECTION_CLOSED"));
     });
     client.on("error", (error) => {
-      if (!settled) {
-        settled = true;
-        closeSocket();
-        client.destroy();
-        reject(error);
-        return;
-      }
-      tunnelLogger.error("Managed tunnel SSH client error", error, {
-        operation: "managed_tunnel_client_error",
-        tunnelName,
-        role,
-      });
+      if (!settled) return fail(error);
+      if (!signal?.aborted)
+        tunnelLogger.error("Managed tunnel SSH client error", error, {
+          operation: "managed_tunnel_client_error",
+          tunnelName,
+          role,
+        });
     });
-    try {
-      client.connect(connOptions);
-    } catch (error) {
-      settled = true;
-      closeSocket();
-      client.destroy();
-      reject(error);
-    }
+    void (async () => {
+      signal?.throwIfAborted();
+      const hostVerifier = await tunnelHostVerifier(client, config, role);
+      signal?.throwIfAborted();
+      if (!settled) client.connect({ ...connOptions, hostVerifier });
+    })().catch((error) => {
+      signal?.removeEventListener("abort", abort);
+      fail(error);
+    });
   });
 }
 
@@ -132,23 +126,56 @@ export function forwardOut(
   targetHost: string,
   targetPort: number,
   tunnelName?: string,
+  signal?: AbortSignal,
 ): Promise<ClientChannel> {
   return new Promise((resolve, reject) => {
-    client.forwardOut("127.0.0.1", 0, targetHost, targetPort, (err, stream) => {
-      if (err) {
-        if (tunnelName) {
-          tunnelLogger.error("Managed tunnel forwardOut failed", err, {
-            operation: "managed_tunnel_forward_out_failed",
-            tunnelName,
-            targetHost,
-            targetPort,
-          });
-        }
-        reject(err);
-        return;
-      }
-      resolve(stream);
-    });
+    let settled = false;
+    const detach = () => {
+      signal?.removeEventListener("abort", abort);
+      client.off("close", closed);
+    };
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      detach();
+      reject(error);
+    };
+    const abort = () =>
+      fail(signal?.reason ?? Error("TUNNEL_CONNECTION_CANCELLED"));
+    const closed = () => fail(Error("TUNNEL_CONNECTION_CLOSED"));
+    signal?.addEventListener("abort", abort, { once: true });
+    client.once("close", closed);
+    if (signal?.aborted) return abort();
+    try {
+      client.forwardOut(
+        "127.0.0.1",
+        0,
+        targetHost,
+        targetPort,
+        (err, stream) => {
+          if (settled || signal?.aborted) {
+            stream?.destroy();
+            return;
+          }
+          if (err) {
+            if (tunnelName)
+              tunnelLogger.error("Managed tunnel forwardOut failed", err, {
+                operation: "managed_tunnel_forward_out_failed",
+                tunnelName,
+                targetHost,
+                targetPort,
+              });
+            fail(err);
+            return;
+          }
+          settled = true;
+          detach();
+          resolve(stream);
+        },
+      );
+    } catch (error) {
+      fail(error);
+    }
   });
 }
 
@@ -156,15 +183,40 @@ export function bindForwardIn(
   client: Client,
   bindHost: string,
   bindPort: number,
+  signal?: AbortSignal,
 ): Promise<number> {
   return new Promise((resolve, reject) => {
-    client.forwardIn(bindHost, bindPort, (err, actualPort) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      resolve(actualPort || bindPort);
-    });
+    let settled = false;
+    const detach = () => {
+      signal?.removeEventListener("abort", abort);
+      client.off("close", closed);
+    };
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      detach();
+      reject(error);
+    };
+    const abort = () =>
+      fail(signal?.reason ?? Error("TUNNEL_CONNECTION_CANCELLED"));
+    const closed = () => fail(Error("TUNNEL_CONNECTION_CLOSED"));
+    signal?.addEventListener("abort", abort, { once: true });
+    client.once("close", closed);
+    if (signal?.aborted) return abort();
+    try {
+      client.forwardIn(bindHost, bindPort, (err, actualPort) => {
+        if (settled || signal?.aborted) {
+          if (!err) unbindForwardIn(client, bindHost, actualPort || bindPort);
+          return;
+        }
+        if (err) return fail(err);
+        settled = true;
+        detach();
+        resolve(actualPort || bindPort);
+      });
+    } catch (error) {
+      fail(error);
+    }
   });
 }
 

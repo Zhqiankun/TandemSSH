@@ -69,6 +69,16 @@ function TunnelCard({
   const isError = label === "ERROR";
   const isWaiting = label === "WAITING";
 
+  const statusText = isConnected
+    ? t("tunnels.connected")
+    : isConnecting
+      ? t("tunnels.connecting")
+      : isError
+        ? t("tunnels.error")
+        : isWaiting
+          ? t("tandem.tunnelWaitingRetry")
+          : t("tunnels.disconnected");
+
   let statusColor = "text-muted-foreground border-border bg-muted/30";
   if (isConnected)
     statusColor = "text-accent-brand border-accent-brand/40 bg-accent-brand/10";
@@ -108,7 +118,7 @@ function TunnelCard({
           ) : (
             <WifiOff className="size-3" />
           )}
-          {isActing ? t("tunnels.working") : label}
+          {isActing ? t("tunnels.working") : statusText}
         </div>
       </div>
       <div className="px-4 py-4 flex flex-col gap-3">
@@ -124,7 +134,11 @@ function TunnelCard({
           </span>
           <div className="flex items-center gap-1.5 mt-1">
             <span className="text-[10px] font-semibold px-1.5 py-px border border-border text-muted-foreground uppercase">
-              {mode}
+              {mode === "remote"
+                ? t("tunnels.typeRemote")
+                : mode === "dynamic"
+                  ? t("tunnels.typeDynamic")
+                  : t("tunnels.typeLocal")}
             </span>
             <span className="text-[10px] text-muted-foreground">
               → localhost:{tunnel.sourcePort}
@@ -157,7 +171,13 @@ function TunnelCard({
               <span className="text-muted-foreground font-semibold">
                 {t("tunnels.mode")}
               </span>
-              <span className="uppercase font-bold">{mode}</span>
+              <span className="uppercase font-bold">
+                {mode === "remote"
+                  ? t("tunnels.typeRemote")
+                  : mode === "dynamic"
+                    ? t("tunnels.typeDynamic")
+                    : t("tunnels.typeLocal")}
+              </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground font-semibold">

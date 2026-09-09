@@ -4696,6 +4696,7 @@
     "secondsShort": "{{count}}s"
   },
   "tandem": {
+    "tunnelWaitingRetry": "等待重试",
     "labels": {
       "close": "关闭",
       "sidebar": "侧边栏",

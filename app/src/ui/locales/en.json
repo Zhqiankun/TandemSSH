@@ -4696,6 +4696,7 @@
     "secondsShort": "{{count}}s"
   },
   "tandem": {
+    "tunnelWaitingRetry": "Waiting to retry",
     "labels": {
       "close": "Close",
       "sidebar": "Sidebar",

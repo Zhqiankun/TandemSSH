@@ -33,7 +33,9 @@ export async function createSocks5Connection(
   targetHost: string,
   targetPort: number,
   socks5Config: SOCKS5Config,
+  signal?: AbortSignal,
 ): Promise<net.Socket | null> {
+  signal?.throwIfAborted();
   if (!socks5Config.useSocks5) {
     return null;
   }
@@ -46,11 +48,17 @@ export async function createSocks5Connection(
       targetHost,
       targetPort,
       socks5Config.socks5ProxyChain,
+      signal,
     );
   }
 
   if (socks5Config.socks5Host) {
-    return createSingleProxyConnection(targetHost, targetPort, socks5Config);
+    return createSingleProxyConnection(
+      targetHost,
+      targetPort,
+      socks5Config,
+      signal,
+    );
   }
 
   return null;
@@ -60,6 +68,7 @@ async function createSingleProxyConnection(
   targetHost: string,
   targetPort: number,
   socks5Config: SOCKS5Config,
+  signal?: AbortSignal,
 ): Promise<net.Socket> {
   const socksOptions: SocksClientOptions = {
     proxy: {
@@ -77,9 +86,7 @@ async function createSingleProxyConnection(
   };
 
   try {
-    const info = await SocksClient.createConnection(socksOptions);
-
-    return info.socket;
+    return await connectSocksProxy(socksOptions, signal);
   } catch (error) {
     sshLogger.error("SOCKS5 connection failed", error, {
       operation: "socks5_connect_failed",
@@ -93,6 +100,49 @@ async function createSingleProxyConnection(
   }
 }
 
+async function connectSocksProxy(
+  options: SocksClientOptions,
+  signal?: AbortSignal,
+): Promise<net.Socket> {
+  if (!signal) return (await SocksClient.createConnection(options)).socket;
+  signal.throwIfAborted();
+  const socket =
+    (options.existing_socket as net.Socket | undefined) ?? new net.Socket();
+  const abort = () => socket.destroy();
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    if (!options.existing_socket) {
+      await new Promise<void>((resolve, reject) => {
+        const closed = () =>
+          reject(signal.reason ?? Error("PROXY_CONNECTION_CLOSED"));
+        socket.once("close", closed);
+        socket.once("error", reject);
+        socket.setTimeout(30000, () =>
+          socket.destroy(Error("PROXY_CONNECTION_TIMEOUT")),
+        );
+        socket.connect(options.proxy.port, options.proxy.host, () => {
+          socket.off("close", closed);
+          socket.off("error", reject);
+          socket.setTimeout(0);
+          resolve();
+        });
+      });
+    }
+    signal.throwIfAborted();
+    const info = await SocksClient.createConnection({
+      ...options,
+      existing_socket: socket,
+    });
+    signal.throwIfAborted();
+    return info.socket;
+  } catch (error) {
+    socket.destroy();
+    throw signal.aborted ? signal.reason : error;
+  } finally {
+    signal.removeEventListener("abort", abort);
+  }
+}
+
 export async function createHttpConnectConnection(
   targetHost: string,
   targetPort: number,
@@ -101,9 +151,20 @@ export async function createHttpConnectConnection(
   username?: string,
   password?: string,
   existingSocket?: net.Socket,
+  signal?: AbortSignal,
 ): Promise<net.Socket> {
+  signal?.throwIfAborted();
+  let ownedSocket = existingSocket;
+  let abort: (() => void) | undefined;
   return new Promise<net.Socket>((resolve, reject) => {
+    abort = () => {
+      clearTimeout(timeout);
+      ownedSocket?.destroy();
+      reject(signal?.reason ?? Error("PROXY_CONNECTION_CANCELLED"));
+    };
+    signal?.addEventListener("abort", abort, { once: true });
     const timeout = setTimeout(() => {
+      ownedSocket?.destroy();
       reject(
         new Error(
           `HTTP CONNECT proxy timeout connecting to ${proxyHost}:${proxyPort}`,
@@ -164,14 +225,17 @@ export async function createHttpConnectConnection(
       sendConnect(existingSocket);
     } else {
       const socket = net.connect(proxyPort, proxyHost, () => {
-        sendConnect(socket);
+        if (!signal?.aborted) sendConnect(socket);
       });
+      ownedSocket = socket;
 
       socket.on("error", (err) => {
         clearTimeout(timeout);
         reject(new Error(`HTTP CONNECT proxy TCP error: ${err.message}`));
       });
     }
+  }).finally(() => {
+    if (abort) signal?.removeEventListener("abort", abort);
   });
 }
 
@@ -179,18 +243,26 @@ export async function createMixedProxyChainConnection(
   targetHost: string,
   targetPort: number,
   proxyChain: ProxyNode[],
+  signal?: AbortSignal,
 ): Promise<net.Socket> {
+  signal?.throwIfAborted();
   if (proxyChain.length === 0) {
     throw new Error("Proxy chain is empty");
   }
 
   const hasMixedTypes = proxyChain.some((p) => p.type === "http");
 
-  if (!hasMixedTypes) {
+  if (!hasMixedTypes && !signal) {
     return createPureSocksChainConnection(targetHost, targetPort, proxyChain);
   }
 
-  return createHopByHopConnection(targetHost, targetPort, proxyChain);
+  return createHopByHopConnection(targetHost, targetPort, proxyChain, signal);
+}
+
+function socksProxyType(type: ProxyNode["type"]): 4 | 5 {
+  if (type === 4 || type === "socks4") return 4;
+  if (type === 5 || type === "socks5") return 5;
+  throw Error("Invalid SOCKS proxy type");
 }
 
 async function createPureSocksChainConnection(
@@ -203,7 +275,7 @@ async function createPureSocksChainConnection(
       proxies: proxyChain.map((p) => ({
         host: p.host,
         port: p.port,
-        type: p.type as 4 | 5,
+        type: socksProxyType(p.type),
         userId: p.username,
         password: p.password,
         timeout: 10000,
@@ -231,11 +303,13 @@ async function createHopByHopConnection(
   targetHost: string,
   targetPort: number,
   proxyChain: ProxyNode[],
+  signal?: AbortSignal,
 ): Promise<net.Socket> {
   let currentSocket: net.Socket | null = null;
 
   try {
     for (let i = 0; i < proxyChain.length; i++) {
+      signal?.throwIfAborted();
       const node = proxyChain[i];
       const isLast = i === proxyChain.length - 1;
       const nextTarget = isLast
@@ -251,13 +325,14 @@ async function createHopByHopConnection(
           node.username,
           node.password,
           currentSocket ?? undefined,
+          signal,
         );
       } else {
         const socksOptions: SocksClientOptions = {
           proxy: {
             host: node.host,
             port: node.port,
-            type: node.type as 4 | 5,
+            type: socksProxyType(node.type),
             userId: node.username,
             password: node.password,
           },
@@ -267,8 +342,7 @@ async function createHopByHopConnection(
         if (currentSocket) {
           socksOptions.existing_socket = currentSocket;
         }
-        const info = await SocksClient.createConnection(socksOptions);
-        currentSocket = info.socket;
+        currentSocket = await connectSocksProxy(socksOptions, signal);
       }
     }
 

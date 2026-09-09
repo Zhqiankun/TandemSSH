@@ -108,7 +108,9 @@ async function resolveC2STunnelSource(
 
 async function connectC2SSourceClient(
   tunnelConfig: TunnelConfig,
+  signal: AbortSignal,
 ): Promise<Client> {
+  signal.throwIfAborted();
   const connOptions: Record<string, unknown> = {
     host:
       tunnelConfig.sourceIP?.replace(/^\[|\]$/g, "") || tunnelConfig.sourceIP,
@@ -148,21 +150,28 @@ async function connectC2SSourceClient(
         socks5Password: tunnelConfig.socks5Password,
         socks5ProxyChain: tunnelConfig.socks5ProxyChain,
       },
+      signal,
     );
     if (socks5Socket) {
       connOptions.sock = socks5Socket;
     }
   }
 
-  return connectClient(connOptions, tunnelConfig.name, "source", tunnelConfig);
+  return connectClient(
+    connOptions,
+    tunnelConfig.name,
+    "source",
+    tunnelConfig,
+    signal,
+  );
 }
 
 async function handleC2SRemoteRelayOpen(
   ws: WebSocket,
   tunnelConfig: TunnelConfig,
+  signal: AbortSignal,
 ): Promise<void> {
   const tunnelName = tunnelConfig.name;
-  const sourceClient = await connectC2SSourceClient(tunnelConfig);
   const bindHost = tunnelConfig.targetHost || "127.0.0.1";
   const bindPort = Number(tunnelConfig.sourcePort);
   let closed = false;
@@ -171,7 +180,14 @@ async function handleC2SRemoteRelayOpen(
     throw new Error("Invalid remote port");
   }
 
-  const actualPort = await bindForwardIn(sourceClient, bindHost, bindPort);
+  const sourceClient = await connectC2SSourceClient(tunnelConfig, signal);
+  const actualPort = await bindForwardIn(
+    sourceClient,
+    bindHost,
+    bindPort,
+    signal,
+  );
+  signal.throwIfAborted();
   const streams = new Map<string, ClientChannel>();
 
   const closeStream = (streamId: string): void => {
@@ -200,7 +216,7 @@ async function handleC2SRemoteRelayOpen(
   };
 
   sourceClient.on("tcp connection", (info, accept, reject) => {
-    if (info.destPort !== actualPort) {
+    if (signal.aborted || info.destPort !== actualPort) {
       reject();
       return;
     }
@@ -292,18 +308,57 @@ async function handleC2SRemoteRelayOpen(
   sendC2SMessage(ws, { type: "ready", bindHost, bindPort: actualPort });
 }
 
+/** WebSocket closure owns cancellation from source lookup through the live relay. */
+function relayLifetime(ws: WebSocket): AbortController {
+  const controller = new AbortController();
+  const cancel = () => {
+    ws.off("close", cancel);
+    ws.off("error", cancel);
+    controller.abort(Error("TUNNEL_CONNECTION_CANCELLED"));
+  };
+  ws.once("close", cancel);
+  ws.once("error", cancel);
+  controller.signal.addEventListener(
+    "abort",
+    () => {
+      ws.off("close", cancel);
+      ws.off("error", cancel);
+    },
+    { once: true },
+  );
+  if (ws.readyState !== 1) cancel();
+  return controller;
+}
+
 export async function handleC2SRelayOpen(
   ws: WebSocket,
   message: C2SOpenMessage,
   userId: string,
 ): Promise<void> {
+  const lifetime = relayLifetime(ws);
+  try {
+    await openRelay(ws, message, userId, lifetime.signal);
+  } catch (error) {
+    lifetime.abort(Error("TUNNEL_CONNECTION_CANCELLED"));
+    throw error;
+  }
+}
+
+async function openRelay(
+  ws: WebSocket,
+  message: C2SOpenMessage,
+  userId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  signal.throwIfAborted();
   const tunnelConfig = await resolveC2STunnelSource(
     message.tunnelConfig || {},
     userId,
   );
+  signal.throwIfAborted();
   const mode = getTunnelMode(tunnelConfig);
   if (mode === "remote") {
-    await handleC2SRemoteRelayOpen(ws, tunnelConfig);
+    await handleC2SRemoteRelayOpen(ws, tunnelConfig, signal);
     return;
   }
 
@@ -320,8 +375,14 @@ export async function handleC2SRelayOpen(
     throw new Error("Invalid client tunnel target");
   }
 
-  const sourceClient = await connectC2SSourceClient(tunnelConfig);
-  const outbound = await forwardOut(sourceClient, targetHost, targetPort);
+  const sourceClient = await connectC2SSourceClient(tunnelConfig, signal);
+  const outbound = await forwardOut(
+    sourceClient,
+    targetHost,
+    targetPort,
+    undefined,
+    signal,
+  );
 
   const close = () => {
     try {
@@ -359,7 +420,8 @@ export async function handleC2SRelayOpen(
     outbound.write(chunk);
   });
 
-  ws.send(JSON.stringify({ type: "ready" }));
+  signal.throwIfAborted();
+  sendC2SMessage(ws, { type: "ready" });
 }
 
 export async function handleC2SRelayTest(
@@ -367,12 +429,28 @@ export async function handleC2SRelayTest(
   message: C2SOpenMessage,
   userId: string,
 ): Promise<void> {
+  const lifetime = relayLifetime(ws);
+  try {
+    await testRelay(ws, message, userId, lifetime.signal);
+  } finally {
+    lifetime.abort(Error("TUNNEL_CONNECTION_CANCELLED"));
+  }
+}
+
+async function testRelay(
+  ws: WebSocket,
+  message: C2SOpenMessage,
+  userId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  signal.throwIfAborted();
   const tunnelConfig = await resolveC2STunnelSource(
     message.tunnelConfig || {},
     userId,
   );
+  signal.throwIfAborted();
   const mode = getTunnelMode(tunnelConfig);
-  const sourceClient = await connectC2SSourceClient(tunnelConfig);
+  const sourceClient = await connectC2SSourceClient(tunnelConfig, signal);
 
   try {
     if (mode === "remote") {
@@ -382,7 +460,12 @@ export async function handleC2SRelayTest(
         throw new Error("Invalid remote port");
       }
 
-      const actualPort = await bindForwardIn(sourceClient, bindHost, bindPort);
+      const actualPort = await bindForwardIn(
+        sourceClient,
+        bindHost,
+        bindPort,
+        signal,
+      );
       unbindForwardIn(sourceClient, bindHost, actualPort);
     } else if (mode === "local") {
       const targetHost = tunnelConfig.targetHost || "127.0.0.1";
@@ -391,10 +474,17 @@ export async function handleC2SRelayTest(
         throw new Error("Invalid remote target port");
       }
 
-      const outbound = await forwardOut(sourceClient, targetHost, targetPort);
+      const outbound = await forwardOut(
+        sourceClient,
+        targetHost,
+        targetPort,
+        undefined,
+        signal,
+      );
       outbound.destroy();
     }
 
+    signal.throwIfAborted();
     sendC2SMessage(ws, { type: "ready" });
   } finally {
     try {

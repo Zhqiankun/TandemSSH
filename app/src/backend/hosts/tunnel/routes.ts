@@ -42,6 +42,45 @@ import {
   connectSSHTunnel,
 } from "./manager.js";
 
+// Requests waiting for a previous operation or endpoint lookup are cancellable too.
+const pendingConnectionRequests = new Map<
+  string,
+  Set<{ config: TunnelConfig; controller: AbortController }>
+>();
+function cancelConnectionRequests(name: string): void {
+  for (const request of pendingConnectionRequests.get(name) ?? [])
+    request.controller.abort();
+}
+// Finish the request promptly on cancel even if a database/DNS provider cannot abort.
+// The underlying preparation still checks its own signal before any SSH work.
+function observeConnectionRequest(
+  work: Promise<void>,
+  signal: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cancelled = () => {
+      signal.removeEventListener("abort", cancelled);
+      resolve();
+    };
+    signal.addEventListener("abort", cancelled, { once: true });
+    work.then(
+      () => {
+        signal.removeEventListener("abort", cancelled);
+        resolve();
+      },
+      (error) => {
+        signal.removeEventListener("abort", cancelled);
+        reject(error);
+      },
+    );
+    if (signal.aborted) cancelled();
+  });
+}
+
+function pendingConnectionConfig(name: string): TunnelConfig | undefined {
+  return pendingConnectionRequests.get(name)?.values().next().value?.config;
+}
+
 const permissionManager = PermissionManager.getInstance();
 
 const authManager = AuthManager.getInstance();
@@ -229,150 +268,189 @@ export function registerTunnelRoutes(app: express.Express): void {
           }
         }
 
-        if (pendingTunnelOperations.has(tunnelName)) {
-          try {
-            await pendingTunnelOperations.get(tunnelName);
-          } catch {
-            tunnelLogger.warn(`Previous tunnel operation failed`, {
-              tunnelName,
-            });
-          }
-        }
-
-        const operation = (async () => {
-          manualDisconnects.delete(tunnelName);
-          retryCounters.delete(tunnelName);
-          retryExhaustedTunnels.delete(tunnelName);
-
-          await cleanupTunnelResources(tunnelName);
-
-          if (tunnelConfigs.has(tunnelName)) {
-            const existingConfig = tunnelConfigs.get(tunnelName);
-            if (
-              existingConfig &&
-              (existingConfig.sourceHostId !== tunnelConfig.sourceHostId ||
-                existingConfig.tunnelIndex !== tunnelConfig.tunnelIndex)
-            ) {
-              throw new Error(`Tunnel name collision detected: ${tunnelName}`);
+        const previousOperation = pendingTunnelOperations.get(tunnelName);
+        const request = {
+          config: tunnelConfig,
+          controller: new AbortController(),
+        };
+        const requests = pendingConnectionRequests.get(tunnelName) ?? new Set();
+        requests.add(request);
+        pendingConnectionRequests.set(tunnelName, requests);
+        const operation = observeConnectionRequest(
+          (async () => {
+            if (previousOperation) {
+              try {
+                await previousOperation;
+              } catch {
+                tunnelLogger.warn("Previous tunnel operation failed", {
+                  tunnelName,
+                });
+              }
             }
-          }
+            if (request.controller.signal.aborted) return;
+            manualDisconnects.delete(tunnelName);
+            retryCounters.delete(tunnelName);
+            retryExhaustedTunnels.delete(tunnelName);
 
-          if (
-            !isSingleHostTunnel(tunnelConfig) &&
-            (!tunnelConfig.endpointIP || !tunnelConfig.endpointUsername)
-          ) {
-            try {
-              const systemCrypto = SystemCrypto.getInstance();
-              const internalAuthToken =
-                await systemCrypto.getInternalAuthToken();
+            await cleanupTunnelResources(tunnelName);
+            if (request.controller.signal.aborted) return;
 
-              const allHostsResponse = await axios.get(
-                "http://localhost:30001/host/db/host/internal/all",
-                {
-                  headers: {
-                    "Content-Type": "application/json",
-                    "X-Internal-Auth-Token": internalAuthToken,
-                  },
-                },
-              );
-
-              const allHosts: SSHHost[] = allHostsResponse.data || [];
-              const endpointHost = findHostByTunnelEndpoint(
-                allHosts,
-                tunnelConfig.endpointHost,
-              );
-
-              if (!endpointHost) {
-                if (getTunnelMode(tunnelConfig) !== "remote") {
-                  tunnelConfig.endpointIP =
-                    tunnelConfig.endpointIP || tunnelConfig.endpointHost;
-                } else {
-                  throw new Error(
-                    `Endpoint host '${tunnelConfig.endpointHost}' not found in database`,
-                  );
-                }
-              } else {
-                if (!endpointHost.id) {
-                  throw new Error("Endpoint host not found");
-                }
-
-                const endpointAccess = await permissionManager.canAccessHost(
-                  userId,
-                  endpointHost.id,
-                  "connect",
+            if (tunnelConfigs.has(tunnelName)) {
+              const existingConfig = tunnelConfigs.get(tunnelName);
+              if (
+                existingConfig &&
+                (existingConfig.sourceHostId !== tunnelConfig.sourceHostId ||
+                  existingConfig.tunnelIndex !== tunnelConfig.tunnelIndex)
+              ) {
+                throw new Error(
+                  `Tunnel name collision detected: ${tunnelName}`,
                 );
-                if (!endpointAccess.hasAccess) {
-                  tunnelLogger.warn(
-                    "User attempted tunnel connect without endpoint access",
-                    {
-                      operation: "tunnel_connect_endpoint_unauthorized",
-                      userId,
-                      hostId: endpointHost.id,
-                      tunnelName,
+              }
+            }
+
+            if (
+              !isSingleHostTunnel(tunnelConfig) &&
+              (!tunnelConfig.endpointIP || !tunnelConfig.endpointUsername)
+            ) {
+              try {
+                const systemCrypto = SystemCrypto.getInstance();
+                const internalAuthToken =
+                  await systemCrypto.getInternalAuthToken();
+
+                const allHostsResponse = await axios.get(
+                  "http://localhost:30001/host/db/host/internal/all",
+                  {
+                    signal: request.controller.signal,
+                    headers: {
+                      "Content-Type": "application/json",
+                      "X-Internal-Auth-Token": internalAuthToken,
                     },
-                  );
-                  throw new Error("Endpoint host not found");
-                }
+                  },
+                );
 
-                tunnelConfig.endpointIP = endpointHost.ip;
-                tunnelConfig.endpointSSHPort = endpointHost.port;
-                tunnelConfig.endpointUsername = endpointHost.username;
-                tunnelConfig.endpointAuthMethod = endpointHost.authType;
-                tunnelConfig.endpointKeyType = endpointHost.keyType;
-                tunnelConfig.endpointCredentialId =
-                  endpointHost.userId === userId
-                    ? endpointHost.credentialId
-                    : undefined;
-                tunnelConfig.endpointUserId = userId;
+                const allHosts: SSHHost[] = allHostsResponse.data || [];
+                const endpointHost = findHostByTunnelEndpoint(
+                  allHosts,
+                  tunnelConfig.endpointHost,
+                );
 
-                // Resolve credentials server-side instead of from HTTP response
-                if (endpointHost.id) {
-                  try {
-                    const { resolveHostById } =
-                      await import("../host-resolver.js");
-                    const resolved = await resolveHostById(
-                      endpointHost.id,
-                      userId,
-                    );
-                    if (resolved) {
-                      tunnelConfig.endpointPassword = resolved.password;
-                      tunnelConfig.endpointSSHKey = resolved.key;
-                      tunnelConfig.endpointKeyPassword = resolved.keyPassword;
-                    }
-                  } catch (credError) {
-                    tunnelLogger.warn(
-                      "Failed to resolve endpoint credentials from DB",
-                      {
-                        operation: "tunnel_endpoint_credential_resolve",
-                        endpointHostId: endpointHost.id,
-                        error: getErrorMessage(credError, "Unknown"),
-                      },
+                if (!endpointHost) {
+                  if (getTunnelMode(tunnelConfig) !== "remote") {
+                    tunnelConfig.endpointIP =
+                      tunnelConfig.endpointIP || tunnelConfig.endpointHost;
+                  } else {
+                    throw new Error(
+                      `Endpoint host '${tunnelConfig.endpointHost}' not found in database`,
                     );
                   }
-                }
-              }
-            } catch (resolveError) {
-              tunnelLogger.error(
-                "Failed to resolve endpoint host",
-                resolveError,
-                {
-                  operation: "tunnel_connect_resolve_endpoint_failed",
-                  tunnelName,
-                  endpointHost: tunnelConfig.endpointHost,
-                },
-              );
-              throw new Error(
-                `Failed to resolve endpoint host: ${getErrorMessage(resolveError)}`,
-                { cause: resolveError },
-              );
-            }
-          }
+                } else {
+                  if (!endpointHost.id) {
+                    throw new Error("Endpoint host not found");
+                  }
 
-          tunnelConfigs.set(tunnelName, tunnelConfig);
-          await connectSSHTunnel(tunnelConfig, 0);
-        })();
+                  const endpointAccess = await permissionManager.canAccessHost(
+                    userId,
+                    endpointHost.id,
+                    "connect",
+                  );
+                  if (!endpointAccess.hasAccess) {
+                    tunnelLogger.warn(
+                      "User attempted tunnel connect without endpoint access",
+                      {
+                        operation: "tunnel_connect_endpoint_unauthorized",
+                        userId,
+                        hostId: endpointHost.id,
+                        tunnelName,
+                      },
+                    );
+                    throw new Error("Endpoint host not found");
+                  }
+
+                  tunnelConfig.endpointIP = endpointHost.ip;
+                  tunnelConfig.endpointSSHPort = endpointHost.port;
+                  tunnelConfig.endpointUsername = endpointHost.username;
+                  tunnelConfig.endpointAuthMethod = endpointHost.authType;
+                  tunnelConfig.endpointKeyType = endpointHost.keyType;
+                  tunnelConfig.endpointCredentialId =
+                    endpointHost.userId === userId
+                      ? endpointHost.credentialId
+                      : undefined;
+                  tunnelConfig.endpointUserId = userId;
+
+                  // Resolve credentials server-side instead of from HTTP response
+                  if (endpointHost.id) {
+                    try {
+                      const { resolveHostById } =
+                        await import("../host-resolver.js");
+                      const resolved = await resolveHostById(
+                        endpointHost.id,
+                        userId,
+                      );
+                      if (resolved) {
+                        tunnelConfig.endpointPassword = resolved.password;
+                        tunnelConfig.endpointSSHKey = resolved.key;
+                        tunnelConfig.endpointKeyPassword = resolved.keyPassword;
+                      }
+                    } catch (credError) {
+                      tunnelLogger.warn(
+                        "Failed to resolve endpoint credentials from DB",
+                        {
+                          operation: "tunnel_endpoint_credential_resolve",
+                          endpointHostId: endpointHost.id,
+                          error: getErrorMessage(credError, "Unknown"),
+                        },
+                      );
+                    }
+                  }
+                }
+              } catch (resolveError) {
+                tunnelLogger.error(
+                  "Failed to resolve endpoint host",
+                  resolveError,
+                  {
+                    operation: "tunnel_connect_resolve_endpoint_failed",
+                    tunnelName,
+                    endpointHost: tunnelConfig.endpointHost,
+                  },
+                );
+                throw new Error(
+                  `Failed to resolve endpoint host: ${getErrorMessage(resolveError)}`,
+                  { cause: resolveError },
+                );
+              }
+            }
+
+            if (request.controller.signal.aborted) return;
+            tunnelConfigs.set(tunnelName, tunnelConfig);
+            await connectSSHTunnel(tunnelConfig, 0);
+          })(),
+          request.controller.signal,
+        );
 
         pendingTunnelOperations.set(tunnelName, operation);
+        // Attach before audit I/O so fast failure cannot become an unhandled rejection.
+        void operation.catch(() => {});
+
+        operation
+          .catch((err) => {
+            if (request.controller.signal.aborted) return;
+            tunnelLogger.error("Tunnel operation failed", err, {
+              operation: "tunnel_operation_failed",
+              tunnelName,
+            });
+            broadcastTunnelStatus(tunnelName, {
+              connected: false,
+              status: CONNECTION_STATES.FAILED,
+              reason: getErrorMessage(err),
+            });
+            tunnelConnecting.delete(tunnelName);
+          })
+          .finally(() => {
+            requests.delete(request);
+            if (!requests.size) pendingConnectionRequests.delete(tunnelName);
+            if (pendingTunnelOperations.get(tunnelName) === operation)
+              pendingTunnelOperations.delete(tunnelName);
+          });
 
         const { ipAddress, userAgent } = getRequestMeta(req);
         await logAudit({
@@ -395,23 +473,6 @@ export function registerTunnelRoutes(app: express.Express): void {
         });
 
         res.json({ message: "Connection request received", tunnelName });
-
-        operation
-          .catch((err) => {
-            tunnelLogger.error("Tunnel operation failed", err, {
-              operation: "tunnel_operation_failed",
-              tunnelName,
-            });
-            broadcastTunnelStatus(tunnelName, {
-              connected: false,
-              status: CONNECTION_STATES.FAILED,
-              reason: getErrorMessage(err),
-            });
-            tunnelConnecting.delete(tunnelName);
-          })
-          .finally(() => {
-            pendingTunnelOperations.delete(tunnelName);
-          });
       } catch (error) {
         tunnelLogger.error("Failed to process tunnel connect", error, {
           operation: "tunnel_connect",
@@ -468,7 +529,8 @@ export function registerTunnelRoutes(app: express.Express): void {
       }
 
       try {
-        const config = tunnelConfigs.get(tunnelName);
+        const config =
+          tunnelConfigs.get(tunnelName) ?? pendingConnectionConfig(tunnelName);
         if (config && config.sourceHostId) {
           const accessInfo = await permissionManager.canAccessHost(
             userId,
@@ -486,6 +548,7 @@ export function registerTunnelRoutes(app: express.Express): void {
           hostId: config?.sourceHostId,
           tunnelName,
         });
+        cancelConnectionRequests(tunnelName);
         manualDisconnects.add(tunnelName);
         retryCounters.delete(tunnelName);
         retryExhaustedTunnels.delete(tunnelName);
@@ -573,7 +636,8 @@ export function registerTunnelRoutes(app: express.Express): void {
       }
 
       try {
-        const config = tunnelConfigs.get(tunnelName);
+        const config =
+          tunnelConfigs.get(tunnelName) ?? pendingConnectionConfig(tunnelName);
         if (config && config.sourceHostId) {
           const accessInfo = await permissionManager.canAccessHost(
             userId,
@@ -585,6 +649,8 @@ export function registerTunnelRoutes(app: express.Express): void {
           }
         }
 
+        cancelConnectionRequests(tunnelName);
+        manualDisconnects.add(tunnelName);
         retryCounters.delete(tunnelName);
         retryExhaustedTunnels.delete(tunnelName);
 
