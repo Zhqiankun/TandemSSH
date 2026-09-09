@@ -218,6 +218,29 @@ export class UploadRecoveryStore {
       if (created) await fs.unlink(temp).catch(() => {});
     }
   }
+  interrupted(row: UploadRecoveryRecord) {
+    return (
+      row.state === "claimed" &&
+      row.claim?.boot !== this.boot &&
+      !this.alive(row.claim!.pid)
+    );
+  }
+  assertReconcile(row: UploadRecoveryRecord) {
+    if (row.claim?.boot !== this.boot && row.claim && this.alive(row.claim.pid))
+      throw Error("UPLOAD_RECOVERY_BUSY");
+  }
+  checked(user: string, id: string) {
+    return this.run(async () => {
+      const row = await this.read(user, id);
+      if (!row || !["unknown", "committing"].includes(row.state))
+        throw Error("UPLOAD_RECOVERY_RECONCILE_REQUIRED");
+      this.assertReconcile(row);
+      row.state = "completed";
+      row.updatedAt = Date.now();
+      await this.write(row);
+      return row;
+    });
+  }
   get(user: string, id: string) {
     return this.run(() => this.read(user, id));
   }
@@ -287,7 +310,7 @@ export class UploadRecoveryStore {
         throw Error("UPLOAD_RECOVERY_CONFLICT");
       const allowed: Record<string, string[]> = {
         claimed: ["available", "committing", "cancelled"],
-        committing: ["completed", "unknown"],
+        committing: ["completed", "unknown", "available", "claimed"],
         unknown: ["completed"],
         available: [],
         completed: [],
@@ -308,7 +331,7 @@ export class UploadRecoveryStore {
         next = uploadCheckpointSchema.parse(raw);
       if (
         !row ||
-        row.state !== "claimed" ||
+        !["claimed", "committing"].includes(row.state) ||
         row.claim?.id !== claimId ||
         next.userId !== user ||
         next.temporaryPath !== row.checkpoint.temporaryPath ||

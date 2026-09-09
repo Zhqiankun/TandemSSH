@@ -7,10 +7,20 @@ function registerUploadSourceIpc({
   getWindow,
   appRoot,
   isDev,
+  getBackend,
 }) {
   const sources = new UploadSourceStore(),
     owners = new Set(),
     choosing = new Set();
+  const recovery = getBackend
+    ? require("./upload-recovery-window.cjs").createUploadRecoveryWindow(
+        getBackend,
+      )
+    : undefined;
+  const resetOwner = async (id) => {
+    sources.reset(id);
+    await recovery?.reset(id);
+  };
   const expected = pathToFileURL(path.join(appRoot, "dist", "index.html")).href;
   function owner(event) {
     const window = getWindow(),
@@ -29,7 +39,9 @@ function registerUploadSourceIpc({
       throw Error("UPLOAD_TRUSTED_WINDOW_REQUIRED");
     if (!owners.has(sender.id)) {
       owners.add(sender.id);
-      const reset = () => sources.reset(sender.id);
+      const reset = () => {
+        void resetOwner(sender.id);
+      };
       sender.once("destroyed", reset);
       sender.on("render-process-gone", reset);
       sender.on("did-start-navigation", (_e, _url, _inPlace, main) => {
@@ -42,7 +54,10 @@ function registerUploadSourceIpc({
     try {
       const id = owner(event);
       let value;
-      if (operation === "choose-directory") {
+      if (operation === "recovery-identity") {
+        if (!recovery) throw Error("UPLOAD_RECOVERY_DESKTOP_REQUIRED");
+        value = await recovery.identity(id);
+      } else if (operation === "choose-directory") {
         if (choosing.has(id)) throw Error("UPLOAD_BUSY");
         choosing.add(id);
         const epoch = sources.epochs.get(id) ?? 0;
@@ -68,7 +83,7 @@ function registerUploadSourceIpc({
         value = await sources.chunk(id, args[0], args[1], args[2], args[3]);
       else if (operation === "forget") value = sources.forget(id, args[0]);
       else if (operation === "reset") {
-        sources.reset(id);
+        await resetOwner(id);
         value = null;
       } else throw Error("UPLOAD_REQUEST_INVALID");
       return { ok: true, value };
@@ -79,7 +94,7 @@ function registerUploadSourceIpc({
   return {
     sources,
     dispose: () => {
-      for (const owner of owners) sources.reset(owner);
+      for (const owner of owners) void resetOwner(owner);
     },
   };
 }

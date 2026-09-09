@@ -1,3 +1,4 @@
+import type { UploadRecoveryCoordinator } from "../../files/upload-recovery-coordinator.js";
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import {
@@ -15,6 +16,7 @@ export function registerUploadRoutes(
   app: Express,
   uploads: UploadService,
   trees?: UploadTreeService,
+  recovery?: UploadRecoveryCoordinator,
 ) {
   const prefix = "/ssh/file_manager/ssh/uploads",
     id = z.string().uuid();
@@ -37,7 +39,12 @@ export function registerUploadRoutes(
       req.once("aborted", abort);
       res.once("close", close);
       Promise.resolve()
-        .then(() => work({ userId: user.userId, signal: stop.signal }, req))
+        .then(() => {
+          const actor = { userId: user.userId, signal: stop.signal };
+          if (typeof req.params.id === "string")
+            recovery?.assertActive(actor, req.params.id);
+          return work(actor, req);
+        })
         .then((value) => {
           if (!res.destroyed) res.json(value);
         })
@@ -65,6 +72,76 @@ export function registerUploadRoutes(
           res.removeListener("close", close);
         });
     };
+  }
+  if (recovery) {
+    const windowBody = z.object({ windowToken: id }).strict(),
+      recordBody = z.object({ windowToken: id, id }).strict();
+    app.post(
+      prefix + "/recovery/list",
+      route((actor, req) =>
+        recovery.list(actor, windowBody.parse(req.body).windowToken),
+      ),
+    );
+    app.post(
+      prefix + "/recovery/detail",
+      route((actor, req) => {
+        const p = recordBody.parse(req.body);
+        return recovery.detail(actor, p.windowToken, p.id);
+      }),
+    );
+    app.post(
+      prefix + "/recovery/save",
+      route((actor, req) => {
+        const p = recordBody.parse(req.body);
+        return recovery.save(actor, p.windowToken, p.id);
+      }),
+    );
+    app.post(
+      prefix + "/recovery/restore",
+      route((actor, req) => {
+        const p = recordBody
+          .extend({
+            sessionId: z.string().min(1).max(256),
+            manifest: uploadManifestSchema,
+            overwrite: z.boolean(),
+          })
+          .parse(req.body);
+        return recovery.restore(
+          actor,
+          p.windowToken,
+          p.id,
+          p.sessionId,
+          p.manifest,
+          p.overwrite,
+        );
+      }),
+    );
+    for (const operation of ["check", "discard"] as const)
+      app.post(
+        prefix + "/recovery/" + operation,
+        route((actor, req) => {
+          const p = recordBody
+            .extend({
+              sessionId: z.string().min(1).max(256),
+              takeover: z.boolean(),
+            })
+            .parse(req.body);
+          return recovery[operation](
+            actor,
+            p.windowToken,
+            p.id,
+            p.sessionId,
+            p.takeover,
+          );
+        }),
+      );
+    app.post(
+      prefix + "/recovery/remove",
+      route((actor, req) => {
+        const p = recordBody.parse(req.body);
+        return recovery.remove(actor, p.windowToken, p.id);
+      }),
+    );
   }
   if (trees) {
     app.post(
@@ -218,7 +295,11 @@ export function registerUploadRoutes(
   );
   app.post(
     prefix + "/:id/finish",
-    route((actor, req) => uploads.finish(actor, id.parse(req.params.id))),
+    route((actor, req) =>
+      recovery
+        ? recovery.finish(actor, id.parse(req.params.id))
+        : uploads.finish(actor, id.parse(req.params.id)),
+    ),
   );
   app.post(
     prefix + "/:id/cancel",
@@ -227,7 +308,12 @@ export function registerUploadRoutes(
         .object({ cleanup: z.boolean().default(false) })
         .strict()
         .parse(req.body ?? {});
-      return uploads.cancel(actor, id.parse(req.params.id), p.cleanup);
+      const uploadId = id.parse(req.params.id);
+      return uploads
+        .cancel(actor, uploadId, p.cleanup)
+        .then((view) =>
+          recovery ? recovery.cancelled(actor, uploadId, view) : view,
+        );
     }),
   );
   for (const name of ["uploadFile", "uploadFileStream", "uploadFileChunk"])

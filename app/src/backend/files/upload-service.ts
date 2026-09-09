@@ -610,6 +610,9 @@ export class UploadService {
       throw new DocumentError("UPLOAD_STATE_INVALID");
     if (!r.acceptedHostKey)
       throw new DocumentError("UPLOAD_HOST_IDENTITY_UNVERIFIED");
+    return this.snapshot(r);
+  }
+  private snapshot(r: RecordState): UploadCheckpoint {
     return uploadCheckpointSchema.parse({
       schemaVersion: 1,
       id: r.view.id,
@@ -627,6 +630,129 @@ export class UploadService {
       createdAt: r.view.createdAt,
       savedAt: Date.now(),
     });
+  }
+  async preserve(actor: UploadActor, id: string) {
+    const r = this.owned(actor, id);
+    r.cancelRequested = true;
+    r.pauseRequested = true;
+    await r.tail;
+    r.release?.();
+    r.release = undefined;
+    const view = structuredClone(r.view);
+    let checkpoint: UploadCheckpoint | undefined;
+    if (
+      !r.view.commitMayHaveOccurred &&
+      !["unknown", "committing", "completed"].includes(r.view.state) &&
+      r.stageCreated &&
+      r.view.temporaryPath
+    ) {
+      r.view.state = "paused";
+      checkpoint = this.snapshot(r);
+    }
+    this.records.delete(id);
+    return { view, checkpoint };
+  }
+  reconciled(
+    actor: UploadActor,
+    id: string,
+    result: { sha256: string; bytes: number },
+  ) {
+    const r = this.owned(actor, id);
+    if (r.busy || r.pending) throw new DocumentError("UPLOAD_BUSY");
+    if (result.bytes !== r.manifest.size)
+      throw new DocumentError("UPLOAD_RESULT_UNVERIFIED");
+    Object.assign(r.view, {
+      state: "completed",
+      receivedBytes: result.bytes,
+      sha256: result.sha256,
+      verification: "sha256",
+      commitMayHaveOccurred: false,
+      temporaryPath: undefined,
+      error: undefined,
+    });
+    r.release?.();
+    r.release = undefined;
+    return structuredClone(r.view);
+  }
+  async reconcile(
+    actor: UploadActor,
+    raw: unknown,
+    sessionId: string,
+    takeover = false,
+    discard = false,
+  ) {
+    const c = uploadCheckpointSchema.parse(raw);
+    if (c.userId !== actor.userId) throw new DocumentError("UPLOAD_NOT_FOUND");
+    this.alive(actor);
+    const t = await this.ports.target(actor.userId, sessionId);
+    if (t.key !== c.targetKey || t.acceptedHostKey !== c.acceptedHostKey)
+      throw new DocumentError("UPLOAD_HOST_IDENTITY_CHANGED");
+    if (c.constraint) await this.constrainedParents(actor, t, c.constraint);
+    const guard = () => {
+      this.alive(actor);
+      t.check("write", c.path, c.canonicalPath);
+    };
+    guard();
+    if (
+      (await t.io.resolve(posix.dirname(c.temporaryPath))) !==
+      posix.dirname(c.temporaryPath)
+    )
+      throw new DocumentError("FILE_TARGET_CHANGED");
+    let result: { sha256: string; bytes: number } | undefined;
+    if (!discard) {
+      if ((await t.io.resolve(c.path)) !== c.canonicalPath)
+        throw new DocumentError("FILE_TARGET_CHANGED");
+      const target = await t.io.inspectFile(c.canonicalPath, guard);
+      if (
+        target.bytes !== c.manifest.size ||
+        JSON.stringify(target.hashes) !== JSON.stringify(c.manifest.hashes)
+      )
+        throw new DocumentError("UPLOAD_RESULT_UNVERIFIED");
+      result = { sha256: target.sha256, bytes: target.bytes };
+    }
+    let exists = true;
+    try {
+      await t.io.stat(c.temporaryPath);
+    } catch (e) {
+      if (code(e) === "FILE_NOT_FOUND") exists = false;
+      else throw e;
+    }
+    if (exists) {
+      if ((await t.io.resolve(c.temporaryPath)) !== c.temporaryPath)
+        throw new DocumentError("FILE_TARGET_CHANGED");
+      const prefix = await t.io.inspectFile(
+        c.temporaryPath,
+        guard,
+        c.receivedBytes,
+      );
+      if (
+        prefix.stat.size > c.manifest.size ||
+        JSON.stringify(prefix.hashes) !==
+          JSON.stringify(
+            c.manifest.hashes.slice(
+              0,
+              Math.ceil(c.receivedBytes / UPLOAD_CHUNK_BYTES),
+            ),
+          )
+      )
+        throw new DocumentError("UPLOAD_CHECKPOINT_CHANGED");
+      const unlock = this.ports.locks.acquire(t.key + "\0" + c.canonicalPath);
+      let release: (() => void) | undefined;
+      try {
+        release = this.ports.beginWrite(actor.userId, t, takeover);
+        guard();
+        await t.io.remove(c.temporaryPath, guard);
+      } finally {
+        release?.();
+        unlock();
+      }
+    }
+    await this.ports.audit(
+      actor.userId,
+      discard ? "upload.recovery_discarded" : "upload.recovery_reconciled",
+      { checkpointId: c.id, path: c.canonicalPath },
+    );
+    return result;
   }
   async suspend(
     actor: UploadActor,

@@ -1,3 +1,4 @@
+import { uploadRecovery } from "../../files/upload-recovery-production.js";
 import { registerUploadRoutes } from "./upload-routes.js";
 import { uploadTransfers, uploadTrees } from "../../files/production.js";
 import { registerDocumentRoutes } from "./document-routes.js";
@@ -16,7 +17,7 @@ export function registerFileContentRoutes(
   { sshSessions, verifySessionOwnership }: FileContentRoutesDeps,
 ): void {
   registerDocumentRoutes(app, sshSessions);
-  registerUploadRoutes(app, uploadTransfers, uploadTrees);
+  registerUploadRoutes(app, uploadTransfers, uploadTrees, uploadRecovery);
   /**
    * @openapi
    * /ssh/file_manager/ssh/identifySymlink:

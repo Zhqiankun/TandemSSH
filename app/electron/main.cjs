@@ -2933,6 +2933,7 @@ const taskLocalFilesIpc =
   });
 const uploadSourceIpc =
   require("./upload-source-ipc.cjs").registerUploadSourceIpc({
+    getBackend: () => backendProcess,
     ipcMain,
     dialog,
     getWindow: () => mainWindow,

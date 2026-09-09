@@ -17,6 +17,7 @@ export interface NativeUploadSelection {
   excluded: number;
 }
 export interface DesktopUploadSourceApi {
+  recoveryIdentity?(): Promise<DownloadNativeResult<{ windowToken: string }>>;
   chooseDirectory(): Promise<
     DownloadNativeResult<NativeUploadSelection | null>
   >;

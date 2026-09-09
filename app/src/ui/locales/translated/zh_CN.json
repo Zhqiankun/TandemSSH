@@ -5487,7 +5487,7 @@
       "title": "上传队列",
       "concurrency": "同时上传",
       "clearFinished": "清理已结束记录",
-      "memoryHint": "关闭文件标签会保留队列；退出登录或应用后需重新选择文件。",
+      "memoryHint": "当前队列保留在内存；单文件上传暂停后可显式保存加密恢复进度。",
       "sourceProgress": "正在校验本地来源：{{bytes}} / {{total}} B",
       "progress": "上传进度",
       "confirmedBytes": "已确认 {{bytes}} / {{total}} B",
@@ -5522,7 +5522,9 @@
         "failed": "未完成",
         "unknown": "结果待核实",
         "cancelled": "已取消",
-        "skipped": "已跳过"
+        "skipped": "已跳过",
+        "suspending": "正在保存恢复进度",
+        "suspended": "进度已保存，可重启恢复"
       },
       "errors": {
         "UPLOAD_LIMIT": "上传任务或来源清单达到容量上限，请先处理已有任务",
@@ -6091,5 +6093,50 @@
     "discard": "放弃此恢复",
     "discardHint": "确认放弃后，只删除本任务的已下载部分；已有目标文件不会被修改。",
     "confirmDiscard": "确认放弃并删除部分文件"
+  },
+  "uploadRecovery": {
+    "open": "查看可恢复上传",
+    "title": "本机上传恢复",
+    "hint": "重新选择来源并完整校验后，使用当前连接核对远端进度。恢复先回到暂停队列，继续时仍需确认接管。",
+    "connectFirst": "请先连接文件管理器。",
+    "busy": "正在校验或保存恢复记录，已检查 {{bytes}} 字节…",
+    "failed": "恢复操作未能确认，请刷新记录后核对。",
+    "empty": "没有上传恢复记录。单文件上传暂停后可保存进度。",
+    "choose": "重新选择原始来源文件",
+    "overwrite": "重新确认允许覆盖此已有目标，仍需匹配原目标基线",
+    "restore": "核验来源并恢复到暂停队列",
+    "save": "保存上传进度供重启恢复",
+    "progress": "已确认 {{bytes}} / {{total}} 字节",
+    "discard": "放弃此恢复",
+    "discardHint": "确认后只删除本次上传的远端部分文件，已有目标不变。",
+    "confirmDiscard": "确认放弃并清理部分文件",
+    "takeover": "清理需要写入时，允许接管当前服务器的自动任务",
+    "unknown": "上次提交结果不明确，不能直接重跑。先核对目标，匹配后清理本任务的残留部分文件。",
+    "check": "核对结果并清理残留",
+    "remove": "清除已结束的恢复记录",
+    "states": {
+      "available": "可恢复",
+      "claimed": "正在被恢复任务使用",
+      "interrupted": "中断后待恢复",
+      "committing": "提交结果待核对",
+      "unknown": "结果待核对",
+      "completed": "已完成",
+      "cancelled": "已取消"
+    },
+    "errors": {
+      "UPLOAD_RECOVERY_DESKTOP_REQUIRED": "此恢复功能需要本机桌面服务。",
+      "UPLOAD_RECOVERY_WINDOW_CLOSED": "当前窗口授权已失效，请重新检查恢复记录。",
+      "UPLOAD_RECOVERY_BUSY": "恢复任务仍在使用该记录，请先暂停或等待操作结束。",
+      "UPLOAD_RECOVERY_NOT_FOUND": "恢复记录不存在，请刷新清单。",
+      "UPLOAD_RECOVERY_ENCRYPTION_UNAVAILABLE": "系统加密不可用，当前进度不会明文落盘，请保留当前任务。",
+      "UPLOAD_RECOVERY_KEY_MISSING": "原恢复密钥不可用，密文已保留，请使用原系统账号和数据目录。",
+      "UPLOAD_RECOVERY_DECRYPT_FAILED": "恢复记录无法解密或已损坏，未执行续传。",
+      "UPLOAD_RECOVERY_RECONCILE_REQUIRED": "当前记录需要先核对提交结果。",
+      "UPLOAD_RECOVERY_CONFLICT": "恢复记录已变化，请重新检查。",
+      "UPLOAD_RECOVERY_LIMIT": "本机恢复记录达到容量上限，请清除已结束记录。",
+      "UPLOAD_RECOVERY_TIMEOUT": "恢复请求响应超时，请刷新并核对结果。",
+      "UPLOAD_SOURCE_CHANGED": "所选文件的名称、时间、大小或内容与原清单不一致，已拒绝续传。",
+      "UPLOAD_RESULT_UNVERIFIED": "远端目标尚不能确认与预期一致，未重试提交。"
+    }
   }
 }

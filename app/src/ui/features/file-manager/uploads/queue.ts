@@ -1,4 +1,8 @@
 import type {
+  RestoredUpload,
+  UploadRecoverySummary,
+} from "@/types/upload-recovery";
+import type {
   ManagedUploadBinding,
   ManagedFileUpload,
   ManagedUploadRecord,
@@ -22,6 +26,8 @@ export type UploadQueueState =
   | "uploading"
   | "pausing"
   | "paused"
+  | "suspending"
+  | "suspended"
   | "finalizing"
   | "completed"
   | "failed"
@@ -29,6 +35,7 @@ export type UploadQueueState =
   | "cancelled"
   | "skipped";
 export interface UploadJobView {
+  recoveryId?: string;
   id: string;
   name: string;
   path: string;
@@ -58,6 +65,7 @@ export interface UploadInput {
   localPath?: string;
 }
 interface Job {
+  preserve?: boolean;
   binding?: ManagedUploadBinding;
   released?: boolean;
   view: UploadJobView;
@@ -84,7 +92,13 @@ export class UploadQueue {
   private clearing = false;
   private maintaining = false;
   private limit = 2;
-  constructor(private readonly api: UploadApiPort = uploadApi) {}
+  constructor(
+    private readonly api: UploadApiPort = uploadApi,
+    private readonly resetNative = () =>
+      typeof window !== "undefined"
+        ? window.electronAPI?.uploadSources?.reset()
+        : undefined,
+  ) {}
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -99,17 +113,19 @@ export class UploadQueue {
   }
   resetForSignOut() {
     const jobs = [...this.jobs.values()];
+    void Promise.resolve(this.resetNative()).catch(() => {});
     this.jobs.clear();
     this.reserved = 0;
     this.epoch++;
     this.owner = undefined;
     for (const j of jobs) {
       j.cancel = true;
+      j.preserve = !!j.view.recoveryId;
       j.work = undefined;
       j.controller?.abort();
       j.file = undefined;
       j.manifest = undefined;
-      if (!j.controller && j.view.transfer)
+      if (!j.controller && j.view.transfer && !j.preserve)
         void this.api
           .action(j.view.sessionId, j.view.transfer.id, "cancel", {
             cleanup: true,
@@ -333,6 +349,7 @@ export class UploadQueue {
         j.view.path.slice(0, j.view.path.lastIndexOf("/") + 1) + name;
     }
     if (sessionId) j.view.sessionId = sessionId;
+    j.view.recoveryId = undefined;
     j.view.transfer = undefined;
     j.released = false;
     j.view.error = undefined;
@@ -363,9 +380,105 @@ export class UploadQueue {
         value.error ??
         (value.temporaryPath ? "UPLOAD_CLEANUP_PENDING" : undefined);
   }
+  async suspend(
+    id: string,
+    persist: (id: string) => Promise<UploadRecoverySummary>,
+  ) {
+    const j = this.job(id);
+    if (
+      j.binding ||
+      j.controller ||
+      j.view.state !== "paused" ||
+      !j.view.transfer
+    )
+      throw Error("UPLOAD_STATE_INVALID");
+    j.view.state = "suspending";
+    this.emit();
+    try {
+      const record = await persist(j.view.transfer.id);
+      if (this.jobs.get(id) !== j || j.cancel) throw Error("UPLOAD_CANCELLED");
+      j.view.state = "suspended";
+      j.view.recoveryId = record.id;
+      j.view.transfer = undefined;
+      j.file = undefined;
+      j.manifest = undefined;
+      j.view.error = undefined;
+    } catch (e) {
+      if (this.jobs.get(id) === j) {
+        j.view.state = "paused";
+        j.view.error = uploadErrorCode(e);
+      }
+      throw e;
+    } finally {
+      this.emit();
+    }
+  }
+  reserveRecovery() {
+    if (!this.owner) throw Error("UPLOAD_OWNER_REQUIRED");
+    this.admit(1);
+    this.reserved++;
+    const epoch = this.epoch;
+    let used = false;
+    const close = () => {
+      if (!used) {
+        used = true;
+        if (epoch === this.epoch) this.reserved--;
+      }
+    };
+    return {
+      close,
+      accept: (result: RestoredUpload, file: UploadSource, hostId?: number) => {
+        if (used || epoch !== this.epoch) throw Error("UPLOAD_CANCELLED");
+        if (result.view.state !== "paused")
+          throw Error("UPLOAD_RESULT_INVALID");
+        close();
+        const id = this.create(
+            {
+              file,
+              sessionId: result.view.sessionId,
+              path: result.view.path,
+              hostId,
+              hostLabel: result.view.hostIdentity ?? "SSH",
+            },
+            undefined,
+            "paused",
+            false,
+          ),
+          j = this.job(id);
+        j.manifest = result.manifest;
+        j.view.transfer = result.view;
+        j.view.recoveryId = result.summary.id;
+        this.emit();
+        return id;
+      },
+    };
+  }
+  reconcileRecovery(id: string, view?: UploadView) {
+    if (!view || view.state !== "completed") return;
+    const j = [...this.jobs.values()].find(
+      (j) => j.view.recoveryId === id && j.view.transfer?.id === view.id,
+    );
+    if (j) {
+      j.view.transfer = view;
+      j.view.state = "completed";
+      j.view.error = undefined;
+      j.file = undefined;
+      j.manifest = undefined;
+      this.emit();
+    }
+  }
   async cancel(id: string, skip = false) {
     const j = this.job(id);
-    if (["completed", "unknown", "finalizing"].includes(j.view.state)) return;
+    if (
+      [
+        "completed",
+        "unknown",
+        "finalizing",
+        "suspended",
+        "suspending",
+      ].includes(j.view.state)
+    )
+      return;
     j.cancel = true;
     j.work = undefined;
     j.controller?.abort();
@@ -408,7 +521,9 @@ export class UploadQueue {
     try {
       for (const [id, j] of this.jobs) {
         if (
-          !["completed", "cancelled", "skipped"].includes(j.view.state) ||
+          !["completed", "cancelled", "skipped", "suspended"].includes(
+            j.view.state,
+          ) ||
           j.controller ||
           j.view.transfer?.temporaryPath
         )
@@ -608,7 +723,7 @@ export class UploadQueue {
       }
     } catch (error) {
       if (j.cancel) {
-        if (j.view.transfer) {
+        if (j.view.transfer && !j.preserve) {
           try {
             this.cancellationResult(
               j,

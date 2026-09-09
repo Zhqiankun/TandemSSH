@@ -5487,7 +5487,7 @@
       "title": "Upload queue",
       "concurrency": "Concurrent uploads",
       "clearFinished": "Clear finished records",
-      "memoryHint": "Closing a file tab keeps this queue. Signing out or exiting the app requires selecting files again.",
+      "memoryHint": "The live queue stays in memory. Paused single-file uploads can explicitly save encrypted recovery progress.",
       "sourceProgress": "Checking local source: {{bytes}} / {{total}} B",
       "progress": "Upload progress",
       "confirmedBytes": "Confirmed {{bytes}} / {{total}} B",
@@ -5522,7 +5522,9 @@
         "failed": "Incomplete",
         "unknown": "Needs verification",
         "cancelled": "Cancelled",
-        "skipped": "Skipped"
+        "skipped": "Skipped",
+        "suspending": "Saving recovery progress",
+        "suspended": "Progress saved for restart recovery"
       },
       "errors": {
         "UPLOAD_LIMIT": "upload limit",
@@ -6091,5 +6093,50 @@
     "discard": "Abandon recovery",
     "discardHint": "Confirmation deletes only this download’s owned partial file. The existing destination will not be modified.",
     "confirmDiscard": "Confirm and delete partial file"
+  },
+  "uploadRecovery": {
+    "open": "View recoverable uploads",
+    "title": "Local upload recovery",
+    "hint": "Select and fully verify the source again, then check remote progress using the current connection. Recovery stays paused; continuing still requires takeover when needed.",
+    "connectFirst": "Connect the file manager first.",
+    "busy": "Verifying or saving recovery data; {{bytes}} bytes checked…",
+    "failed": "The recovery result could not be confirmed. Refresh and reconcile it.",
+    "empty": "No upload recovery records. Pause a single-file upload to save progress.",
+    "choose": "Select the original source file again",
+    "overwrite": "Confirm overwrite again; the destination must still match its original baseline",
+    "restore": "Verify source and restore to paused queue",
+    "save": "Save upload progress for restart recovery",
+    "progress": "Confirmed {{bytes}} / {{total}} bytes",
+    "discard": "Abandon recovery",
+    "discardHint": "Confirmation removes only this upload’s remote partial file. The existing destination remains unchanged.",
+    "confirmDiscard": "Confirm and clean up partial file",
+    "takeover": "Allow takeover of this server’s automation if cleanup requires writing",
+    "unknown": "The last commit is uncertain. Verify the destination before cleaning up owned remnants; do not repeat the commit.",
+    "check": "Verify result and clean up remnants",
+    "remove": "Clear finished recovery record",
+    "states": {
+      "available": "Recoverable",
+      "claimed": "In use by a recovery task",
+      "interrupted": "Interrupted; ready to verify",
+      "committing": "Commit needs reconciliation",
+      "unknown": "Result needs reconciliation",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "errors": {
+      "UPLOAD_RECOVERY_DESKTOP_REQUIRED": "This recovery feature requires the local desktop service.",
+      "UPLOAD_RECOVERY_WINDOW_CLOSED": "Window authorization expired. Check recovery records again.",
+      "UPLOAD_RECOVERY_BUSY": "This record is in use. Pause the task or wait for it to finish.",
+      "UPLOAD_RECOVERY_NOT_FOUND": "The recovery record was not found. Refresh the list.",
+      "UPLOAD_RECOVERY_ENCRYPTION_UNAVAILABLE": "System encryption is unavailable. Progress will not be stored as plaintext; keep the current task.",
+      "UPLOAD_RECOVERY_KEY_MISSING": "The original recovery key is unavailable. Encrypted data is retained; use the original OS account and data directory.",
+      "UPLOAD_RECOVERY_DECRYPT_FAILED": "The record could not be decrypted or is corrupt. Nothing was resumed.",
+      "UPLOAD_RECOVERY_RECONCILE_REQUIRED": "Reconcile the previous commit before continuing.",
+      "UPLOAD_RECOVERY_CONFLICT": "The record changed. Check it again.",
+      "UPLOAD_RECOVERY_LIMIT": "Local recovery storage is full. Clear finished records.",
+      "UPLOAD_RECOVERY_TIMEOUT": "The recovery response timed out. Refresh and reconcile its result.",
+      "UPLOAD_SOURCE_CHANGED": "The selected file name, timestamp, size or contents do not match the original manifest. Resume was refused.",
+      "UPLOAD_RESULT_UNVERIFIED": "The remote destination cannot be confirmed as expected. The commit was not repeated."
+    }
   }
 }

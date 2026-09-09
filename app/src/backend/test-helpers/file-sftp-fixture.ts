@@ -17,6 +17,7 @@ export async function fileSftpFixture(
   options: {
     attachShell?: (session: ServerSession) => void | (() => void);
     beforeRead?: () => Promise<void>;
+    beforeWrite?: () => Promise<void>;
   } = {},
 ) {
   const shellClosers = new Set<() => void>();
@@ -216,6 +217,7 @@ export async function fileSftpFixture(
             "WRITE",
             (id: number, h: Buffer, offset: number, b: Buffer) =>
               run(id, async () => {
+                await options.beforeWrite?.();
                 writes++;
                 const r = await get(h).file.write(b, 0, b.length, offset);
                 if (r.bytesWritten !== b.length) throw Error("short write");

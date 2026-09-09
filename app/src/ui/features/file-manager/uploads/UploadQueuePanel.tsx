@@ -1,3 +1,5 @@
+import { UploadRecoveryDialog } from "./UploadRecoveryDialog";
+import { uploadRecoveryApi } from "@/api/upload-recovery-api";
 import { uploadBatches } from "./upload-batches";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
@@ -183,6 +185,29 @@ function UploadRow({
               )}
             </Button>
           )}
+        {job.state === "paused" &&
+          !job.batchId &&
+          window.electronAPI?.uploadSources?.recoveryIdentity && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                void queue
+                  .suspend(job.id, (id) =>
+                    uploadRecoveryApi.save(job.sessionId, id),
+                  )
+                  .catch((e) =>
+                    toast.error(
+                      t("uploadRecovery.errors." + uploadErrorCode(e), {
+                        defaultValue: t("uploadRecovery.failed"),
+                      }),
+                    ),
+                  )
+              }
+            >
+              {t("uploadRecovery.save")}
+            </Button>
+          )}
         {job.state === "failed" && (
           <Button
             size="sm"
@@ -268,7 +293,17 @@ export function UploadQueuePanel({
         if (j.hostId === hostId) onRefresh();
       }
   }, [jobs, hostId, onRefresh]);
-  if (!jobs.length) return null;
+  if (!jobs.length)
+    return window.electronAPI?.uploadSources?.recoveryIdentity ? (
+      <div className="border-t border-border p-2">
+        <UploadRecoveryDialog
+          key={queue.getOwner() ?? ""}
+          sessionId={sessionId}
+          hostId={hostId}
+          queue={queue}
+        />
+      </div>
+    ) : null;
   return (
     <section
       className="max-h-80 shrink-0 overflow-auto border-t border-border bg-background p-3"
@@ -298,6 +333,12 @@ export function UploadQueuePanel({
           >
             {t("tandem.upload.clearFinished")}
           </Button>
+          <UploadRecoveryDialog
+            key={queue.getOwner() ?? ""}
+            sessionId={sessionId}
+            hostId={hostId}
+            queue={queue}
+          />
           <p>{t("tandem.upload.memoryHint")}</p>
         </div>
         {queue === uploadQueue &&

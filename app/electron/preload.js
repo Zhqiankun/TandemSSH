@@ -103,6 +103,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     reset: () => ipcRenderer.invoke("tandem-task-local-files", "reset"),
   },
   uploadSources: {
+    recoveryIdentity: () =>
+      ipcRenderer.invoke("tandem-upload-source", "recovery-identity"),
     chooseDirectory: () =>
       ipcRenderer.invoke("tandem-upload-source", "choose-directory"),
     fromFiles: (files) => {

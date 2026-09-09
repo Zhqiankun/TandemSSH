@@ -1,3 +1,5 @@
+import { uploadRecovery } from "./files/upload-recovery-production.js";
+import { registerUploadRecoveryBridge } from "./files/upload-recovery-bridge.js";
 import { registerDownloadRecoveryBridge } from "./files/download-recovery-bridge.js";
 import { downloadRecoveryTickets } from "./files/download-recovery-production.js";
 import { registerLocalFileBridge } from "./files/local-file-bridge.js";
@@ -415,6 +417,13 @@ async function provisionLocalDesktopUserIfNeeded(): Promise<void> {
       });
     if (localFilesAvailable())
       registerDownloadRecoveryBridge(downloadRecoveryTickets, {
+        on: (event, listener) => process.on(event, listener),
+        removeListener: (event, listener) =>
+          process.removeListener(event, listener),
+        send: (message, callback) => process.send!(message as object, callback),
+      });
+    if (localFilesAvailable())
+      registerUploadRecoveryBridge(uploadRecovery, {
         on: (event, listener) => process.on(event, listener),
         removeListener: (event, listener) =>
           process.removeListener(event, listener),
