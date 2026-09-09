@@ -18,9 +18,11 @@
     "public/icon.*",
     "electron/task-local-files.cjs",
     "electron/upload-sources.cjs",
+    "electron/upload-source-checkpoint.cjs",
     "electron/download-sink.cjs",
     "electron/download-checkpoint.cjs",
     "electron/download-directory-targets.cjs",
+    "electron/download-directory-checkpoint.cjs",
     "electron/task-local-directories.cjs",
     "electron/task-upload-access.cjs"
   ],

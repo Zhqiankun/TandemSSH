@@ -1,0 +1,419 @@
+import { afterEach, expect, it, vi } from "vitest";
+import { createHash, randomUUID } from "node:crypto";
+import { fileSftpFixture } from "../../test-helpers/file-sftp-fixture";
+import { UploadService, type UploadPorts } from "../../files/upload-service";
+import { DownloadService } from "../../files/download-service";
+import { UploadTreeService } from "../../files/upload-tree-service";
+import { DownloadTreeService } from "../../files/download-tree-service";
+import { FilePathLocks } from "../../files/path-locks";
+import type {
+  UploadTreeMapping,
+  UploadTreePreview,
+} from "../../../types/upload-tree";
+const cleanup: Array<() => void | Promise<unknown>> = [];
+afterEach(async () => {
+  vi.restoreAllMocks();
+  for (const close of cleanup.splice(0).reverse()) await close();
+});
+const actor = { userId: "owner" };
+const manifest = (bytes: Buffer) => ({
+  name: "source.bin",
+  size: bytes.length,
+  lastModified: 100,
+  hashes: Array.from({ length: Math.ceil(bytes.length / 4194304) }, (_, i) =>
+    createHash("sha256")
+      .update(bytes.subarray(i * 4194304, (i + 1) * 4194304))
+      .digest("hex"),
+  ),
+});
+async function fixture() {
+  const remote = await fileSftpFixture();
+  cleanup.push(remote.close);
+  await remote.mkdir("/dest");
+  await remote.mkdir("/source/empty");
+  await remote.write("/source/文件.txt", "source");
+  let io = remote.io,
+    peer = remote.peerKey(),
+    retained = 0,
+    writes = 0;
+  const ports: UploadPorts = {
+    locks: new FilePathLocks(),
+    audit: vi.fn(async () => {}),
+    target: async (user, session) => {
+      if (user !== actor.userId || !["old", "new"].includes(session))
+        throw Error("FILE_SESSION_UNAVAILABLE");
+      return {
+        key: "fixture",
+        connection: session,
+        acceptedHostKey: peer,
+        hostScope: { userId: user, identity: "fixture" },
+        io,
+        check: () => {},
+        retain: () => {
+          retained++;
+          return () => {
+            retained--;
+          };
+        },
+      };
+    },
+    beginWrite: () => {
+      writes++;
+      return () => {};
+    },
+  };
+  const create = () => {
+    const uploads = new UploadService(ports),
+      uploadTrees = new UploadTreeService(ports, uploads),
+      downloads = new DownloadService(ports),
+      downloadTrees = new DownloadTreeService(ports, downloads);
+    const dispose = () => {
+      uploadTrees.dispose();
+      uploads.dispose();
+      downloadTrees.dispose();
+      downloads.dispose();
+    };
+    cleanup.push(dispose);
+    return { uploads, uploadTrees, downloads, downloadTrees, dispose };
+  };
+  const first = create();
+  return {
+    remote,
+    ports,
+    first,
+    create,
+    held: () => retained,
+    writes: () => writes,
+    changePeer: () => {
+      peer = "SHA256:changed";
+    },
+    reconnect: async () => {
+      const c = await remote.reconnect();
+      io = c.io;
+    },
+    activeIo: () => io,
+  };
+}
+const mapping = (size = 4194304 + 29): UploadTreeMapping[] => [
+  { id: "dir", name: "应用", kind: "directory", size: 0, lastModified: 0 },
+  {
+    id: "empty",
+    parentId: "dir",
+    name: "空目录",
+    kind: "directory",
+    size: 0,
+    lastModified: 0,
+  },
+  {
+    id: "file",
+    parentId: "dir",
+    name: "数据.bin",
+    kind: "file",
+    size,
+    lastModified: 100,
+  },
+];
+async function confirm(trees: UploadTreeService, preview: UploadTreePreview) {
+  return trees.confirm(
+    actor,
+    preview.id,
+    preview.revision,
+    preview.entries.map((e) => ({
+      id: e.id,
+      action:
+        e.status === "new"
+          ? "create"
+          : e.status === "directory"
+            ? "merge"
+            : "overwrite",
+    })),
+  );
+}
+it("restores created directories on a new SSH connection and continues a paused member without recreating directories", async () => {
+  const f = await fixture(),
+    old = f.first,
+    bytes = Buffer.alloc(4194304 + 29, 31);
+  const p = await old.uploadTrees.preview(actor, {
+    sessionId: "old",
+    path: "/dest",
+    entries: mapping(),
+  });
+  await confirm(old.uploadTrees, p);
+  await old.uploadTrees.directories(actor, p.id);
+  const member = await old.uploadTrees.prepareEntry(
+    actor,
+    p.id,
+    "file",
+    "old",
+    randomUUID(),
+    manifest(bytes),
+  );
+  await old.uploads.start(actor, member.id, { overwrite: false });
+  await old.uploads.chunk(actor, member.id, 0, bytes.subarray(0, 4194304));
+  await old.uploads.pause(actor, member.id);
+  const fileCheckpoint = old.uploads.checkpoint(actor, member.id),
+    treeCheckpoint = old.uploadTrees.checkpoint(actor, p.id);
+  old.dispose();
+  await f.reconnect();
+  const next = f.create(),
+    before = f.writes(),
+    mkdir = vi.spyOn(f.activeIo(), "mkdir");
+  const restored = await next.uploadTrees.restore(
+    actor,
+    JSON.parse(JSON.stringify(treeCheckpoint)),
+    "new",
+  );
+  expect(restored.id).not.toBe(p.id);
+  expect(restored.revision).not.toBe(p.revision);
+  expect(restored.state).toBe("preview");
+  expect(restored.entries.every((e) => !e.action)).toBe(true);
+  expect(
+    restored.entries
+      .filter((e) => e.kind === "directory")
+      .map((e) => e.result?.state),
+  ).toEqual(["created", "created"]);
+  expect(f.writes()).toBe(before);
+  expect(mkdir).not.toHaveBeenCalled();
+  await expect(
+    next.uploadTrees.directories(actor, restored.id),
+  ).rejects.toThrow("UPLOAD_STATE_INVALID");
+  await confirm(next.uploadTrees, restored);
+  await next.uploadTrees.directories(actor, restored.id);
+  expect(mkdir).not.toHaveBeenCalled();
+  const r = await next.uploads.restore(
+    actor,
+    fileCheckpoint,
+    "new",
+    manifest(bytes),
+    false,
+  );
+  expect(r.state).toBe("paused");
+  await next.uploads.resume(actor, r.id, "new");
+  await next.uploads.chunk(actor, r.id, 4194304, bytes.subarray(4194304));
+  expect((await next.uploads.finish(actor, r.id)).state).toBe("completed");
+  expect((await f.remote.read("/dest/应用/数据.bin")).equals(bytes)).toBe(true);
+  expect(f.held()).toBe(0);
+});
+it("keeps unknown directory creation unknown after restoring and choosing skip", async () => {
+  const f = await fixture(),
+    trees = f.first.uploadTrees;
+  const p = await trees.preview(actor, {
+    sessionId: "old",
+    path: "/dest",
+    entries: mapping().slice(0, 1),
+  });
+  await confirm(trees, p);
+  const mkdir = f.remote.io.mkdir!.bind(f.remote.io);
+  vi.spyOn(f.remote.io, "mkdir").mockImplementationOnce(async (...args) => {
+    await mkdir(...args);
+    throw Error("LOST_REPLY");
+  });
+  expect((await trees.directories(actor, p.id))[0].state).toBe("unknown");
+  const cp = trees.checkpoint(actor, p.id);
+  f.first.dispose();
+  const next = f.create();
+  const r = await next.uploadTrees.restore(actor, cp, "new");
+  await next.uploadTrees.confirm(actor, r.id, r.revision, [
+    { id: "dir", action: "skip" },
+  ]);
+  expect((await next.uploadTrees.directories(actor, r.id))[0].state).toBe(
+    "unknown",
+  );
+  expect(() => next.uploadTrees.forget(actor, r.id)).toThrow(
+    "UPLOAD_CLEANUP_PENDING",
+  );
+});
+it("preserves the original overwrite baseline after restore", async () => {
+  const f = await fixture(),
+    trees = f.first.uploadTrees;
+  await f.remote.write("/dest/existing.txt", "old");
+  const p = await trees.preview(actor, {
+    sessionId: "old",
+    path: "/dest",
+    entries: [
+      {
+        id: "file",
+        name: "existing.txt",
+        kind: "file",
+        size: 4,
+        lastModified: 100,
+      },
+    ],
+  });
+  await confirm(trees, p);
+  const cp = trees.checkpoint(actor, p.id);
+  f.first.dispose();
+  await f.remote.write("/dest/existing.txt", "externally changed");
+  const next = f.create(),
+    r = await next.uploadTrees.restore(actor, cp, "new");
+  await confirm(next.uploadTrees, r);
+  await expect(
+    next.uploadTrees.prepareEntry(
+      actor,
+      r.id,
+      "file",
+      "new",
+      randomUUID(),
+      manifest(Buffer.from("next")),
+    ),
+  ).rejects.toThrow();
+  expect((await f.remote.read("/dest/existing.txt")).toString()).toBe(
+    "externally changed",
+  );
+});
+it("rejects upload ownership, peer, malformed parent and redirected root metadata", async () => {
+  const f = await fixture(),
+    trees = f.first.uploadTrees,
+    p = await trees.preview(actor, {
+      sessionId: "old",
+      path: "/dest",
+      entries: mapping(),
+    });
+  await confirm(trees, p);
+  const cp = trees.checkpoint(actor, p.id);
+  await expect(trees.restore({ userId: "other" }, cp, "new")).rejects.toThrow(
+    "UPLOAD_NOT_FOUND",
+  );
+  const bad = structuredClone(cp);
+  bad.entries[0].view.parentId = "dir";
+  await expect(trees.restore(actor, bad, "new")).rejects.toThrow();
+  const target = f.ports.target;
+  f.ports.target = async (...args) => {
+    const t = await target(...args);
+    return {
+      ...t,
+      io: { ...t.io, resolve: async () => "/changed" } as typeof t.io,
+    };
+  };
+  await expect(trees.restore(actor, cp, "new")).rejects.toThrow(
+    "FILE_TARGET_CHANGED",
+  );
+  f.ports.target = target;
+  f.changePeer();
+  await expect(trees.restore(actor, cp, "new")).rejects.toThrow(
+    "UPLOAD_HOST_IDENTITY_CHANGED",
+  );
+  expect(f.held()).toBe(0);
+});
+it("does not resurrect an upload tree when disposed during the restore audit", async () => {
+  const f = await fixture(),
+    p = await f.first.uploadTrees.preview(actor, {
+      sessionId: "old",
+      path: "/dest",
+      entries: mapping(),
+    });
+  await confirm(f.first.uploadTrees, p);
+  const cp = f.first.uploadTrees.checkpoint(actor, p.id),
+    next = f.create();
+  vi.mocked(f.ports.audit).mockImplementationOnce(async () => {
+    next.uploadTrees.dispose();
+  });
+  await expect(next.uploadTrees.restore(actor, cp, "new")).rejects.toThrow(
+    "UPLOAD_CANCELLED",
+  );
+  expect(f.held()).toBe(0);
+});
+it("restores a fixed download collection on a new connection without adopting new source entries", async () => {
+  const f = await fixture(),
+    p = await f.first.downloadTrees.scan(actor, {
+      sessionId: "old",
+      paths: ["/source"],
+    });
+  const cp = f.first.downloadTrees.checkpoint(actor, p.id);
+  f.first.dispose();
+  await f.remote.write("/source/new.txt", "not in the old batch");
+  await f.reconnect();
+  const next = f.create(),
+    reads = f.remote.directoryReads(),
+    r = await next.downloadTrees.restore(
+      actor,
+      JSON.parse(JSON.stringify(cp)),
+      "new",
+    );
+  expect(r.id).not.toBe(p.id);
+  expect(r.entries).toEqual(p.entries);
+  expect(r.files).toBe(1);
+  expect(r.directories).toBe(2);
+  expect(f.remote.directoryReads()).toBe(reads);
+  const e = r.entries.find((e) => e.kind === "file")!,
+    source = await next.downloadTrees.prepareEntry(
+      actor,
+      r.id,
+      e.id,
+      randomUUID(),
+      "new",
+    );
+  expect(source.sha256).toBe(
+    createHash("sha256").update("source").digest("hex"),
+  );
+  expect(f.writes()).toBe(0);
+  expect(f.held()).toBe(1); // A prepared source retains its SSH connection until explicitly released.
+  await next.downloads.cancel(actor, source.id);
+  expect(f.held()).toBe(0);
+});
+it("rejects changed download sources at restore and again at member preparation", async () => {
+  const f = await fixture(),
+    p = await f.first.downloadTrees.scan(actor, {
+      sessionId: "old",
+      paths: ["/source"],
+    }),
+    cp = f.first.downloadTrees.checkpoint(actor, p.id);
+  const next = f.create(),
+    r = await next.downloadTrees.restore(actor, cp, "new");
+  await f.remote.write("/source/文件.txt", "changed size");
+  await expect(next.downloadTrees.restore(actor, cp, "new")).rejects.toThrow(
+    "DOWNLOAD_SOURCE_CHANGED",
+  );
+  await expect(
+    next.downloadTrees.prepareEntry(
+      actor,
+      r.id,
+      r.entries.find((e) => e.kind === "file")!.id,
+      randomUUID(),
+      "new",
+    ),
+  ).rejects.toThrow("DOWNLOAD_SOURCE_CHANGED");
+});
+it("binds directory-only downloads to user and accepted peer and rejects invalid hierarchy", async () => {
+  const f = await fixture(),
+    p = await f.first.downloadTrees.scan(actor, {
+      sessionId: "old",
+      paths: ["/source/empty"],
+    }),
+    cp = f.first.downloadTrees.checkpoint(actor, p.id);
+  await expect(
+    f.first.downloadTrees.restore({ userId: "other" }, cp, "new"),
+  ).rejects.toThrow("DOWNLOAD_NOT_FOUND");
+  const bad = structuredClone(cp);
+  bad.entries[0].view.parentId = bad.entries[0].view.id;
+  await expect(
+    f.first.downloadTrees.restore(actor, bad, "new"),
+  ).rejects.toThrow();
+  f.changePeer();
+  await expect(f.first.downloadTrees.restore(actor, cp, "new")).rejects.toThrow(
+    "DOWNLOAD_HOST_IDENTITY_CHANGED",
+  );
+});
+it("applies download preview capacity and abort checks to recovery", async () => {
+  const f = await fixture(),
+    p = await f.first.downloadTrees.scan(actor, {
+      sessionId: "old",
+      paths: ["/source"],
+    }),
+    cp = f.first.downloadTrees.checkpoint(actor, p.id);
+  f.first.dispose();
+  const next = f.create();
+  const stop = new AbortController();
+  vi.mocked(f.ports.audit).mockImplementationOnce(async () => {
+    stop.abort();
+  });
+  await expect(
+    next.downloadTrees.restore({ ...actor, signal: stop.signal }, cp, "new"),
+  ).rejects.toThrow("DOWNLOAD_CANCELLED");
+  for (let i = 0; i < 4; i++)
+    await next.downloadTrees.restore(actor, cp, "new");
+  await expect(next.downloadTrees.restore(actor, cp, "new")).rejects.toThrow(
+    "DOWNLOAD_TREE_LIMIT",
+  );
+  expect(f.held()).toBe(0);
+});

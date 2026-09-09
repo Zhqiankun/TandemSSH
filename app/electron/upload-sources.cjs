@@ -2,6 +2,9 @@ const fs = require("node:fs/promises");
 const { constants } = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
+const {
+  readUploadSourceCheckpoint,
+} = require("./upload-source-checkpoint.cjs");
 const maximumBytes = 4 * 1024 * 1024;
 const identity = (s) => [s.dev, s.ino, s.birthtimeMs].join(":");
 const version = (s) =>
@@ -207,6 +210,80 @@ class UploadSourceStore {
     } finally {
       this.scanning--;
     }
+  }
+  /** Internal metadata. The recovery coordinator owns authentication and encryption. */
+  checkpoint(owner, id, authorize) {
+    const r = this.owned(owner, id);
+    this.guard(r, authorize);
+    if ([...r.entries.values()].some((e) => e.busy)) throw Error("UPLOAD_BUSY");
+    return readUploadSourceCheckpoint({
+      schemaVersion: 1,
+      platform: process.platform,
+      id: r.id,
+      savedAt: Date.now(),
+      entries: [...r.entries.values()].map((e) => ({
+        view: e.view,
+        identity: e.identity,
+        version: e.version,
+      })),
+    });
+  }
+  /** Consumes a newly selected capability; never opens paths supplied by recovery metadata. */
+  restore(owner, selectedId, raw, authorize) {
+    const selected = this.owned(owner, selectedId);
+    this.guard(selected, authorize);
+    const saved = readUploadSourceCheckpoint(raw);
+    if (saved.platform !== process.platform)
+      throw Error("UPLOAD_SOURCE_CHANGED");
+    if ([...selected.entries.values()].some((e) => e.busy))
+      throw Error("UPLOAD_BUSY");
+    const key = (p) => (process.platform === "win32" ? p.toLowerCase() : p);
+    const current = new Map(
+      [...selected.entries.values()].map((e) => [key(e.view.path), e]),
+    );
+    const oldRoots = saved.entries
+      .filter((e) => !e.view.parentId)
+      .map((e) => key(e.view.path))
+      .sort();
+    const newRoots = [...selected.entries.values()]
+      .filter((e) => !e.view.parentId)
+      .map((e) => key(e.view.path))
+      .sort();
+    if (JSON.stringify(oldRoots) !== JSON.stringify(newRoots))
+      throw Error("UPLOAD_SOURCE_CHANGED");
+    const entries = new Map();
+    let bytes = 0,
+      excluded = 0;
+    for (const old of saved.entries) {
+      const next = current.get(key(old.view.path));
+      if (
+        !next ||
+        next.view.kind !== old.view.kind ||
+        next.identity !== old.identity ||
+        next.view.error !== old.view.error ||
+        (old.view.kind !== "directory" && next.version !== old.version)
+      )
+        throw Error("UPLOAD_SOURCE_CHANGED");
+      const e = { ...next, view: { ...old.view }, busy: false };
+      entries.set(e.view.id, e);
+      if (e.view.error) excluded++;
+      else if (e.view.kind === "file") bytes += e.view.size;
+      if (!Number.isSafeInteger(bytes)) throw Error("UPLOAD_TREE_LIMIT");
+    }
+    this.guard(selected, authorize);
+    const r = {
+      id: randomUUID(),
+      owner,
+      epoch: selected.epoch,
+      entries,
+      bytes,
+      excluded,
+      cancelled: false,
+    };
+    selected.cancelled = true;
+    this.records.delete(selected.id);
+    this.records.set(r.id, r);
+    return this.view(r);
   }
   async checked(owner, id, entryId, authorize) {
     const r = this.owned(owner, id),

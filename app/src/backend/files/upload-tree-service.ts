@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import {
+  uploadTreeCheckpointSchema,
+  type UploadTreeCheckpoint,
+} from "./upload-tree-checkpoint.js";
 import { posix } from "node:path";
 import { z } from "zod";
 import {
@@ -173,12 +177,7 @@ export class UploadTreeService {
         : undefined;
     }
   }
-  async preview(actor: UploadActor, input: PrepareUploadTree) {
-    this.prune();
-    this.alive(actor);
-    const p = uploadTreeSchema.parse(input);
-    if (Buffer.byteLength(JSON.stringify(p), "utf8") > 2 * 1024 * 1024)
-      throw Error("UPLOAD_TREE_LIMIT");
+  private reserve(actor: UploadActor) {
     const active = [...this.preparing.values()].reduce((a, b) => a + b, 0),
       own = this.preparing.get(actor.userId) ?? 0;
     if (
@@ -191,6 +190,135 @@ export class UploadTreeService {
     )
       throw Error("UPLOAD_TREE_LIMIT");
     this.preparing.set(actor.userId, own + 1);
+  }
+  /** Metadata only; the batch coordinator must first quiesce all member transfers. */
+  checkpoint(actor: UploadActor, id: string): UploadTreeCheckpoint {
+    const r = this.owned(actor, id);
+    this.alive(actor, r);
+    if (r.busy || r.view.state !== "confirmed")
+      throw Error("UPLOAD_STATE_INVALID");
+    if (!r.peer) throw Error("UPLOAD_HOST_IDENTITY_UNVERIFIED");
+    return uploadTreeCheckpointSchema.parse({
+      schemaVersion: 1,
+      id,
+      userId: r.owner,
+      targetKey: r.targetKey,
+      peer: r.peer,
+      hostIdentity: r.view.hostIdentity,
+      path: r.view.path,
+      canonicalRoot: r.view.canonicalRoot,
+      rootSignature: r.rootSignature,
+      entries: [...r.entries.values()].map(({ view, directory, baseline }) => ({
+        view,
+        directory,
+        baseline,
+      })),
+      savedAt: Date.now(),
+    });
+  }
+  /** Only an authenticated recovery coordinator may supply persisted metadata. */
+  async restore(actor: UploadActor, raw: unknown, sessionId: string) {
+    const c = uploadTreeCheckpointSchema.parse(raw);
+    if (c.userId !== actor.userId) throw Error("UPLOAD_NOT_FOUND");
+    z.string().min(1).max(256).parse(sessionId);
+    this.prune();
+    this.alive(actor);
+    this.reserve(actor);
+    let release: (() => void) | undefined;
+    try {
+      const view: UploadTreePreview = {
+        id: randomUUID(),
+        revision: randomUUID(),
+        sessionId,
+        path: c.path,
+        canonicalRoot: c.canonicalRoot,
+        hostIdentity: c.hostIdentity,
+        state: "preview",
+        entries: [],
+        expiresAt: Date.now() + lifetime,
+      };
+      const byId = new Map(c.entries.map((e) => [e.view.id, e]));
+      const entries = new Map<string, TreeEntry>();
+      for (const saved of c.entries) {
+        const names = [saved.view.name];
+        let parent = saved.view.parentId
+          ? byId.get(saved.view.parentId)
+          : undefined;
+        while (parent) {
+          names.unshift(parent.view.name);
+          parent = parent.view.parentId
+            ? byId.get(parent.view.parentId)
+            : undefined;
+        }
+        const entry: TreeEntry = {
+          view: { ...saved.view, action: undefined },
+          names,
+          directory: saved.directory,
+          baseline: saved.baseline,
+        };
+        if (
+          entry.directory &&
+          ["created", "merged"].includes(entry.view.result?.state ?? "")
+        )
+          entry.view.status = "directory";
+        entries.set(entry.view.id, entry);
+      }
+      view.entries = [...entries.values()].map((e) => e.view);
+      const r: Tree = {
+        owner: actor.userId,
+        targetKey: c.targetKey,
+        peer: c.peer,
+        rootSignature: c.rootSignature,
+        view,
+        entries,
+        busy: false,
+        cancelled: false,
+      };
+      const t = await this.target(actor, r, sessionId);
+      release = t.retain?.();
+      await this.root(actor, r, t);
+      for (const e of [...entries.values()].sort(
+        (a, b) => a.names.length - b.names.length,
+      )) {
+        if (!e.directory || e.view.status === "blocked") continue;
+        await this.parents(actor, r, e, t, false);
+        t.check("write", e.view.path, e.view.path);
+        const actual = await t.io.stat(e.view.path);
+        if (
+          uploadDirectoryAttributes(actual) !== e.directory ||
+          (await t.io.resolve(e.view.path)) !== e.view.path
+        )
+          throw Error("FILE_TARGET_CHANGED");
+        e.view.existing = {
+          size: actual.size,
+          mtime: actual.mtime,
+          mode: actual.mode & 0o7777,
+        };
+        this.alive(actor, r);
+      }
+      await this.root(actor, r, t);
+      await this.ports.audit(actor.userId, "upload.tree.restored", {
+        id: view.id,
+        checkpointId: c.id,
+        entries: view.entries.length,
+      });
+      this.alive(actor, r);
+      this.records.set(view.id, r);
+      return structuredClone(view);
+    } finally {
+      release?.();
+      const count = (this.preparing.get(actor.userId) ?? 1) - 1;
+      if (count) this.preparing.set(actor.userId, count);
+      else this.preparing.delete(actor.userId);
+    }
+  }
+  async preview(actor: UploadActor, input: PrepareUploadTree) {
+    this.prune();
+    this.alive(actor);
+    const p = uploadTreeSchema.parse(input);
+    if (Buffer.byteLength(JSON.stringify(p), "utf8") > 2 * 1024 * 1024)
+      throw Error("UPLOAD_TREE_LIMIT");
+    this.reserve(actor);
     let release: (() => void) | undefined;
     try {
       const t = await this.ports.target(actor.userId, p.sessionId);
@@ -430,7 +558,13 @@ export class UploadTreeService {
           (entryId === undefined || e.view.id === entryId),
       );
       if (directoryEntries.every((e) => e.view.action === "skip")) {
-        for (const e of directoryEntries) e.view.result = { state: "skipped" };
+        for (const e of directoryEntries)
+          if (
+            !["created", "merged", "unknown"].includes(
+              e.view.result?.state ?? "",
+            )
+          )
+            e.view.result = { state: "skipped" };
         return directoryEntries.map((e) => ({
           id: e.view.id,
           path: e.view.path,
@@ -449,11 +583,12 @@ export class UploadTreeService {
         )
         .sort((a, b) => a.names.length - b.names.length)) {
         this.alive(actor, r);
+        if (e.view.result?.state === "unknown") continue;
         if (e.view.action === "skip") {
-          e.view.result = { state: "skipped" };
+          if (!["created", "merged"].includes(e.view.result?.state ?? ""))
+            e.view.result = { state: "skipped" };
           continue;
         }
-        if (e.view.result?.state === "unknown") continue;
         let unlock: (() => void) | undefined,
           sent = false,
           created = false;

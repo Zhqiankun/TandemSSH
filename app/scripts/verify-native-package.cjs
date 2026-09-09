@@ -78,14 +78,31 @@ async function probe(root) {
     "task-local-directories.cjs",
     "task-upload-access.cjs",
     "upload-sources.cjs",
+    "upload-source-checkpoint.cjs",
     "download-sink.cjs",
     "download-checkpoint.cjs",
     "download-directory-targets.cjs",
+    "download-directory-checkpoint.cjs",
   ]) {
     const file = fs.realpathSync(path.join(filesRoot, name));
     if (!file.startsWith(filesRoot + path.sep) || !fs.statSync(file).isFile())
       throw Error("Native file capability missing: " + name);
   }
+  const { UploadSourceStore } = load(
+    path.join(filesRoot, "upload-sources.cjs"),
+  );
+  const { DownloadDirectoryTargets } = load(
+    path.join(filesRoot, "download-directory-targets.cjs"),
+  );
+  for (const [type, methods] of [
+    [UploadSourceStore, ["checkpoint", "restore"]],
+    [DownloadDirectoryTargets, ["checkpoint", "restore", "attachRestored"]],
+  ])
+    for (const method of methods)
+      if (typeof type.prototype[method] !== "function")
+        throw Error(
+          "Packaged directory recovery capability missing: " + method,
+        );
   const { TaskLocalFiles } = load(path.join(filesRoot, "task-local-files.cjs"));
   const taskFiles = new TaskLocalFiles();
   if (
@@ -154,6 +171,7 @@ async function probe(root) {
         dependenciesVerified: verified.size,
         fileCapabilities: true,
         directoryCapabilities: true,
+        directoryRecovery: true,
         sqlite: true,
         serial: true,
         keyring: true,

@@ -1,6 +1,10 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
+const { checkpointStat } = require("./download-checkpoint.cjs");
+const {
+  readDownloadDirectoryCheckpoint,
+} = require("./download-directory-checkpoint.cjs");
 const {
   inspectDownloadTarget,
   errorCode,
@@ -117,6 +121,179 @@ class DownloadDirectoryTargets {
       return this.view(r);
     } finally {
       this.choosing = false;
+    }
+  }
+  /** Member sinks must first be suspended by the batch recovery coordinator. */
+  async checkpoint(owner, id, authorize) {
+    const r = this.owned(owner, id);
+    this.guard(r, authorize);
+    if (
+      r.busy ||
+      !r.confirmed ||
+      [...r.entries.values()].some((e) => e.binding)
+    )
+      throw Error("DOWNLOAD_BUSY");
+    for (const e of r.entries.values())
+      if (e.child) {
+        try {
+          this.sink.owned(owner, e.child);
+          throw Error("DOWNLOAD_TREE_MEMBER_ACTIVE");
+        } catch (error) {
+          if (error.message !== "DOWNLOAD_NOT_FOUND") throw error;
+        }
+      }
+    r.busy = true;
+    try {
+      await this.rootUnchanged(r, authorize);
+      const entries = [];
+      for (const e of r.entries.values()) {
+        let receipt;
+        if (e.result?.state === "completed") {
+          await this.parentsUnchanged(r, e, authorize);
+          const current = await inspectDownloadTarget(e.path, () =>
+            this.guard(r, authorize),
+          );
+          if (
+            !current ||
+            current.stat.size !== e.size ||
+            current.sha256 !== e.sha256
+          )
+            throw Error("DOWNLOAD_RESULT_UNVERIFIED");
+          receipt = {
+            sha256: current.sha256,
+            stat: checkpointStat(current.stat),
+          };
+        }
+        entries.push({
+          id: e.id,
+          parentId: e.parentId,
+          name: e.name,
+          kind: e.kind,
+          size: e.size,
+          status: e.status,
+          error: e.error,
+          directoryIdentity: e.directoryIdentity,
+          snapshot: e.snapshot
+            ? {
+                sha256: e.snapshot.sha256,
+                stat: checkpointStat(e.snapshot.stat),
+              }
+            : undefined,
+          result: e.result,
+          receipt,
+        });
+      }
+      this.guard(r, authorize);
+      return readDownloadDirectoryCheckpoint({
+        schemaVersion: 1,
+        platform: process.platform,
+        id: r.id,
+        path: r.path,
+        identity: r.identity,
+        savedAt: Date.now(),
+        entries,
+      });
+    } finally {
+      r.busy = false;
+    }
+  }
+  /** Uses a newly selected empty root capability; persisted paths never grant access. */
+  async restore(owner, selectedId, raw, authorize) {
+    const selected = this.owned(owner, selectedId),
+      c = readDownloadDirectoryCheckpoint(raw);
+    this.guard(selected, authorize);
+    if (selected.busy || selected.confirmed || selected.entries.size)
+      throw Error("DOWNLOAD_NOT_READY");
+    if (
+      c.platform !== process.platform ||
+      pathKey(c.path) !== pathKey(selected.path) ||
+      c.identity !== selected.identity
+    )
+      throw Error("DOWNLOAD_TARGET_CHANGED");
+    selected.busy = true;
+    try {
+      await this.rootUnchanged(selected, authorize);
+      const byId = new Map(c.entries.map((e) => [e.id, e])),
+        entries = new Map();
+      for (const saved of c.entries) {
+        const names = [saved.name];
+        let parent = saved.parentId ? byId.get(saved.parentId) : undefined;
+        while (parent) {
+          names.unshift(parent.name);
+          parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+        }
+        const valid = names.every(validName) && names.join("/").length <= 4096;
+        if (!valid && saved.status !== "blocked")
+          throw Error("DOWNLOAD_TREE_CHECKPOINT_INVALID");
+        const e = {
+          ...saved,
+          names,
+          path: valid ? path.join(selected.path, ...names) : undefined,
+          action: undefined,
+        };
+        if (
+          e.directoryIdentity &&
+          ["created", "merged"].includes(e.result?.state)
+        )
+          e.status = "directory";
+        if (e.receipt) {
+          e.snapshot = e.receipt;
+          e.status = "conflict";
+          e.sha256 = e.receipt.sha256;
+        }
+        entries.set(e.id, e);
+      }
+      const paths = new Set();
+      for (const e of [...entries.values()].sort(
+        (a, b) => a.names.length - b.names.length,
+      )) {
+        if (e.status === "blocked") continue;
+        if (paths.has(pathKey(e.path)))
+          throw Error("DOWNLOAD_TREE_CHECKPOINT_INVALID");
+        paths.add(pathKey(e.path));
+        if (!e.directoryIdentity && !e.receipt) continue;
+        await this.previewParentsUnchanged(selected, e, entries, authorize);
+        if (pathKey(await fs.realpath(e.path)) !== pathKey(e.path))
+          throw Error("DOWNLOAD_TARGET_CHANGED");
+        if (e.directoryIdentity) {
+          const actual = await fs.lstat(e.path);
+          if (
+            !actual.isDirectory() ||
+            actual.isSymbolicLink() ||
+            identity(actual) !== e.directoryIdentity
+          )
+            throw Error("DOWNLOAD_TARGET_CHANGED");
+        } else {
+          const actual = await inspectDownloadTarget(e.path, () =>
+              this.guard(selected, authorize),
+            ),
+            expected = e.receipt;
+          const meta = (s) =>
+            [identity(s), s.size, s.mtimeMs, s.mode].join(":");
+          if (
+            !actual ||
+            meta(actual.stat) !== meta(expected.stat) ||
+            actual.sha256 !== expected.sha256
+          )
+            throw Error("DOWNLOAD_RESULT_UNVERIFIED");
+        }
+        this.guard(selected, authorize);
+      }
+      await this.rootUnchanged(selected, authorize);
+      const r = {
+        ...selected,
+        id: randomUUID(),
+        revision: randomUUID(),
+        entries,
+        busy: false,
+        confirmed: false,
+      };
+      selected.cancelled = true;
+      this.roots.delete(selected.id);
+      this.roots.set(r.id, r);
+      return this.view(r);
+    } finally {
+      selected.busy = false;
     }
   }
   async previewParentsUnchanged(r, e, entries, authorize) {
@@ -350,15 +527,16 @@ class DownloadDirectoryTargets {
         .sort((a, b) => a.names.length - b.names.length)) {
         const authorize = () => hooks.authorize?.(e.id);
         this.guard(r, authorize);
-        if (e.action === "skip") {
-          e.result = { state: "skipped" };
-          continue;
-        }
-        if (e.binding) throw Error("DOWNLOAD_BUSY");
         if (e.result?.state === "unknown") {
           if (hooks.stopOnError) throw Error("FILE_DIRECTORY_RESULT_UNKNOWN");
           continue;
         }
+        if (e.action === "skip") {
+          if (!["created", "merged"].includes(e.result?.state))
+            e.result = { state: "skipped" };
+          continue;
+        }
+        if (e.binding) throw Error("DOWNLOAD_BUSY");
         let creating = false,
           creationSucceeded = false;
         try {
@@ -487,6 +665,77 @@ class DownloadDirectoryTargets {
         throw error;
       }
       return view;
+    } finally {
+      e.binding = false;
+    }
+  }
+  async attachRestored(owner, id, entryId, childId, authorize) {
+    const r = this.owned(owner, id),
+      e = r.entries.get(entryId);
+    this.guard(r, authorize);
+    if (r.busy || e?.binding) throw Error("DOWNLOAD_BUSY");
+    if (
+      !r.confirmed ||
+      !e ||
+      e.kind !== "file" ||
+      e.action === "skip" ||
+      e.status === "blocked" ||
+      e.result?.state === "completed"
+    )
+      throw Error("DOWNLOAD_NOT_READY");
+    const child = this.sink.owned(owner, childId);
+    if (
+      !child.recoveryCheckpoint ||
+      child.pending ||
+      child.view.state !== "paused" ||
+      pathKey(child.view.path) !== pathKey(e.path) ||
+      child.spec.size !== e.size
+    )
+      throw Error("DOWNLOAD_TREE_MEMBER_MISMATCH");
+    const meta = (s) => [identity(s), s.size, s.mtimeMs, s.mode].join(":");
+    if (
+      Boolean(child.previous) !== Boolean(e.snapshot) ||
+      (child.previous &&
+        (child.previous.sha256 !== e.snapshot.sha256 ||
+          meta(child.previous.stat) !== meta(e.snapshot.stat)))
+    )
+      throw Error("DOWNLOAD_TARGET_CHANGED");
+    for (const root of this.roots.values())
+      for (const entry of root.entries.values())
+        if (entry.child === childId) throw Error("DOWNLOAD_BUSY");
+    if (e.child) {
+      try {
+        this.sink.owned(owner, e.child);
+        throw Error("DOWNLOAD_BUSY");
+      } catch (error) {
+        if (error.message !== "DOWNLOAD_NOT_FOUND") throw error;
+      }
+    }
+    e.binding = true;
+    try {
+      await this.parentsUnchanged(r, e, authorize);
+      const parent = e.parentId ? r.entries.get(e.parentId) : undefined;
+      if (
+        pathKey(child.parent) !== pathKey(parent?.path ?? r.path) ||
+        child.parentIdentity !== (parent?.directoryIdentity ?? r.identity)
+      )
+        throw Error("DOWNLOAD_TARGET_CHANGED");
+      if (
+        this.sink.owned(owner, childId) !== child ||
+        child.pending ||
+        child.view.state !== "paused"
+      )
+        throw Error("DOWNLOAD_BUSY");
+      this.sink.guard(child);
+      this.guard(r, authorize);
+      const previousAuthorize = child.authorize;
+      child.authorize = () => {
+        previousAuthorize?.();
+        this.guard(r, authorize);
+      };
+      e.child = childId;
+      e.sha256 = child.spec.sha256;
+      return this.sink.view(child);
     } finally {
       e.binding = false;
     }
