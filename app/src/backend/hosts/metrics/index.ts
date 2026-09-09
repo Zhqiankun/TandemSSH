@@ -1,3 +1,9 @@
+import {
+  monitoringCollections,
+  authorizeMonitoring,
+} from "./collection-production.js";
+import { assertMonitoringCollectionActive } from "./collection-runtime.js";
+import { registerMonitoringCollectionRoutes } from "./collection-routes.js";
 import { getErrorMessage } from "../../utils/error-message.js";
 import { serviceListenOptions } from "../../runtime/policy.js";
 import express from "express";
@@ -427,6 +433,27 @@ class PollingManager {
       result.metricsInterval = globalDefaults.metricsInterval;
     }
 
+    result.metricsInterval =
+      Number.isFinite(result.metricsInterval) &&
+      result.metricsInterval >= 5 &&
+      result.metricsInterval <= 3600
+        ? Math.round(result.metricsInterval)
+        : DEFAULT_STATS_CONFIG.metricsInterval;
+    result.statusCheckInterval =
+      Number.isFinite(result.statusCheckInterval) &&
+      result.statusCheckInterval >= 5 &&
+      result.statusCheckInterval <= 3600
+        ? Math.round(result.statusCheckInterval)
+        : DEFAULT_STATS_CONFIG.statusCheckInterval;
+    result.enabledWidgets = Array.isArray(result.enabledWidgets)
+      ? [
+          ...new Set(
+            result.enabledWidgets.filter((widget) =>
+              DEFAULT_STATS_CONFIG.enabledWidgets.includes(widget),
+            ),
+          ),
+        ]
+      : [...DEFAULT_STATS_CONFIG.enabledWidgets];
     return result;
   }
 
@@ -644,7 +671,11 @@ class PollingManager {
     }
 
     const config = this.pollingConfigs.get(refreshedHost.id);
-    if (!config || !config.statsConfig.metricsEnabled) {
+    if (
+      !config ||
+      !config.statsConfig.metricsEnabled ||
+      monitoringCollections.isPaused(host.id, userId)
+    ) {
       return;
     }
 
@@ -658,13 +689,19 @@ class PollingManager {
 
     let authenticated = false;
     try {
-      const metrics = await collectMetrics(refreshedHost, () => {
-        authenticated = true;
-        this.statusStore.set(refreshedHost.id, {
-          status: statusAfterAuthentication(true),
-          lastChecked: new Date().toISOString(),
-        });
-      });
+      await authorizeMonitoring(host.id, userId);
+      const metrics = await collectMetrics(
+        refreshedHost,
+        () => {
+          authenticated = true;
+          this.statusStore.set(refreshedHost.id, {
+            status: statusAfterAuthentication(true),
+            lastChecked: new Date().toISOString(),
+          });
+        },
+        userId,
+      );
+      if (monitoringCollections.isPaused(host.id, userId)) return;
       this.statusStore.set(refreshedHost.id, {
         status: statusAfterAuthentication(true),
         lastChecked: new Date().toISOString(),
@@ -681,6 +718,11 @@ class PollingManager {
       pollingBackoff.reset(refreshedHost.id);
       authFailureTracker.reset(refreshedHost.id);
     } catch (error) {
+      if (
+        error instanceof Error &&
+        /MONITORING_(CANCELLED|PAUSED|DISABLED)/.test(error.message)
+      )
+        return;
       if (!authenticated) {
         this.statusStore.set(refreshedHost.id, {
           status: statusAfterAuthentication(
@@ -773,6 +815,7 @@ class PollingManager {
   }
 
   stopPollingForHost(hostId: number, clearData = true): void {
+    monitoringCollections.cancelHost(hostId);
     const config = this.pollingConfigs.get(hostId);
     if (config) {
       if (config.statusTimer) {
@@ -798,6 +841,8 @@ class PollingManager {
   }
 
   stopMetricsOnly(hostId: number): void {
+    monitoringCollections.cancelHost(hostId);
+    metricsCache.clear(hostId);
     const config = this.pollingConfigs.get(hostId);
     if (config?.metricsTimer) {
       clearInterval(config.metricsTimer);
@@ -1627,6 +1672,7 @@ const proxmoxPollingManager = new ProxmoxPollingManager<SSHHostWithCredentials>(
 async function collectMetrics(
   host: SSHHostWithCredentials,
   onAuthenticated?: () => void,
+  requestingUserId = host.userId,
 ): Promise<{
   cpu: {
     percent: number | null;
@@ -1687,7 +1733,10 @@ async function collectMetrics(
     throw new Error(reason || "Authentication failed");
   }
 
-  const cached = metricsCache.get(host.id);
+  const cached = metricsCache.get(
+    host.id,
+    pollingManager.parseStatsConfig(host.statsConfig).metricsInterval * 1000,
+  );
   if (cached) {
     onAuthenticated?.();
     return cached as ReturnType<typeof collectMetrics> extends Promise<infer T>
@@ -1696,7 +1745,7 @@ async function collectMetrics(
   }
 
   return requestQueue.queueRequest(host.id, async () => {
-    const sessionKey = getSessionKey(host.id, host.userId!);
+    const sessionKey = getSessionKey(host.id, requestingUserId);
     const existingSession = metricsSessions[sessionKey];
 
     try {
@@ -1707,114 +1756,122 @@ async function collectMetrics(
         host.statsConfig,
       ).monitoredMounts;
 
-      const collectFn = async (client: Client) => {
-        onAuthenticated?.();
-        const cpu = await collectCpuMetrics(client);
-        const memory = await collectMemoryMetrics(client);
-        const disk = await collectDiskMetrics(
-          client,
-          excludedMounts,
-          monitoredMounts,
+      const collectFn = async (client: Client) =>
+        monitoringCollections.run(
+          host.id,
+          requestingUserId,
+          pollingManager.parseStatsConfig(host.statsConfig),
+          async () => {
+            assertMonitoringCollectionActive();
+            onAuthenticated?.();
+            const cpu = await collectCpuMetrics(client);
+            const memory = await collectMemoryMetrics(client);
+            const disk = await collectDiskMetrics(
+              client,
+              excludedMounts,
+              monitoredMounts,
+            );
+            const network = await collectNetworkMetrics(client);
+            const uptime = await collectUptimeMetrics(client);
+            const processes = await collectProcessesMetrics(client);
+            const system = await collectSystemMetrics(client);
+
+            let login_stats = {
+              recentLogins: [],
+              failedLogins: [],
+              totalLogins: 0,
+              uniqueIPs: 0,
+            };
+            try {
+              login_stats = await collectLoginStats(client);
+            } catch {
+              // expected
+            }
+
+            let ports: {
+              source: "ss" | "netstat" | "none";
+              ports: Array<{
+                protocol: "tcp" | "udp";
+                localAddress: string;
+                localPort: number;
+                state?: string;
+                pid?: number;
+                process?: string;
+              }>;
+            } = {
+              source: "none",
+              ports: [],
+            };
+            try {
+              ports = await collectPortsMetrics(client);
+            } catch {
+              // expected
+            }
+
+            let firewall: {
+              type: "iptables" | "nftables" | "none";
+              status: "active" | "inactive" | "unknown";
+              chains: Array<{
+                name: string;
+                policy: string;
+                rules: Array<{
+                  chain: string;
+                  target: string;
+                  protocol: string;
+                  source: string;
+                  destination: string;
+                  dport?: string;
+                  sport?: string;
+                  state?: string;
+                  interface?: string;
+                  extra?: string;
+                }>;
+              }>;
+            } = {
+              type: "none",
+              status: "unknown",
+              chains: [],
+            };
+            try {
+              firewall = await collectFirewallMetrics(client);
+            } catch {
+              // expected
+            }
+
+            let temperature: {
+              source: "sysfs" | "sensors" | "none";
+              highestCelsius: number | null;
+              sensors: Array<{ label: string; celsius: number }>;
+            } = {
+              source: "none",
+              highestCelsius: null,
+              sensors: [],
+            };
+            try {
+              temperature = await collectTemperatureMetrics(client);
+            } catch {
+              // expected
+            }
+
+            const result = {
+              cpu,
+              memory,
+              disk,
+              network,
+              uptime,
+              processes,
+              system,
+              login_stats,
+              ports,
+              firewall,
+              temperature,
+            };
+
+            assertMonitoringCollectionActive();
+            metricsCache.set(host.id, result);
+            return result;
+          },
         );
-        const network = await collectNetworkMetrics(client);
-        const uptime = await collectUptimeMetrics(client);
-        const processes = await collectProcessesMetrics(client);
-        const system = await collectSystemMetrics(client);
-
-        let login_stats = {
-          recentLogins: [],
-          failedLogins: [],
-          totalLogins: 0,
-          uniqueIPs: 0,
-        };
-        try {
-          login_stats = await collectLoginStats(client);
-        } catch {
-          // expected
-        }
-
-        let ports: {
-          source: "ss" | "netstat" | "none";
-          ports: Array<{
-            protocol: "tcp" | "udp";
-            localAddress: string;
-            localPort: number;
-            state?: string;
-            pid?: number;
-            process?: string;
-          }>;
-        } = {
-          source: "none",
-          ports: [],
-        };
-        try {
-          ports = await collectPortsMetrics(client);
-        } catch {
-          // expected
-        }
-
-        let firewall: {
-          type: "iptables" | "nftables" | "none";
-          status: "active" | "inactive" | "unknown";
-          chains: Array<{
-            name: string;
-            policy: string;
-            rules: Array<{
-              chain: string;
-              target: string;
-              protocol: string;
-              source: string;
-              destination: string;
-              dport?: string;
-              sport?: string;
-              state?: string;
-              interface?: string;
-              extra?: string;
-            }>;
-          }>;
-        } = {
-          type: "none",
-          status: "unknown",
-          chains: [],
-        };
-        try {
-          firewall = await collectFirewallMetrics(client);
-        } catch {
-          // expected
-        }
-
-        let temperature: {
-          source: "sysfs" | "sensors" | "none";
-          highestCelsius: number | null;
-          sensors: Array<{ label: string; celsius: number }>;
-        } = {
-          source: "none",
-          highestCelsius: null,
-          sensors: [],
-        };
-        try {
-          temperature = await collectTemperatureMetrics(client);
-        } catch {
-          // expected
-        }
-
-        const result = {
-          cpu,
-          memory,
-          disk,
-          network,
-          uptime,
-          processes,
-          system,
-          login_stats,
-          ports,
-          firewall,
-          temperature,
-        };
-
-        metricsCache.set(host.id, result);
-        return result;
-      };
 
       if (existingSession && existingSession.isConnected) {
         existingSession.activeOperations++;
@@ -1824,6 +1881,8 @@ async function collectMetrics(
           return result;
         } finally {
           existingSession.activeOperations--;
+          if (monitoringCollections.isPaused(host.id, requestingUserId))
+            cleanupMetricsSession(sessionKey);
         }
       } else {
         return await withSshConnection(host, collectFn);
@@ -2229,6 +2288,11 @@ app.get("/metrics/:id", validateHostId, async (req, res) => {
     });
   }
 
+  try {
+    await authorizeMonitoring(id, userId);
+  } catch {
+    return res.status(403).json({ code: "MONITORING_DENIED" });
+  }
   const metricsData = pollingManager.getMetrics(id);
   if (!metricsData) {
     return res.status(404).json({
@@ -2307,6 +2371,18 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
       return res.status(404).json({ error: "Host not found", connectionLogs });
     }
 
+    try {
+      await authorizeMonitoring(id, userId);
+    } catch {
+      return res.status(403).json({ code: "MONITORING_DENIED" });
+    }
+    if (
+      !pollingManager.parseStatsConfig(host.statsConfig).metricsEnabled ||
+      monitoringCollections.isPaused(id, userId)
+    )
+      return res
+        .status(409)
+        .json({ code: "MONITORING_PAUSED", connectionLogs });
     connectionLogs.push(
       createConnectionLog(
         "info",
@@ -2748,6 +2824,11 @@ app.post("/metrics/stop/:id", validateHostId, async (req, res) => {
   }
 
   try {
+    try {
+      await authorizeMonitoring(id, userId);
+    } catch {
+      return res.status(403).json({ code: "MONITORING_DENIED" });
+    }
     const sessionKey = getSessionKey(id, userId);
     const session = metricsSessions[sessionKey];
 
@@ -2959,6 +3040,25 @@ import("../../automations/headless-viewer.js")
     });
   })
   .catch(() => {});
+
+registerMonitoringCollectionRoutes(app, {
+  runtime: monitoringCollections,
+  authorize: authorizeMonitoring,
+  settings: async (hostId, userId) => {
+    const host = await fetchHostById(hostId, userId);
+    if (!host) throw Error("MONITORING_DENIED");
+    return pollingManager.parseStatsConfig(host.statsConfig);
+  },
+  pause: (hostId, userId) => {
+    pollingManager.stopMetricsOnly(hostId);
+    cleanupMetricsSession(getSessionKey(hostId, userId));
+  },
+  resume: async (hostId, userId) => {
+    const host = await fetchHostById(hostId, userId);
+    if (!host) throw Error("MONITORING_DENIED");
+    await pollingManager.startPollingForHost(host, { viewerUserId: userId });
+  },
+});
 
 registerHostMetricsViewerRoutes(app, {
   fetchHostById,

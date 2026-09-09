@@ -1,3 +1,4 @@
+import { MonitoringCollectionPanel } from "./MonitoringCollectionPanel";
 import { useTaskModeChoice } from "@/features/collaboration/use-task-mode-choice";
 import { legacyErrorCode } from "@/api/legacy-commands-api";
 import { getErrorMessage } from "../../lib/error-message.js";
@@ -129,6 +130,7 @@ function HostMetricsInner({
   const [serverStatus, setServerStatus] = React.useState<"online" | "offline">(
     "offline",
   );
+  const [collectionPaused, setCollectionPaused] = React.useState(false);
   const [metrics, setMetrics] = React.useState<ServerMetrics | null>(null);
   const [histories, setHistories] = React.useState<MetricCardHistories>({
     cpu: [],
@@ -456,6 +458,7 @@ function HostMetricsInner({
     enabled:
       isActuallyVisible &&
       metricsEnabled &&
+      !collectionPaused &&
       !totpRequired &&
       !!currentHostConfig?.id,
     autoStart: false,
@@ -465,7 +468,7 @@ function HostMetricsInner({
   metricsRetryRef.current = metricsRetry;
 
   React.useEffect(() => {
-    if (!metricsEnabled || !currentHostConfig?.id) return;
+    if (!metricsEnabled || collectionPaused || !currentHostConfig?.id) return;
 
     let cancelled = false;
 
@@ -500,7 +503,12 @@ function HostMetricsInner({
         stopMetricsPolling(currentHostConfig.id).catch(() => {});
       }
     };
-  }, [currentHostConfig?.id, isActuallyVisible, metricsEnabled]);
+  }, [
+    currentHostConfig?.id,
+    isActuallyVisible,
+    metricsEnabled,
+    collectionPaused,
+  ]);
 
   // After a successful TOTP submit, resume the connect flow immediately.
   React.useEffect(() => {
@@ -636,7 +644,9 @@ function HostMetricsInner({
   }
 
   const showCards =
-    metricsEnabled && metricsRetry.status === "connected" && metrics;
+    metricsEnabled &&
+    (collectionPaused || metricsRetry.status === "connected") &&
+    metrics;
   const showOffline =
     metricsEnabled &&
     metricsRetry.status !== "connecting" &&
@@ -651,7 +661,14 @@ function HostMetricsInner({
           style={wrapperStyle}
           className="relative flex flex-col overflow-hidden"
         >
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {hostId && (
+            <MonitoringCollectionPanel
+              hostId={hostId}
+              visible={isActuallyVisible}
+              onPausedChange={setCollectionPaused}
+            />
+          )}
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
               {!totpRequired &&
                 (metricsRetry.status === "connected" || showOffline) && (
@@ -780,7 +797,7 @@ function HostMetricsInner({
               )}
             </div>
 
-            {metricsEnabled && !totpRequired && (
+            {metricsEnabled && !collectionPaused && !totpRequired && (
               <ConnectionScreen
                 status={showOffline ? "connected" : metricsRetry.status}
                 message={t("hostMetrics.connecting")}

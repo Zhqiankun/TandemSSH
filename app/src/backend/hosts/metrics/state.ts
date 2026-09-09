@@ -69,9 +69,12 @@ class MetricsCache {
   private cache = new Map<number, CachedMetrics>();
   private ttl = 30000;
 
-  get(hostId: number): unknown | null {
+  get(hostId: number, maxAgeMs = this.ttl): unknown | null {
     const cached = this.cache.get(hostId);
-    if (cached && Date.now() - cached.timestamp < this.ttl) {
+    if (
+      cached &&
+      Date.now() - cached.timestamp < Math.min(this.ttl, maxAgeMs)
+    ) {
       return cached.data;
     }
     return null;

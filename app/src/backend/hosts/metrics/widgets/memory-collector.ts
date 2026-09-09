@@ -1,5 +1,6 @@
+import { execMetricCommand } from "../collection-runtime.js";
 import type { Client } from "ssh2";
-import { execCommand, toFixedNum, kibToGiB } from "./common-utils.js";
+import { toFixedNum, kibToGiB } from "./common-utils.js";
 
 export async function collectMemoryMetrics(client: Client): Promise<{
   percent: number | null;
@@ -11,7 +12,7 @@ export async function collectMemoryMetrics(client: Client): Promise<{
   let totalGiB: number | null = null;
 
   try {
-    const memInfo = await execCommand(client, "cat /proc/meminfo");
+    const memInfo = await execMetricCommand(client, "memory.1");
     const lines = memInfo.stdout.split("\n");
     const getVal = (key: string) => {
       const line = lines.find((l) => l.startsWith(key));

@@ -1,5 +1,6 @@
+import { execMetricCommand } from "../collection-runtime.js";
 import type { Client } from "ssh2";
-import { execCommand, toFixedNum } from "./common-utils.js";
+import { toFixedNum } from "./common-utils.js";
 
 export function parseCpuLine(
   cpuLine: string,
@@ -28,12 +29,9 @@ export async function collectCpuMetrics(client: Client): Promise<{
   try {
     const [stat1, loadAvgOut, coresOut] = await Promise.race([
       Promise.all([
-        execCommand(client, "cat /proc/stat"),
-        execCommand(client, "cat /proc/loadavg"),
-        execCommand(
-          client,
-          "nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo",
-        ),
+        execMetricCommand(client, "cpu.1"),
+        execMetricCommand(client, "cpu.2"),
+        execMetricCommand(client, "cpu.3"),
       ]),
       new Promise<never>((_, reject) =>
         setTimeout(
@@ -44,7 +42,7 @@ export async function collectCpuMetrics(client: Client): Promise<{
     ]);
 
     await new Promise((r) => setTimeout(r, 500));
-    const stat2 = await execCommand(client, "cat /proc/stat");
+    const stat2 = await execMetricCommand(client, "cpu.1");
 
     const cpuLine1 = (
       stat1.stdout.split("\n").find((l) => l.startsWith("cpu ")) || ""

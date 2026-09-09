@@ -1,5 +1,6 @@
+import { execMetricCommand } from "../collection-runtime.js";
 import type { Client } from "ssh2";
-import { execCommand, toFixedNum } from "./common-utils.js";
+import { toFixedNum } from "./common-utils.js";
 
 const PSEUDO_FS_RE = /^(tmpfs|devtmpfs|overlay|udev|none|shm)$/;
 
@@ -27,10 +28,6 @@ export interface DiskFilesystem {
 export interface MonitoredMount {
   path: string;
   label?: string;
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 // Parses `df -T -P`-style output: Filesystem, Type, then the size columns,
@@ -216,8 +213,8 @@ export async function collectDiskMetrics(
 }> {
   try {
     const [diskOutHuman, diskOutBytes] = await Promise.all([
-      execCommand(client, "df -hT -P | tail -n +2"),
-      execCommand(client, "df -TB1 -P | tail -n +2"),
+      execMetricCommand(client, "disk.1"),
+      execMetricCommand(client, "disk.2"),
     ]);
 
     const humanRows = parseDfLines(diskOutHuman.stdout);
@@ -229,11 +226,10 @@ export async function collectDiskMetrics(
     if (monitored.length > 0) {
       const customFilesystems = await Promise.all(
         monitored.map(async (entry) => {
-          const path = shellQuote(entry.path.trim());
           try {
             const [customHuman, customBytes] = await Promise.all([
-              execCommand(client, `df -hT -P -- ${path} | tail -n +2`),
-              execCommand(client, `df -TB1 -P -- ${path} | tail -n +2`),
+              execMetricCommand(client, "disk.3", { path: entry.path.trim() }),
+              execMetricCommand(client, "disk.4", { path: entry.path.trim() }),
             ]);
             return (
               buildFilesystemList(

@@ -1,5 +1,6 @@
+import { execMetricCommand } from "../collection-runtime.js";
 import type { Client } from "ssh2";
-import { execCommand } from "./common-utils.js";
+
 import type {
   PortsMetrics,
   ListeningPort,
@@ -117,7 +118,7 @@ export async function collectPortsMetrics(
   client: Client,
 ): Promise<PortsMetrics> {
   try {
-    const ssResult = await execCommand(client, "ss -tulnp 2>/dev/null", 15000);
+    const ssResult = await execMetricCommand(client, "ports.1");
 
     if (ssResult.stdout && ssResult.stdout.includes("Local")) {
       const ports = parseSsOutput(ssResult.stdout);
@@ -127,11 +128,7 @@ export async function collectPortsMetrics(
       };
     }
 
-    const netstatResult = await execCommand(
-      client,
-      "netstat -tulnp 2>/dev/null",
-      15000,
-    );
+    const netstatResult = await execMetricCommand(client, "ports.2");
 
     if (netstatResult.stdout && netstatResult.stdout.includes("Local")) {
       const ports = parseNetstatOutput(netstatResult.stdout);

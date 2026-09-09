@@ -1,5 +1,5 @@
+import { execMetricCommand } from "../collection-runtime.js";
 import type { Client } from "ssh2";
-import { execCommand } from "./common-utils.js";
 
 export async function collectUptimeMetrics(client: Client): Promise<{
   seconds: number | null;
@@ -9,7 +9,7 @@ export async function collectUptimeMetrics(client: Client): Promise<{
   let uptimeFormatted: string | null = null;
 
   try {
-    const uptimeOut = await execCommand(client, "cat /proc/uptime");
+    const uptimeOut = await execMetricCommand(client, "uptime.1");
     const uptimeParts = uptimeOut.stdout.trim().split(/\s+/);
     if (uptimeParts.length >= 1) {
       uptimeSeconds = Number(uptimeParts[0]);

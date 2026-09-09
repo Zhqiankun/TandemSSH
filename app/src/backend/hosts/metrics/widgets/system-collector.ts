@@ -1,5 +1,5 @@
+import { execMetricCommand } from "../collection-runtime.js";
 import type { Client } from "ssh2";
-import { execCommand } from "./common-utils.js";
 
 export async function collectSystemMetrics(client: Client): Promise<{
   hostname: string | null;
@@ -11,12 +11,9 @@ export async function collectSystemMetrics(client: Client): Promise<{
   let os: string | null = null;
 
   try {
-    const hostnameOut = await execCommand(client, "hostname");
-    const kernelOut = await execCommand(client, "uname -r");
-    const osOut = await execCommand(
-      client,
-      "cat /etc/os-release | grep '^PRETTY_NAME=' | cut -d'\"' -f2",
-    );
+    const hostnameOut = await execMetricCommand(client, "system.1");
+    const kernelOut = await execMetricCommand(client, "system.2");
+    const osOut = await execMetricCommand(client, "system.3");
 
     hostname = hostnameOut.stdout.trim() || null;
     kernel = kernelOut.stdout.trim() || null;

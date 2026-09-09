@@ -1,5 +1,5 @@
+import { execMetricCommand } from "../collection-runtime.js";
 import type { Client } from "ssh2";
-import { execCommand } from "./common-utils.js";
 
 export interface NetworkCounters {
   rx: string;
@@ -62,14 +62,8 @@ export async function collectNetworkMetrics(client: Client): Promise<{
   }> = [];
 
   try {
-    const ifconfigOut = await execCommand(
-      client,
-      "ip -o addr show 2>/dev/null | awk '{print $2,$4}' | grep -v '^lo' || true",
-    );
-    const netStatOut = await execCommand(
-      client,
-      "ip -o link show 2>/dev/null | awk '{gsub(/:/, \"\", $2); print $2,$9}' || true",
-    );
+    const ifconfigOut = await execMetricCommand(client, "network.1");
+    const netStatOut = await execMetricCommand(client, "network.2");
 
     const addrs = ifconfigOut.stdout
       .split("\n")
@@ -106,9 +100,9 @@ export async function collectNetworkMetrics(client: Client): Promise<{
 
     try {
       const firstReadAt = Date.now();
-      const procNet = await execCommand(client, "cat /proc/net/dev");
+      const procNet = await execMetricCommand(client, "network.3");
       await new Promise((resolve) => setTimeout(resolve, 500));
-      const procNetAfter = await execCommand(client, "cat /proc/net/dev");
+      const procNetAfter = await execMetricCommand(client, "network.3");
       const elapsedSeconds = (Date.now() - firstReadAt) / 1000;
       const rxTxMap = parseNetworkCounters(procNet.stdout);
       const afterMap = parseNetworkCounters(procNetAfter.stdout);

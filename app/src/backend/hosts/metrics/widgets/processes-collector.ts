@@ -1,5 +1,5 @@
+import { execMetricCommand } from "../collection-runtime.js";
 import type { Client } from "ssh2";
-import { execCommand } from "./common-utils.js";
 
 export async function collectProcessesMetrics(client: Client): Promise<{
   total: number | null;
@@ -23,10 +23,7 @@ export async function collectProcessesMetrics(client: Client): Promise<{
   }> = [];
 
   try {
-    const psOut = await execCommand(
-      client,
-      "(ps aux --sort=-%cpu 2>/dev/null || ps aux) | head -n 11",
-    );
+    const psOut = await execMetricCommand(client, "processes.1");
     const psLines = psOut.stdout
       .split("\n")
       .map((l) => l.trim())
@@ -48,8 +45,8 @@ export async function collectProcessesMetrics(client: Client): Promise<{
       }
     }
 
-    const procCount = await execCommand(client, "ps aux | wc -l");
-    const runningCount = await execCommand(client, "ps aux | grep -c ' R '");
+    const procCount = await execMetricCommand(client, "processes.2");
+    const runningCount = await execMetricCommand(client, "processes.3");
 
     const totalCount = Number(procCount.stdout.trim()) - 1;
     totalProcesses = Number.isFinite(totalCount) ? totalCount : null;

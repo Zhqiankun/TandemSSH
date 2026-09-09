@@ -1,5 +1,6 @@
+import { execMetricCommand } from "../collection-runtime.js";
 import type { Client } from "ssh2";
-import { execCommand, toFixedNum } from "./common-utils.js";
+import { toFixedNum } from "./common-utils.js";
 
 export interface TemperatureSensor {
   label: string;
@@ -79,18 +80,7 @@ export async function collectTemperatureMetrics(
   client: Client,
 ): Promise<TemperatureMetrics> {
   try {
-    const sysfs = await execCommand(
-      client,
-      [
-        "for zone in /sys/class/thermal/thermal_zone*; do",
-        '[ -r "$zone/temp" ] || continue;',
-        'label="$(cat "$zone/type" 2>/dev/null || basename "$zone")";',
-        'value="$(cat "$zone/temp" 2>/dev/null || true)";',
-        '[ -n "$value" ] && printf "%s\\t%s\\n" "$label" "$value";',
-        "done",
-      ].join(" "),
-      10000,
-    );
+    const sysfs = await execMetricCommand(client, "temperature.1");
     const sensors = parseSysfsThermalOutput(sysfs.stdout);
     if (sensors.length > 0) {
       return summarizeSensors("sysfs", sensors);
@@ -100,7 +90,7 @@ export async function collectTemperatureMetrics(
   }
 
   try {
-    const lmSensors = await execCommand(client, "sensors 2>/dev/null", 10000);
+    const lmSensors = await execMetricCommand(client, "temperature.2");
     const sensors = parseSensorsOutput(lmSensors.stdout);
     if (sensors.length > 0) {
       return summarizeSensors("sensors", sensors);

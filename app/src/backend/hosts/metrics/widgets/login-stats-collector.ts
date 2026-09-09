@@ -1,5 +1,5 @@
+import { execMetricCommand } from "../collection-runtime.js";
 import type { Client } from "ssh2";
-import { execCommand } from "./common-utils.js";
 
 export interface LoginRecord {
   user: string;
@@ -21,10 +21,7 @@ export async function collectLoginStats(client: Client): Promise<LoginStats> {
   const ipSet = new Set<string>();
 
   try {
-    const lastOut = await execCommand(
-      client,
-      "last -n 20 -F -w | grep -v 'reboot' | grep -v 'wtmp' | head -20",
-    );
+    const lastOut = await execMetricCommand(client, "login_stats.1");
 
     const lastLines = lastOut.stdout
       .split("\n")
@@ -74,10 +71,7 @@ export async function collectLoginStats(client: Client): Promise<LoginStats> {
   }
 
   try {
-    const failedOut = await execCommand(
-      client,
-      "grep 'Failed password' /var/log/auth.log 2>/dev/null | tail -10 || grep 'authentication failure' /var/log/secure 2>/dev/null | tail -10 || echo ''",
-    );
+    const failedOut = await execMetricCommand(client, "login_stats.2");
 
     const failedLines = failedOut.stdout
       .split("\n")

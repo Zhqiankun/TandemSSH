@@ -76,7 +76,7 @@ export function MemoryCard({
           <div className="flex items-center gap-4">
             <RadialGauge value={percent} />
             <div className="flex min-w-0 flex-1 flex-col gap-2">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 <MiniStat
                   caption={t("hostMetrics.memory")}
                   value={

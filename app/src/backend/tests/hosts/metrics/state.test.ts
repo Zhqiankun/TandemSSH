@@ -4,6 +4,7 @@ import {
   ConcurrentLimiter,
   HostPollCache,
   metricsConcurrencyFor,
+  metricsCache,
 } from "../../../hosts/metrics/state.js";
 
 describe("initial metrics admission", () => {
@@ -249,4 +250,21 @@ describe("HostPollCache", () => {
     cache.invalidate();
     expect(cache.get(2, "u")).toBeNull();
   });
+});
+
+it("expires cached values at the configured short sampling interval and clears them on stop", () => {
+  const time = vi.spyOn(Date, "now").mockReturnValue(1000);
+  try {
+    metricsCache.set(701, { memory: 50 });
+    time.mockReturnValue(5999);
+    expect(metricsCache.get(701, 5000)).toEqual({ memory: 50 });
+    time.mockReturnValue(6000);
+    expect(metricsCache.get(701, 5000)).toBeNull();
+    expect(metricsCache.get(701)).toEqual({ memory: 50 });
+    metricsCache.clear(701);
+    expect(metricsCache.get(701)).toBeNull();
+  } finally {
+    time.mockRestore();
+    metricsCache.clear(701);
+  }
 });

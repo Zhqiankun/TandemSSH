@@ -1,5 +1,6 @@
+import { execMetricCommand } from "../collection-runtime.js";
 import type { Client } from "ssh2";
-import { execCommand } from "./common-utils.js";
+
 import type {
   FirewallMetrics,
   FirewallChain,
@@ -202,11 +203,7 @@ export async function collectFirewallMetrics(
   client: Client,
 ): Promise<FirewallMetrics> {
   try {
-    const iptablesResult = await execCommand(
-      client,
-      "iptables-save 2>/dev/null",
-      15000,
-    );
+    const iptablesResult = await execMetricCommand(client, "firewall.1");
 
     if (iptablesResult.stdout && iptablesResult.stdout.includes("*filter")) {
       const chains = parseIptablesOutput(iptablesResult.stdout);
@@ -222,11 +219,7 @@ export async function collectFirewallMetrics(
       };
     }
 
-    const nftResult = await execCommand(
-      client,
-      "nft list ruleset 2>/dev/null",
-      15000,
-    );
+    const nftResult = await execMetricCommand(client, "firewall.2");
 
     if (nftResult.stdout && nftResult.stdout.trim()) {
       const chains = parseNftablesOutput(nftResult.stdout);
