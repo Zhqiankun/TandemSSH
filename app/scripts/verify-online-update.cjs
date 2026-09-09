@@ -409,16 +409,20 @@ async function main() {
     await click(labels.tandem.updates.install);
     await ui("approve", executable, oldDigest);
     evidence.nativeConfirmed = true;
-    // Complete the real assisted NSIS wizard; the default Run option launches the instrumented new fixture.
-    stage = "installer";
-    await ui("installer", resolved, digest);
-    await until(() => oldExited, 30000);
-    if (oldExit !== 0)
-      throw Error("Old application did not exit normally for upgrade");
+    // Node waits for attached inspectors before exit. Release our observers before the installer waits for the app.
     renderer.close();
     renderer = undefined;
     mainClient.close();
     mainClient = undefined;
+    await until(() => oldExited, 30000);
+    evidence.oldExitCode = oldExit;
+    if (oldExit !== 0)
+      throw Error(
+        "Old application did not exit normally for upgrade: " + oldExit,
+      );
+    // Complete the real assisted NSIS wizard; the default Run option launches the instrumented new fixture.
+    stage = "installer";
+    await ui("installer", resolved, digest);
     stage = "new-identity";
     newMain = await connect(ports.newMain, (t) => t.type === "node");
     const identity = await until(() => newMain.evaluate(identityExpression));

@@ -40,11 +40,13 @@ $deadline = (Get-Date).AddSeconds(180)
 $observed = [System.Collections.Generic.HashSet[string]]::new()
 $seen = $false
 $finished = $false
+$finishingInstaller = $false
 try {
   while ((Get-Date) -lt $deadline) {
     $targets = @(Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($expected)) -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $expected })
     if ($seen -and $targets.Count -eq 0 -and $Action -eq 'installer') { $finished = $true; break }
     foreach ($target in $targets) {
+      if ($finishingInstaller) { continue }
       $seen = $true
       $native = @([TandemUpgradeNativeWindows]::ForProcess([int]$target.Id))
       $clickedNative = $false
@@ -58,6 +60,7 @@ try {
           $match = if ($Action -eq 'cancel') { $name -eq '取消' } elseif ($Action -eq 'approve') { $name -eq '现在安装' } else { $name -match '^(Finish|完成|Install|安装|Next\s*>?|下一步\s*>?)(\([A-Z]\))?$' }
           if ($match -and [TandemUpgradeNativeWindows]::Click($button.Handle,[int]$target.Id)) {
             $events.Add([ordered]@{ processId=$target.Id; window=$rootWindow.Text; button=$name; method='native-button-message' })
+            if ($Action -eq 'installer' -and $name -match '^(Finish|完成)') { $finishingInstaller = $true }
             $clickedNative = $true
             if ($Action -ne 'installer') { $finished = $true }
             break
@@ -86,6 +89,7 @@ try {
           $pattern = $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
           $events.Add([ordered]@{ processId=$target.Id; window=$window.Current.Name; button=$name })
           $pattern.Invoke()
+          if ($Action -eq 'installer' -and $name -match '^(Finish|完成)') { $finishingInstaller = $true }
           if ($Action -ne 'installer') { $finished = $true }
           Start-Sleep -Milliseconds 500
           break
