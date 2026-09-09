@@ -6008,5 +6008,40 @@
       "FILE_NOT_REGULAR": "目标不是普通文件，无法在文本编辑器中打开。"
     },
     "connectionPending": "等待文件会话确认"
+  },
+  "fileDraft": {
+    "title": "本机加密草稿",
+    "hint": "编辑默认保留在内存；可手动保存本机加密快照。",
+    "save": "保存本机加密草稿",
+    "saveClose": "保存草稿并关闭",
+    "review": "审阅并恢复草稿",
+    "delete": "删除本机草稿",
+    "busy": "正在处理本机草稿…",
+    "reload": "重新检查草稿",
+    "failed": "草稿处理失败，当前编辑仍在内存中，请重新检查。",
+    "saved": "本机加密草稿已保存：{{time}}",
+    "older": "已有本机草稿：{{time}}；当前内容尚未保存到该快照。",
+    "deleteHint": "只删除本机加密草稿，不修改当前编辑或远端文件。",
+    "confirmDelete": "确认删除草稿",
+    "unchanged": "远端当前内容与保存草稿时的原文一致。",
+    "changed": "远端当前内容已有变化，请核对三份内容后恢复或合并。",
+    "restoreHint": "恢复只替换本地编辑内容；上传到远端仍需要重新审阅保存。",
+    "original": "保存草稿时的原文",
+    "remote": "本次打开的远端内容",
+    "stored": "本机加密草稿",
+    "replaceEdits": "当前编辑也有未保存修改，恢复将替换当前本地编辑内容。",
+    "restore": "确认恢复到编辑器",
+    "errors": {
+      "FILE_DRAFT_ENCRYPTION_UNAVAILABLE": "系统加密不可用，无法保存或读取加密草稿；当前编辑不会明文落盘。",
+      "FILE_DRAFT_KEY_MISSING": "原草稿密钥不可用，保留密文，请在原系统账号和数据目录下重试。",
+      "FILE_DRAFT_DECRYPT_FAILED": "草稿无法解密或内容已损坏，原文件保持保留。",
+      "FILE_DRAFT_CONFLICT": "其他窗口已更新草稿，请重新检查并核对后再保存。",
+      "FILE_DRAFT_BASE_CHANGED": "草稿原文与当前文档版本不一致，请刷新并核对。",
+      "FILE_DRAFT_IDENTITY_UNAVAILABLE": "尚未取得可信的服务器和文件身份，不能保存恢复草稿。",
+      "FILE_DRAFT_TOO_LARGE": "草稿内容超过 8 MiB，当前内容继续保留在内存。",
+      "FILE_DRAFT_LIMIT": "本机草稿已达到容量上限，请先删除不需要的草稿。",
+      "FILE_DRAFT_RESPONSE_UNKNOWN": "未能确认草稿处理结果，请重新检查后再操作。",
+      "FILE_DRAFT_BUSY": "草稿存储繁忙，请稍后重试。"
+    }
   }
 }

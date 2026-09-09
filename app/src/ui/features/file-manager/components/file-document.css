@@ -143,3 +143,35 @@
   font-size: 16px;
   font-weight: 600;
 }
+
+.td-draft-panel {
+  flex: none;
+  max-height: 50%;
+  overflow: auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.td-draft-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.td-draft-panel button {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-right: 5px;
+  cursor: pointer;
+}
+.td-draft-panel button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.td-draft-panel p {
+  margin: 6px 0;
+}
+.td-draft-review .td-document-panes {
+  min-height: 140px;
+}

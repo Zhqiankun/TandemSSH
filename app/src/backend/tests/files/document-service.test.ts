@@ -79,7 +79,8 @@ function fixture(text = "original") {
       key: "host",
       connection,
       io,
-      hostScope: { userId: a.userId, hostId: 1 },
+      acceptedHostKey: "SHA256:trusted",
+      hostScope: { userId: a.userId, hostId: 1, identity: "test@host:22" },
       retain: () => {
         leases++;
         return () => {
@@ -367,4 +368,53 @@ describe("versioned file commits", () => {
     ).rejects.toThrow("FILE_REQUEST_CANCELLED");
     expect(f.io.replace).not.toHaveBeenCalled();
   });
+});
+
+it("binds drafts to the human editor baseline and accepted server key", async () => {
+  const f = fixture("original\r\n"),
+    opened = await f.read();
+  const context = await f.service.draftContext(
+    actor,
+    "session",
+    opened.document.version,
+    "original\n",
+  );
+  expect(context.binding).toMatchObject({
+    userId: "owner",
+    acceptedHostKey: "SHA256:trusted",
+    hostIdentity: "test@host:22",
+    path: "/file",
+  });
+  await expect(
+    f.service.draftContext(
+      actor,
+      "session",
+      opened.document.version,
+      "wrong original",
+    ),
+  ).rejects.toThrow("FILE_DRAFT_BASE_CHANGED");
+  await expect(
+    f.service.draftContext(
+      { ...actor, userId: "other" },
+      "session",
+      opened.document.version,
+    ),
+  ).rejects.toThrow("FILE_VERSION_EXPIRED");
+  await expect(
+    f.service.draftContext(
+      { ...actor, source: "mcp", taskId: "task" },
+      "session",
+      opened.document.version,
+    ),
+  ).rejects.toThrow("TRUSTED_UI_REQUIRED");
+  f.setConnection("new");
+  await expect(
+    f.service.draftContext(actor, "session", opened.document.version),
+  ).rejects.toThrow("FILE_CONNECTION_CHANGED");
+  f.setConnection("one");
+  f.service.close(actor, opened.document.documentId);
+  await expect(
+    f.service.draftContext(actor, "session", opened.document.version),
+  ).rejects.toThrow("FILE_VERSION_EXPIRED");
+  expect(f.io.createExclusive).not.toHaveBeenCalled();
 });

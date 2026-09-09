@@ -11,6 +11,8 @@ import { useFileDocument } from "../hooks/use-file-document";
 import { FileDocumentReview, DocumentFailure } from "./FileDocumentReview";
 import { resolveFilePreviewKind } from "../file-preview-preload";
 import "./file-document.css";
+import { useFileDraft } from "../hooks/use-file-draft";
+import { FileDraftPanel } from "./FileDraftPanel";
 interface FileItem {
   name: string;
   type: "file" | "directory" | "link";
@@ -62,6 +64,7 @@ export function FileWindow({
     }
   }, [sshSessionId]);
   const doc = useFileDocument(sshSessionId, file.path, ensure);
+  const recovery = useFileDraft(sshSessionId, doc.base, doc.draft);
   const [closeReview, setCloseReview] = useState(false),
     [reloadReview, setReloadReview] = useState(false);
   const [charset, setCharset] = useState<FileCharset>("utf8");
@@ -229,6 +232,26 @@ export function FileWindow({
             <button onClick={() => setCloseReview(false)}>
               {t("fileDocument.keepEditing")}
             </button>
+            {doc.dirty && (
+              <button
+                disabled={!recovery.canSave || doc.saving}
+                onClick={() => {
+                  const value = doc.draft;
+                  void recovery.save().then((ok) => {
+                    if (ok && draftRef.current === value) close();
+                  });
+                }}
+              >
+                {t("fileDraft.saveClose")}
+              </button>
+            )}
+            {recovery.error && (
+              <p role="alert">
+                {t("fileDraft.errors." + recovery.error, {
+                  defaultValue: t("fileDraft.failed"),
+                })}
+              </p>
+            )}
             <button onClick={close}>{t("fileDocument.discardClose")}</button>
           </section>
         ) : reloadReview ? (
@@ -326,6 +349,16 @@ export function FileWindow({
               )}
             </div>
             {doc.error && <DocumentFailure failure={doc.error} />}
+            {info?.editable && (
+              <FileDraftPanel
+                key={sshSessionId + ":" + info.path}
+                draft={recovery}
+                original={doc.base?.content ?? ""}
+                content={doc.draft}
+                onRestore={doc.replaceDraft}
+                disabled={doc.saving || doc.loading}
+              />
+            )}
             <div className="td-document-body">
               {readOnly ? (
                 <section className="td-document-close">

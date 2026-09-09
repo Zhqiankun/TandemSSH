@@ -15,11 +15,18 @@ const docs = vi.hoisted(() => ({
   read: vi.fn(),
   save: vi.fn(),
   close: vi.fn(),
+  draftContext: vi.fn(),
 }));
 vi.mock("../../files/production.js", () => ({
   documents: docs,
   bindFileBrowserDocuments: vi.fn(),
 }));
+const draftStore = vi.hoisted(() => ({
+  read: vi.fn(),
+  write: vi.fn(),
+  remove: vi.fn(),
+}));
+vi.mock("../../files/drafts/production.js", () => ({ fileDrafts: draftStore }));
 import { registerDocumentRoutes } from "../../hosts/file-manager/document-routes";
 let identity: { userId?: string; apiKeyId?: string };
 const session = { userId: "owner", activeOperations: 5 } as SSHSession;
@@ -134,4 +141,35 @@ describe("trusted file document HTTP contract", () => {
     await send("POST", "closeDocument", { version: randomUUID() }, 400);
     expect(docs.close).toHaveBeenCalledOnce();
   });
+});
+
+it("uses backend draft identity and rejects API keys before draft lookup", async () => {
+  const version = randomUUID(),
+    binding = { userId: "owner", targetKey: "trusted" },
+    format = { charset: "utf8", bom: false, lineEnding: "lf" };
+  docs.draftContext.mockResolvedValue({ binding, format });
+  draftStore.write.mockResolvedValue({ revision: randomUUID() });
+  await send(
+    "POST",
+    "draft/write",
+    {
+      sessionId: "session",
+      version,
+      expectedRevision: null,
+      original: "old",
+      content: "new",
+    },
+    200,
+  );
+  expect(draftStore.write).toHaveBeenCalledWith(
+    binding,
+    { original: "old", content: "new", format },
+    null,
+  );
+  identity = { userId: "owner", apiKeyId: "api" };
+  await send("POST", "draft/read", { sessionId: "session", version }, 400);
+  expect(draftStore.read).not.toHaveBeenCalled();
+  identity = { userId: "other" };
+  await send("POST", "draft/read", { sessionId: "session", version }, 400);
+  expect(draftStore.read).not.toHaveBeenCalled();
 });

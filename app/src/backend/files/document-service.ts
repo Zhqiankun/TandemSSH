@@ -31,6 +31,8 @@ interface Baseline {
   targetKey: string;
   document: FileDocumentInfo;
   hash: string;
+  textHash?: string;
+  acceptedHostKey?: string;
   stat: RemoteFileStat;
   createdAt: number;
 }
@@ -198,6 +200,11 @@ export class DocumentService {
       targetKey: target.key,
       document: structuredClone(document),
       hash: hash(snapshot.bytes),
+      textHash:
+        decoded.text === undefined
+          ? undefined
+          : hash(decoded.text.replace(/\r\n|\r/g, "\n")),
+      acceptedHostKey: target.acceptedHostKey,
       stat: { ...snapshot.stat },
       createdAt: Date.now(),
     });
@@ -209,6 +216,50 @@ export class DocumentService {
           : decoded.text.replace(/\r\n|\r/g, "\n"),
       path,
       encoding: decoded.text === undefined ? "base64" : "utf8",
+    };
+  }
+  async draftContext(
+    actor: DocumentActor,
+    sessionId: string,
+    version: string,
+    original?: string,
+  ) {
+    if (actor.source !== "human")
+      throw new DocumentError("TRUSTED_UI_REQUIRED");
+    const base = this.baselines.get(version);
+    if (
+      !base ||
+      base.owner !== ownerKey(actor) ||
+      !this.retained.has(base.document.documentId)
+    )
+      throw new DocumentError("FILE_VERSION_EXPIRED");
+    if (
+      !base.document.editable ||
+      !base.document.format ||
+      !base.document.hostIdentity ||
+      !base.acceptedHostKey
+    )
+      throw new DocumentError("FILE_DRAFT_IDENTITY_UNAVAILABLE");
+    if (original !== undefined && hash(original) !== base.textHash)
+      throw new DocumentError("FILE_DRAFT_BASE_CHANGED");
+    const target = await this.ports.target(actor, sessionId);
+    target.check("read", base.document.path, base.document.canonicalPath);
+    if (
+      base.connection !== target.connection ||
+      base.targetKey !== target.key ||
+      base.acceptedHostKey !== target.acceptedHostKey
+    )
+      throw new DocumentError("FILE_CONNECTION_CHANGED");
+    return {
+      binding: {
+        userId: actor.userId,
+        targetKey: base.targetKey,
+        acceptedHostKey: base.acceptedHostKey,
+        hostIdentity: base.document.hostIdentity,
+        path: base.document.path,
+        canonicalPath: base.document.canonicalPath,
+      },
+      format: { ...base.document.format },
     };
   }
   private async snapshot(

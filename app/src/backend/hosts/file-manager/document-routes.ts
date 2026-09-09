@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from "express";
+import { fileDrafts } from "../../files/drafts/production.js";
 import { z } from "zod";
 import type { AuthenticatedRequest } from "../../../types/index.js";
 import { documents, bindFileBrowserDocuments } from "../../files/production.js";
@@ -141,6 +142,64 @@ export function registerDocumentRoutes(
     route(async (userId, req, signal) => {
       const p = save.parse(req.body);
       return documents.save({ userId, source: "human", signal }, p);
+    }),
+  );
+  const draftReference = z.object({
+    sessionId: z.string().min(1).max(256),
+    version: z.string().uuid(),
+  });
+  app.post(
+    "/ssh/file_manager/ssh/draft/read",
+    route(async (userId, req) => {
+      const p = draftReference.strict().parse(req.body),
+        context = await documents.draftContext(
+          { userId, source: "human" },
+          p.sessionId,
+          p.version,
+        );
+      return { draft: await fileDrafts.read(context.binding) };
+    }),
+  );
+  app.post(
+    "/ssh/file_manager/ssh/draft/write",
+    route(async (userId, req) => {
+      const p = draftReference
+        .extend({
+          expectedRevision: z.string().uuid().nullable(),
+          original: z.string().max(8 * 1024 * 1024),
+          content: z.string().max(8 * 1024 * 1024),
+        })
+        .strict()
+        .parse(req.body);
+      const context = await documents.draftContext(
+        { userId, source: "human" },
+        p.sessionId,
+        p.version,
+        p.original,
+      );
+      return {
+        draft: await fileDrafts.write(
+          context.binding,
+          { original: p.original, content: p.content, format: context.format },
+          p.expectedRevision,
+        ),
+      };
+    }),
+  );
+  app.post(
+    "/ssh/file_manager/ssh/draft/remove",
+    route(async (userId, req) => {
+      const p = draftReference
+          .extend({ expectedRevision: z.string().uuid() })
+          .strict()
+          .parse(req.body),
+        context = await documents.draftContext(
+          { userId, source: "human" },
+          p.sessionId,
+          p.version,
+        );
+      await fileDrafts.remove(context.binding, p.expectedRevision);
+      return { removed: true };
     }),
   );
   app.post(

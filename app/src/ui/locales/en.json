@@ -6008,5 +6008,40 @@
       "FILE_NOT_REGULAR": "The target is not a regular file."
     },
     "connectionPending": "Waiting for verified file session"
+  },
+  "fileDraft": {
+    "title": "Encrypted local draft",
+    "hint": "Edits stay in memory by default. Save an encrypted local snapshot explicitly.",
+    "save": "Save encrypted local draft",
+    "saveClose": "Save draft and close",
+    "review": "Review and restore draft",
+    "delete": "Delete local draft",
+    "busy": "Processing local draft…",
+    "reload": "Check draft again",
+    "failed": "The draft could not be processed. Current edits remain in memory; check again.",
+    "saved": "Encrypted local draft saved: {{time}}",
+    "older": "Local draft from {{time}}; current content has not been saved to this snapshot.",
+    "deleteHint": "Only the encrypted local draft is deleted. Current edits and the remote file stay intact.",
+    "confirmDelete": "Confirm draft deletion",
+    "unchanged": "Current remote content matches the original used by this draft.",
+    "changed": "Remote content has changed. Compare the three versions before restoring or merging.",
+    "restoreHint": "Restoring changes the local editor only. Saving remotely still requires a new review.",
+    "original": "Original when draft was saved",
+    "remote": "Remote content opened now",
+    "stored": "Encrypted local draft",
+    "replaceEdits": "The editor also has unsaved changes. Restoring replaces the current local edits.",
+    "restore": "Restore into editor",
+    "errors": {
+      "FILE_DRAFT_ENCRYPTION_UNAVAILABLE": "System encryption is unavailable. Drafts cannot be saved or read; edits will not be written as plaintext.",
+      "FILE_DRAFT_KEY_MISSING": "The original draft key is unavailable. Encrypted data is retained; retry with the original OS account and data directory.",
+      "FILE_DRAFT_DECRYPT_FAILED": "Draft decryption or integrity validation failed. The encrypted file is retained.",
+      "FILE_DRAFT_CONFLICT": "Another window updated this draft. Check and review it before saving again.",
+      "FILE_DRAFT_BASE_CHANGED": "The original content does not match the current document version. Refresh and review it.",
+      "FILE_DRAFT_IDENTITY_UNAVAILABLE": "A trusted server and file identity is required before saving a recovery draft.",
+      "FILE_DRAFT_TOO_LARGE": "Draft content exceeds 8 MiB. Current edits remain in memory.",
+      "FILE_DRAFT_LIMIT": "Local draft storage is full. Delete drafts you no longer need.",
+      "FILE_DRAFT_RESPONSE_UNKNOWN": "The draft result could not be confirmed. Check again before retrying.",
+      "FILE_DRAFT_BUSY": "Draft storage is busy. Try again shortly."
+    }
   }
 }
