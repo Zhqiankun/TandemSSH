@@ -22,15 +22,19 @@
       "id": "R02",
       "requirement": "Windows 桌面优先",
       "acceptance": "第一版必须在干净 Windows 环境安装、打开和使用",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": ".github/workflows/release.yml",
       "records": [
         "10-open-source-base.md",
         "11-m0-validation.md",
         "25-github-releases.md",
-        "46-online-update-acceptance.md"
+        "46-online-update-acceptance.md",
+        "78-preview-auto-updates.md",
+        "82-windows-acceptance-review.md"
       ],
-      "remaining": "已公开 0.1.0-alpha.0 Windows 安装/免安装预览包并通过云端真实安装升级；稳定更新渠道、历史版本迁移及完整发行依赖/资源许可清单仍未完成。"
+      "remaining": "",
+      "verifiedAt": "2026-09-11",
+      "verification": "干净 GitHub 托管 Windows 环境的真实 NSIS 安装、原生模块、中文 Electron 启动与更新交互、卸载和数据保留均有直接结果；公开 alpha.1 Release 再次通过同一门禁。"
     },
     {
       "id": "R03",
