@@ -1,5 +1,6 @@
 import { configurationBackups } from "../configuration-backup/production.js";
 import { configurationBackupRoutes } from "../configuration-backup/http-routes.js";
+import sharedInteractiveRoutes from "../hosts/interactive-auth/http-routes.js";
 import hostTrustRoutes from "../hosts/trust/http-routes.js";
 import collaborationRoutes from "../collaboration/http/routes.js";
 import { getErrorMessage } from "../utils/error-message.js";
@@ -273,12 +274,10 @@ if (runtimePolicy.desktop) {
     ["/database/export", "/database/import"],
     authenticateJWT,
     (_req, res) =>
-      res
-        .status(409)
-        .json({
-          code: "CONFIGURATION_BACKUP_REQUIRED",
-          error: "Use the configuration backup preview in desktop settings.",
-        }),
+      res.status(409).json({
+        code: "CONFIGURATION_BACKUP_REQUIRED",
+        error: "Use the configuration backup preview in desktop settings.",
+      }),
   );
   app.use(
     "/configuration-backup",
@@ -1808,6 +1807,7 @@ app.use("/automations", automationsRoutes);
 app.use("/ai", aiRoutes);
 app.use("/tandem", collaborationRoutes);
 app.use("/host-trust", hostTrustRoutes);
+app.use("/ssh-interactive", sharedInteractiveRoutes);
 app.use("/", alertRulesRoutes);
 app.use("/sync", syncRoutes);
 

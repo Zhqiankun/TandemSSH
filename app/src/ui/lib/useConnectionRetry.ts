@@ -16,7 +16,7 @@ interface UseConnectionRetryResult {
   maxAttempts: number;
   nextRetryInMs: number | null;
   markConnected: () => void;
-  markFailed: () => void;
+  markFailed: (options?: { retry?: boolean }) => void;
   retryNow: () => void;
   reset: () => void;
 }
@@ -120,16 +120,19 @@ export function useConnectionRetry({
     if (isMountedRef.current) setStatus("connected");
   }, [clearTimers]);
 
-  const markFailed = useCallback(() => {
-    clearTimers();
-    if (!isMountedRef.current) return;
-    setStatus("error");
-    if (enabledRef.current) {
-      scheduleRetry();
-    } else {
-      setNextRetryInMs(null);
-    }
-  }, [clearTimers, scheduleRetry]);
+  const markFailed = useCallback(
+    (options?: { retry?: boolean }) => {
+      clearTimers();
+      if (!isMountedRef.current) return;
+      setStatus(options?.retry === false ? "disconnected" : "error");
+      if (enabledRef.current && options?.retry !== false) {
+        scheduleRetry();
+      } else {
+        setNextRetryInMs(null);
+      }
+    },
+    [clearTimers, scheduleRetry],
+  );
 
   const retryNow = useCallback(() => {
     clearTimers();

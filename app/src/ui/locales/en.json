@@ -6561,7 +6561,13 @@
       "SSH_AUTH_TIMEOUT": "Authentication timed out. Reconnect to try again.",
       "SSH_AUTH_LIMIT": "The server exceeded the authentication round limit.",
       "SSH_AUTH_CANCELLED": "SSH authentication cancelled.",
-      "SSH_AUTH_CONNECTION_LOST": "The SSH connection closed during authentication."
+      "SSH_AUTH_CONNECTION_LOST": "The SSH connection closed during authentication.",
+      "SSH_AUTH_ACCESS_DENIED": "Access to this authentication request is no longer available."
+    },
+    "channels": {
+      "files": "File connection",
+      "monitoring": "Server monitoring",
+      "jump": "Jump host"
     }
   }
 }

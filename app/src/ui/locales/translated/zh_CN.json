@@ -6561,7 +6561,13 @@
       "SSH_AUTH_TIMEOUT": "认证已超时，请重新连接。",
       "SSH_AUTH_LIMIT": "服务器的认证轮数超出限制。",
       "SSH_AUTH_CANCELLED": "已取消 SSH 认证。",
-      "SSH_AUTH_CONNECTION_LOST": "SSH 连接在认证过程中断开。"
+      "SSH_AUTH_CONNECTION_LOST": "SSH 连接在认证过程中断开。",
+      "SSH_AUTH_ACCESS_DENIED": "已无权处理此认证请求，请重新登录或检查主机权限。"
+    },
+    "channels": {
+      "files": "文件连接",
+      "monitoring": "服务器监控",
+      "jump": "跳板连接"
     }
   }
 }

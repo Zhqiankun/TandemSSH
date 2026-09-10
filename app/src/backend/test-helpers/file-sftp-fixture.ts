@@ -8,6 +8,8 @@ import type {
   Client as SSHClient,
   SFTPWrapper,
   Session as ServerSession,
+  AuthContext,
+  Connection as ServerConnection,
 } from "ssh2";
 const { Client, Server } = ssh2Pkg;
 import { SftpFileIO } from "../files/sftp-io.js";
@@ -15,6 +17,11 @@ import { SftpFileIO } from "../files/sftp-io.js";
 // remains a modeled attribute on Windows; tests must not call this Linux proof.
 export async function fileSftpFixture(
   options: {
+    authenticate?: (
+      context: AuthContext,
+      fallback: () => void,
+      client: ServerConnection,
+    ) => void;
     attachShell?: (session: ServerSession) => void | (() => void);
     beforeRead?: () => Promise<void>;
     beforeWrite?: () => Promise<void>;
@@ -59,13 +66,19 @@ export async function fileSftpFixture(
   const server = new Server({ hostKeys: [key] }, (client) => {
     acceptedConnections++;
     client.on("error", () => {});
-    client.on("authentication", (ctx) =>
-      ctx.method === "password" &&
-      ctx.username === "fixture" &&
-      ctx.password === password
-        ? ctx.accept()
-        : ctx.reject(),
-    );
+    client.on("authentication", (ctx) => {
+      const fallback = () => {
+        if (
+          ctx.method === "password" &&
+          ctx.username === "fixture" &&
+          ctx.password === password
+        )
+          ctx.accept();
+        else ctx.reject();
+      };
+      if (options.authenticate) options.authenticate(ctx, fallback, client);
+      else fallback();
+    });
     client.on("ready", () =>
       client.on("session", (accept) => {
         const session = accept();

@@ -1,3 +1,5 @@
+import { attachInteractiveAuth } from "../interactive-auth/production.js";
+import { pendingFileConnections } from "./pending-connections.js";
 import { downloadBatchRecoveryTickets } from "../../files/download-batch-recovery-production.js";
 import { downloadRecoveryTickets } from "../../files/download-recovery-production.js";
 import { downloadTransfers, downloadTrees } from "../../files/production.js";
@@ -792,6 +794,17 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
       .json({ error: "Missing SSH connection parameters", connectionLogs });
   }
 
+  if (
+    typeof sessionId !== "string" ||
+    !/^[a-zA-Z0-9:._-]{1,128}$/.test(sessionId)
+  )
+    return res.status(400).json({ error: "SSH_AUTH_INVALID_CHALLENGE" });
+  if (
+    (sshSessions[sessionId] && sshSessions[sessionId].userId !== userId) ||
+    (pendingTOTPSessions[sessionId] &&
+      pendingTOTPSessions[sessionId].userId !== userId)
+  )
+    return res.status(403).json({ error: "SSH_AUTH_ACCESS_DENIED" });
   if (sshSessions[sessionId]?.isConnected) {
     cleanupSession(sessionId);
   }
@@ -806,6 +819,22 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
   }
 
   const client = new SSHClient();
+  client.on("error", () => {});
+  let modern = req.body.keyboardInteractiveVersion === 1;
+  let established = false;
+  let attempt: ReturnType<typeof pendingFileConnections.begin> | undefined;
+  try {
+    if (modern)
+      attempt = pendingFileConnections.begin(sessionId, userId, client);
+  } catch (error) {
+    client.destroy();
+    return res.status(409).json({ error: getErrorMessage(error) });
+  }
+  const cancelPending = () => {
+    if (modern && !established) attempt?.cancel();
+  };
+  res.once("close", cancelPending);
+  res.once("finish", cancelPending);
 
   connectionLogs.push(
     createConnectionLog(
@@ -826,6 +855,7 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
   };
   let hostKeepaliveInterval: number | undefined;
   let hostKeepaliveCountMax: number | undefined;
+  let resolvedAuthHostId = hostId ? Number(hostId) : undefined;
   let resolvedIp = ip;
   let resolvedPort = port;
   let resolvedUsername = username;
@@ -847,6 +877,7 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
         : await resolveHostById(hostId, userId);
       assertResolvedHost(ip, hostSyncId, resolvedHost, hostId, userId);
       if (resolvedHost) {
+        resolvedAuthHostId = resolvedHost.id;
         resolvedIp = resolvedHost.ip;
         resolvedPort = resolvedHost.port;
         resolvedUsername = resolvedHost.username;
@@ -922,6 +953,7 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
         : await resolveHostById(hostId, userId);
       assertResolvedHost(ip, hostSyncId, resolvedHost, hostId, userId);
       if (resolvedHost) {
+        resolvedAuthHostId = resolvedHost.id;
         resolvedIp = resolvedHost.ip;
         resolvedPort = resolvedHost.port;
         resolvedUsername = resolvedHost.username;
@@ -1253,6 +1285,51 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
   }
 
   let responseSent = false;
+  if (resolvedCredentials.authType === "warpgate") {
+    modern = false;
+    attempt?.complete();
+  }
+  let interactive: ReturnType<typeof attachInteractiveAuth> | undefined;
+  try {
+    if (modern)
+      interactive = attachInteractiveAuth(
+        client,
+        {
+          userId,
+          connectionId: sessionId,
+          channel: "files",
+          hostId: resolvedAuthHostId,
+          address: resolvedIp,
+          port: Number(resolvedPort),
+          username: resolvedUsername,
+        },
+        {
+          signal: attempt?.signal,
+          failure: (code) => {
+            if (!responseSent && !res.destroyed) {
+              responseSent = true;
+              res
+                .status(409)
+                .json({ status: "error", message: code, connectionLogs });
+            }
+          },
+        },
+      );
+  } catch (error) {
+    attempt?.cancel();
+    return res.status(409).json({
+      status: "error",
+      message: getErrorMessage(error),
+      connectionLogs,
+    });
+  }
+  const connectClient = () => {
+    if (attempt?.signal.aborted) {
+      (config.sock as { destroy?: () => void } | undefined)?.destroy?.();
+      return;
+    }
+    client.connect(config);
+  };
 
   connectionLogs.push(
     createConnectionLog("info", "dns", `Resolving DNS for ${ip}`),
@@ -1275,7 +1352,23 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
   );
 
   client.on("ready", () => {
+    if (attempt?.signal.aborted) {
+      client.destroy();
+      return;
+    }
+    if (sshSessions[sessionId] && sshSessions[sessionId].userId !== userId) {
+      responseSent = true;
+      res.status(403).json({
+        status: "error",
+        message: "SSH_AUTH_ACCESS_DENIED",
+        connectionLogs,
+      });
+      client.destroy();
+      return;
+    }
     if (responseSent) return;
+    established = true;
+    attempt?.complete();
     responseSent = true;
     fileLogger.info("File manager SSH connection established", {
       operation: "file_ssh_connected",
@@ -1517,8 +1610,21 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
       userId,
       hostId,
     });
-    if (sshSessions[sessionId]) sshSessions[sessionId].isConnected = false;
-    cleanupSession(sessionId);
+    if (sshSessions[sessionId]?.client === client) {
+      sshSessions[sessionId].isConnected = false;
+      cleanupSession(sessionId);
+    }
+    if (modern && !responseSent && !res.destroyed) {
+      responseSent = true;
+      res.status(500).json({
+        status: "error",
+        message:
+          attempt?.signal.reason instanceof Error
+            ? attempt.signal.reason.message
+            : "SSH_AUTH_CONNECTION_LOST",
+        connectionLogs,
+      });
+    }
   });
 
   client.on(
@@ -1530,6 +1636,18 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
       prompts: Array<{ prompt: string; echo: boolean }>,
       finish: (responses: string[]) => void,
     ) => {
+      if (interactive) {
+        interactive.handle(
+          name,
+          instructions,
+          prompts,
+          finish,
+          resolvedCredentials.authType !== "none"
+            ? resolvedCredentials.password
+            : undefined,
+        );
+        return;
+      }
       const promptTexts = prompts.map((p) => p.prompt);
 
       const warpgatePattern = /warpgate\s+authentication/i;
@@ -1780,8 +1898,17 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
           `Connecting via ${resolvedJumpHosts.length} jump host(s)`,
         ),
       );
-      const jumpClient = await createJumpHostChain(resolvedJumpHosts, userId);
+      const jumpClient = await createJumpHostChain(
+        resolvedJumpHosts,
+        userId,
+        attempt?.signal,
+      );
 
+      if (attempt?.signal.aborted) {
+        jumpClient?.destroy();
+        return;
+      }
+      client.once("close", () => jumpClient?.destroy());
       if (!jumpClient) {
         fileLogger.error("Failed to establish jump host chain", {
           operation: "file_jump_chain",
@@ -1828,7 +1955,10 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
       }, 30000);
 
       jumpClient.forwardOut("127.0.0.1", 0, ip, port, (err, stream) => {
-        if (forwardOutDone) return;
+        if (forwardOutDone || attempt?.signal.aborted) {
+          stream?.destroy();
+          return;
+        }
         forwardOutDone = true;
         clearTimeout(forwardOutTimeout);
 
@@ -1855,7 +1985,7 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
         }
 
         config.sock = stream;
-        client.connect(config);
+        connectClient();
       });
     } catch (error) {
       fileLogger.error("Jump host error", error, {
@@ -1897,7 +2027,7 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
         );
         config.sock = proxySocket;
       }
-      client.connect(config);
+      connectClient();
     } catch (proxyError) {
       fileLogger.error("Proxy connection failed", proxyError, {
         operation: "proxy_connect",
@@ -1920,7 +2050,7 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
     }
   } else {
     await resolveSshConnectConfigHost(config);
-    client.connect(config);
+    connectClient();
   }
 });
 
@@ -2311,6 +2441,11 @@ app.post("/ssh/file_manager/ssh/disconnect", (req, res) => {
   const session = sshSessions[sessionId];
   if (session && !verifySessionOwnership(session, userId)) {
     return res.status(403).json({ error: "Session access denied" });
+  }
+  try {
+    pendingFileConnections.cancel(sessionId, userId);
+  } catch {
+    return res.status(403).json({ error: "SSH_AUTH_ACCESS_DENIED" });
   }
   fileLogger.info("File manager disconnection requested", {
     operation: "file_disconnect_request",

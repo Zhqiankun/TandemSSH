@@ -89,3 +89,17 @@ export function isInteractiveChallenge(
     ).length <= 32768
   );
 }
+
+export interface SSHInteractiveTarget {
+  connectionId: string;
+  channel: "files" | "monitoring" | "jump";
+  hostId?: number;
+  hostname?: string;
+  address: string;
+  port: number;
+  username: string;
+}
+export type SharedSSHInteractiveRequest = SSHInteractiveChallenge & {
+  target: SSHInteractiveTarget;
+  waiting?: boolean;
+};

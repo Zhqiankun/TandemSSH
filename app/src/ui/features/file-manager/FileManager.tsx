@@ -381,6 +381,11 @@ function FileManagerContent({
       connectRetryRef.current.reset();
       connectRetryRef.current.retryNow();
     }
+    return () => {
+      pendingAuthenticationRef.current?.abort();
+      authenticationEpochRef.current++;
+      isConnectingRef.current = false;
+    };
   }, [currentHost]);
 
   useEffect(() => {
@@ -528,6 +533,33 @@ function FileManagerContent({
   );
 
   const isConnectingRef = useRef(false);
+  const pendingAuthenticationRef = useRef<AbortController | null>(null);
+  const authenticationEpochRef = useRef(0);
+  function beginFileAuthentication() {
+    pendingAuthenticationRef.current?.abort();
+    const controller = new AbortController(),
+      epoch = ++authenticationEpochRef.current;
+    pendingAuthenticationRef.current = controller;
+    return {
+      signal: controller.signal,
+      current: () =>
+        !controller.signal.aborted && epoch === authenticationEpochRef.current,
+    };
+  }
+  function handleInteractiveFailure(error: unknown) {
+    const code = getErrorMessage(error, "");
+    if (!/^SSH_AUTH_[A-Z_]+$/.test(code)) return false;
+    setHasConnectionError(true);
+    addLog({
+      type: "error",
+      stage: "auth",
+      message: t("sshInteractive.errors." + code, {
+        defaultValue: t("sshInteractive.failed"),
+      }),
+    });
+    connectRetryRef.current.markFailed({ retry: false });
+    return true;
+  }
 
   async function initializeSSHConnection() {
     if (!currentHost || isConnectingRef.current) return;
@@ -545,6 +577,7 @@ function FileManagerContent({
 
     isConnectingRef.current = true;
 
+    const attempt = beginFileAuthentication();
     try {
       setIsLoading(true);
       initialLoadDoneRef.current = false;
@@ -553,26 +586,31 @@ function FileManagerContent({
 
       const sessionId = currentHost.id.toString();
 
-      const result = await connectSSH(sessionId, {
-        hostId: currentHost.id,
-        ip: currentHost.ip,
-        port: currentHost.port,
-        username: currentHost.username,
-        password: currentHost.password,
-        sshKey: currentHost.key,
-        keyPassword: currentHost.keyPassword,
-        authType: currentHost.authType,
-        credentialId: currentHost.credentialId,
-        userId: currentHost.userId,
-        forceKeyboardInteractive: currentHost.forceKeyboardInteractive,
-        jumpHosts: currentHost.jumpHosts,
-        useSocks5: currentHost.useSocks5,
-        socks5Host: currentHost.socks5Host,
-        socks5Port: currentHost.socks5Port,
-        socks5Username: currentHost.socks5Username,
-        socks5Password: currentHost.socks5Password,
-        socks5ProxyChain: currentHost.socks5ProxyChain,
-      });
+      const result = await connectSSH(
+        sessionId,
+        {
+          hostId: currentHost.id,
+          ip: currentHost.ip,
+          port: currentHost.port,
+          username: currentHost.username,
+          password: currentHost.password,
+          sshKey: currentHost.key,
+          keyPassword: currentHost.keyPassword,
+          authType: currentHost.authType,
+          credentialId: currentHost.credentialId,
+          userId: currentHost.userId,
+          forceKeyboardInteractive: currentHost.forceKeyboardInteractive,
+          jumpHosts: currentHost.jumpHosts,
+          useSocks5: currentHost.useSocks5,
+          socks5Host: currentHost.socks5Host,
+          socks5Port: currentHost.socks5Port,
+          socks5Username: currentHost.socks5Username,
+          socks5Password: currentHost.socks5Password,
+          socks5ProxyChain: currentHost.socks5ProxyChain,
+        },
+        attempt.signal,
+      );
+      if (!attempt.current()) return;
 
       if (result?.requires_warpgate) {
         setWarpgateRequired(true);
@@ -609,6 +647,7 @@ function FileManagerContent({
 
       try {
         const response = await listSSHFiles(sessionId, currentPath);
+        if (!attempt.current()) return;
         const files = Array.isArray(response)
           ? response
           : response?.files || [];
@@ -624,6 +663,8 @@ function FileManagerContent({
         console.error("Failed to load initial directory:", dirError);
       }
     } catch (error: unknown) {
+      if (!attempt.current()) return;
+      if (handleInteractiveFailure(error)) return;
       const sshError = error as SSHConnectionError;
       if (sshError.message === "HOST_CREDENTIAL_REBIND_REQUIRED") {
         handleCloseWithError(t("configBackup.credentialsRequired"));
@@ -681,8 +722,10 @@ function FileManagerContent({
           getErrorMessage(error, String(error)),
       );
     } finally {
-      setIsLoading(false);
-      isConnectingRef.current = false;
+      if (attempt.current()) {
+        setIsLoading(false);
+        isConnectingRef.current = false;
+      }
     }
   }
 
@@ -2396,31 +2439,37 @@ function FileManagerContent({
   }) {
     if (!currentHost) return;
 
+    const attempt = beginFileAuthentication();
     try {
       setIsLoading(true);
       setShowAuthDialog(false);
 
       const sessionId = currentHost.id.toString();
 
-      const result = await connectSSH(sessionId, {
-        hostId: currentHost.id,
-        ip: currentHost.ip,
-        port: currentHost.port,
-        username: currentHost.username,
-        password: credentials.password,
-        sshKey: credentials.sshKey,
-        keyPassword: credentials.keyPassword,
-        authType: credentials.password ? "password" : "key",
-        credentialId: currentHost.credentialId,
-        userId: currentHost.userId,
-        jumpHosts: currentHost.jumpHosts,
-        useSocks5: currentHost.useSocks5,
-        socks5Host: currentHost.socks5Host,
-        socks5Port: currentHost.socks5Port,
-        socks5Username: currentHost.socks5Username,
-        socks5Password: currentHost.socks5Password,
-        socks5ProxyChain: currentHost.socks5ProxyChain,
-      });
+      const result = await connectSSH(
+        sessionId,
+        {
+          hostId: currentHost.id,
+          ip: currentHost.ip,
+          port: currentHost.port,
+          username: currentHost.username,
+          password: credentials.password,
+          sshKey: credentials.sshKey,
+          keyPassword: credentials.keyPassword,
+          authType: credentials.password ? "password" : "key",
+          credentialId: currentHost.credentialId,
+          userId: currentHost.userId,
+          jumpHosts: currentHost.jumpHosts,
+          useSocks5: currentHost.useSocks5,
+          socks5Host: currentHost.socks5Host,
+          socks5Port: currentHost.socks5Port,
+          socks5Username: currentHost.socks5Username,
+          socks5Password: currentHost.socks5Password,
+          socks5ProxyChain: currentHost.socks5ProxyChain,
+        },
+        attempt.signal,
+      );
+      if (!attempt.current()) return;
 
       if (result?.requires_warpgate) {
         setWarpgateRequired(true);
@@ -2452,6 +2501,7 @@ function FileManagerContent({
 
       try {
         const response = await listSSHFiles(sessionId, currentPath);
+        if (!attempt.current()) return;
         const files = Array.isArray(response)
           ? response
           : response?.files || [];
@@ -2464,6 +2514,8 @@ function FileManagerContent({
         console.error("Failed to load initial directory:", dirError);
       }
     } catch (error: unknown) {
+      if (!attempt.current()) return;
+      if (handleInteractiveFailure(error)) return;
       console.error("SSH connection with credentials failed:", error);
       setAuthDialogReason("auth_failed");
       setShowAuthDialog(true);
@@ -2473,7 +2525,7 @@ function FileManagerContent({
           getErrorMessage(error, String(error)),
       );
     } finally {
-      setIsLoading(false);
+      if (attempt.current()) setIsLoading(false);
     }
   }
 
@@ -2485,30 +2537,36 @@ function FileManagerContent({
   async function handlePassphraseSubmit(passphrase: string) {
     if (!currentHost) return;
 
+    const attempt = beginFileAuthentication();
     try {
       setIsLoading(true);
       setShowPassphraseDialog(false);
 
       const sessionId = currentHost.id.toString();
 
-      const result = await connectSSH(sessionId, {
-        hostId: currentHost.id,
-        ip: currentHost.ip,
-        port: currentHost.port,
-        username: currentHost.username,
-        sshKey: currentHost.key,
-        keyPassword: passphrase,
-        authType: "key",
-        credentialId: currentHost.credentialId,
-        userId: currentHost.userId,
-        jumpHosts: currentHost.jumpHosts,
-        useSocks5: currentHost.useSocks5,
-        socks5Host: currentHost.socks5Host,
-        socks5Port: currentHost.socks5Port,
-        socks5Username: currentHost.socks5Username,
-        socks5Password: currentHost.socks5Password,
-        socks5ProxyChain: currentHost.socks5ProxyChain,
-      });
+      const result = await connectSSH(
+        sessionId,
+        {
+          hostId: currentHost.id,
+          ip: currentHost.ip,
+          port: currentHost.port,
+          username: currentHost.username,
+          sshKey: currentHost.key,
+          keyPassword: passphrase,
+          authType: "key",
+          credentialId: currentHost.credentialId,
+          userId: currentHost.userId,
+          jumpHosts: currentHost.jumpHosts,
+          useSocks5: currentHost.useSocks5,
+          socks5Host: currentHost.socks5Host,
+          socks5Port: currentHost.socks5Port,
+          socks5Username: currentHost.socks5Username,
+          socks5Password: currentHost.socks5Password,
+          socks5ProxyChain: currentHost.socks5ProxyChain,
+        },
+        attempt.signal,
+      );
+      if (!attempt.current()) return;
 
       if (result?.status === "passphrase_required") {
         setShowPassphraseDialog(true);
@@ -2537,6 +2595,7 @@ function FileManagerContent({
 
       try {
         const response = await listSSHFiles(sessionId, currentPath);
+        if (!attempt.current()) return;
         const files = Array.isArray(response)
           ? response
           : response?.files || [];
@@ -2549,11 +2608,13 @@ function FileManagerContent({
         console.error("Failed to load initial directory:", dirError);
       }
     } catch (error: unknown) {
+      if (!attempt.current()) return;
+      if (handleInteractiveFailure(error)) return;
       console.error("SSH connection with passphrase failed:", error);
       setShowPassphraseDialog(true);
       toast.error(t("fileManager.incorrectPassphrase"));
     } finally {
-      setIsLoading(false);
+      if (attempt.current()) setIsLoading(false);
     }
   }
 
@@ -3010,12 +3071,16 @@ function FileManagerContent({
     );
   }
 
-  if ((isLoading || isReconnecting) && !sshSessionId) {
+  if ((isLoading || isReconnecting || hasConnectionError) && !sshSessionId) {
     return (
       <div className="h-full w-full flex flex-col bg-background relative">
         <ConnectionScreen
           status={isReconnecting ? "connecting" : connectRetry.status}
-          message={t("fileManager.connecting")}
+          message={t(
+            hasConnectionError
+              ? "fileManager.failedToConnect"
+              : "fileManager.connecting",
+          )}
           attempt={connectRetry.attempt}
           maxAttempts={connectRetry.maxAttempts}
           nextRetryInMs={connectRetry.nextRetryInMs}

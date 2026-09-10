@@ -108,12 +108,13 @@ export async function connectSSH(
     socks5ProxyChain?: unknown;
     jumpHosts?: Array<{ hostId: number }>;
   },
+  signal?: AbortSignal,
 ): Promise<SSHConnectResult> {
   try {
     const response = await getFileManagerApiForSession(sessionId).post(
       "/ssh/connect",
-      { sessionId, ...config },
-      { timeout: 120000 },
+      { sessionId, ...config, keyboardInteractiveVersion: 1 },
+      { timeout: 310000, signal },
     );
     return response.data;
   } catch (error: unknown) {
