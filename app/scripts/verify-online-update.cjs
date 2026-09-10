@@ -87,7 +87,12 @@ async function main() {
     !Number.isSafeInteger(parts[2] + 1)
   )
     throw Error("Invalid upgrade fixture version");
-  const newVersion = [parts[0], parts[1], parts[2] + 1].join(".");
+  const newVersion = require("semver").inc(
+    oldVersion,
+    oldVersion.includes("-alpha.") ? "prerelease" : "patch",
+    "alpha",
+  );
+  if (!newVersion) throw Error("Invalid upgrade fixture version");
   const ports = {
     oldMain: await freePort(),
     oldRenderer: await freePort(),
@@ -152,7 +157,17 @@ async function main() {
   const server = http.createServer((req, res) => {
     const pathname = new URL(req.url, "http://127.0.0.1").pathname;
     requests.push(pathname);
-    if (pathname === new URL(FEED_URL).pathname + "latest.yml") {
+    if (pathname === `/${REPOSITORY}/releases.atom`) {
+      res.writeHead(200, { "Content-Type": "application/atom+xml" });
+      res.end(
+        `<feed><entry><link href="https://github.com/${REPOSITORY}/releases/tag/v${newVersion}"/></entry></feed>`,
+      );
+      return;
+    }
+    if (
+      pathname === new URL(FEED_URL).pathname + "latest.yml" ||
+      pathname === `/${REPOSITORY}/releases/download/v${newVersion}/latest.yml`
+    ) {
       res.writeHead(200, { "Content-Type": "application/yaml" });
       res.end(JSON.stringify(manifest));
       return;
@@ -318,7 +333,7 @@ async function main() {
     );
     // Redirect only this owned process's updater network session. The metadata still uses its fixed GitHub URL.
     await mainClient.evaluate(
-      `(()=>{const e=${electron};e.session.fromPartition('electron-updater',{cache:false}).webRequest.onBeforeRequest({urls:['https://github.com/${REPOSITORY}/releases/*']},(details,done)=>{const u=new URL(details.url);done({redirectURL:'http://127.0.0.1:${httpPort}'+u.pathname+u.search});});return true;})()`,
+      `(()=>{const e=${electron};e.session.fromPartition('electron-updater',{cache:false}).webRequest.onBeforeRequest({urls:['https://github.com/${REPOSITORY}/releases/*','https://github.com/${REPOSITORY}/releases.atom']},(details,done)=>{const u=new URL(details.url);done({redirectURL:'http://127.0.0.1:${httpPort}'+u.pathname+u.search});});return true;})()`,
     );
     const expectedUrl = pathToFileURL(
       path.join(root, "resources/app.asar/dist/index.html"),

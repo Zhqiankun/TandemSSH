@@ -3,6 +3,7 @@ const path = require("node:path");
 const { createHash } = require("node:crypto");
 const { createReadStream } = require("node:fs");
 const yaml = require("js-yaml");
+const { validVersion } = require("../electron/update-feed.cjs");
 const {
   validateUpdateInfo,
   REPOSITORY,
@@ -17,8 +18,7 @@ async function hash(file, algorithm, encoding) {
     version = JSON.parse(
       await fs.readFile(path.join(root, "package.json"), "utf8"),
     ).version;
-  if (!/^\d+\.\d+\.\d+$/.test(version))
-    throw Error("Only stable version tags are published to the latest channel");
+  if (!validVersion(version)) throw Error("Unsupported release version");
   const release = path.join(root, "release"),
     name = "TandemSSH-" + version + "-x64.exe",
     installer = path.join(release, name);

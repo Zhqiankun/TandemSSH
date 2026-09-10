@@ -66,18 +66,7 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
       - name: Generate and validate version-pinned update manifest
-        if: env.RELEASE_CHANNEL == 'stable'
         run: npm run release:manifest
-      - name: Generate preview checksums
-        if: env.RELEASE_CHANNEL == 'preview'
-        run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $names = @("TandemSSH-$version-x64.exe", "TandemSSH-$version-x64.exe.blockmap", "TandemSSH-$version-x64.zip")
-          $lines = foreach ($name in $names) {
-            $digest = (Get-FileHash -LiteralPath (Join-Path release $name) -Algorithm SHA256).Hash.ToLowerInvariant()
-            "$digest  $name"
-          }
-          [IO.File]::WriteAllText((Join-Path (Get-Location) 'release/SHA256SUMS.txt'), ($lines -join [Environment]::NewLine) + [Environment]::NewLine)
       - name: Preserve release artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -122,6 +111,6 @@ jobs:
             gh release create $env:RELEASE_TAG --draft --prerelease --latest=false --verify-tag --title "TandemSSH $env:RELEASE_TAG 开发预览" --notes-file ../docs/75-preview-release-notes.md
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } elseif ($isDraft -ne 'true') { throw 'Published releases are immutable; use a new version' }
-          gh release upload $env:RELEASE_TAG "release/TandemSSH-$version-x64.exe" "release/TandemSSH-$version-x64.exe.blockmap" "release/TandemSSH-$version-x64.zip" release/SHA256SUMS.txt --clobber
+          gh release upload $env:RELEASE_TAG "release/TandemSSH-$version-x64.exe" "release/TandemSSH-$version-x64.exe.blockmap" "release/TandemSSH-$version-x64.zip" release/SHA256SUMS.txt release/latest.yml --clobber
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           gh release edit $env:RELEASE_TAG --draft=false --prerelease --latest=false

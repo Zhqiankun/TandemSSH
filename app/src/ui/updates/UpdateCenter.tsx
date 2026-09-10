@@ -60,10 +60,18 @@ export function UpdateCenter() {
     if (!api) return;
     let stopped = false,
       polling = false;
+    let configuredPreference: boolean | undefined;
     const read = async () => {
       if (polling) return;
       polling = true;
       try {
+        const enabled = localStorage.getItem("disableUpdateCheck") !== "true";
+        if (configuredPreference !== enabled) {
+          const configured = await api.action(
+            enabled ? "auto-check-on" : "auto-check-off",
+          );
+          if (configured.ok) configuredPreference = enabled;
+        }
         const result = await api.action("status");
         if (!stopped && result.ok) setState(result.value);
       } finally {
@@ -80,18 +88,6 @@ export function UpdateCenter() {
       clearInterval(timer);
     };
   }, [api, open]);
-  useEffect(() => {
-    if (!api || localStorage.getItem("disableUpdateCheck") === "true") return;
-    const timer = setTimeout(() => {
-      void api
-        .action("check")
-        .then((result) => {
-          if (result.ok) setState(result.value);
-        })
-        .catch(() => {});
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [api]);
   if (!api) return null;
   const act = async (
     action: "check" | "download" | "cancel" | "install" | "open",
@@ -119,6 +115,15 @@ export function UpdateCenter() {
             {t("tandem.updates.description")}
           </DialogDescription>
         </DialogHeader>
+        {state?.automaticChecks !== undefined && (
+          <p className="text-sm text-muted-foreground">
+            {state.automaticChecks
+              ? t("tandem.updates.periodicHint", {
+                  minutes: state.checkIntervalMinutes ?? 20,
+                })
+              : t("tandem.updates.periodicDisabled")}
+          </p>
+        )}
         <div className="space-y-3 text-sm">
           <p>
             {t("tandem.updates.current", {

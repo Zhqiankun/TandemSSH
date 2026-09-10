@@ -72,7 +72,11 @@ class FixtureHttp extends HttpExecutor<ClientRequest> {
     );
   }
 }
-async function fixture({ corrupt = false, slow = false } = {}) {
+async function fixture({
+  corrupt = false,
+  slow = false,
+  version = "0.1.0",
+} = {}) {
   await mkdir(cache, { recursive: true });
   const root = await mkdtemp(path.join(cache, "update-download-"));
   cleanup.push(async () => {
@@ -86,10 +90,9 @@ async function fixture({ corrupt = false, slow = false } = {}) {
   const bytes = Buffer.alloc(2 * 1024 * 1024, 0x6b),
     wire = Buffer.from(bytes);
   if (corrupt) wire[123] ^= 1;
-  const artifact =
-    "/Zhqiankun/TandemSSH/releases/download/v0.1.0/TandemSSH-0.1.0-x64.exe";
+  const artifact = `/Zhqiankun/TandemSSH/releases/download/v${version}/TandemSSH-${version}-x64.exe`;
   const manifest = {
-    version: "0.1.0",
+    version,
     files: [
       {
         url: "https://github.com" + artifact,
@@ -166,6 +169,7 @@ async function fixture({ corrupt = false, slow = false } = {}) {
     currentVersion: app.version,
     packaged: true,
     installed: true,
+    resolveFeed: async () => FEED_URL,
     loadUpdater: () => ({ autoUpdater: updater, CancellationToken }),
     openRelease: async () => {},
   });
@@ -180,6 +184,17 @@ async function fixture({ corrupt = false, slow = false } = {}) {
 }
 
 describe("real updater HTTP download", () => {
+  it("downloads and verifies a newer alpha without requiring a stable release", async () => {
+    const f = await fixture({ version: "0.1.0-alpha.2" });
+    expect(await f.service.check()).toMatchObject({
+      status: "available",
+      latestVersion: "0.1.0-alpha.2",
+    });
+    expect(await f.service.download()).toMatchObject({ status: "downloaded" });
+    expect((await readFile(f.updater.installerPath)).equals(f.bytes)).toBe(
+      true,
+    );
+  });
   it("compares versions and verifies downloaded bytes before offering installation", async () => {
     const f = await fixture();
     expect(await f.service.check()).toMatchObject({

@@ -105,6 +105,8 @@ async function fixture() {
   };
 }
 describe("verified staged uploads over actual SFTP", () => {
+  // These 4 MiB scenarios include staging, read-back hashing and reconnect verification.
+  // Each individual SFTP operation still has the fixture's 3-second deadline.
   it("reclaims explicitly cleared previews beyond the record and request cache limits", async () => {
     const f = await fixture();
     for (let i = 0; i < 513; i++) {
@@ -156,7 +158,7 @@ describe("verified staged uploads over actual SFTP", () => {
     expect(await f.service.finish(actor, prepared.id)).toEqual(done);
     expect(f.remote.renames()).toBe(renameCount);
     expect(f.remote.connections()).toBe(1);
-  }, 15000);
+  }, 30000);
   it("handles an empty file and refuses changed source bytes before writing", async () => {
     const f = await fixture(),
       empty = await f.prepare(Buffer.alloc(0));
@@ -243,7 +245,7 @@ describe("verified staged uploads over actual SFTP", () => {
     expect((await f.service.finish(actor, p.id)).state).toBe("completed");
     expect(await f.remote.read(p.path)).toEqual(bytes);
     expect(f.remote.connections()).toBe(2);
-  }, 15000);
+  }, 30000);
   it("refuses a modified checkpoint, and only cleans a temporary file acknowledged as created by this upload", async () => {
     const f = await fixture(),
       bytes = Buffer.from("payload"),

@@ -108,3 +108,9 @@ alpha 先上传到草稿，资源齐备后发布为 prerelease、latest=false；
 [公开发布页](https://github.com/Zhqiankun/TandemSSH/releases/tag/v0.1.0-alpha.0) 为非草稿 prerelease，提供 155347774 字节 EXE、208153577 字节 ZIP、blockmap 和 SHA256SUMS.txt。已下载校验文件，其自身及三个资源摘要与 GitHub asset digest 一致。EXE SHA-256：`437513843af89924586b319f89cd7dc0c7fd90dd11d16e55e974255b305d3620`；ZIP SHA-256：`2158201b2553d2db4d6870c5f02dd8f96a1b90ae306c46635f974c49099d31f1`。未在本机重复下载安装此公开 EXE，不把摘要元数据核对说成公开包的额外本机运行验收。
 
 本预览没有上传 latest.yml，未发布稳定渠道。云端实际升级仍使用隔离更新源；公开稳定更新、完整历史迁移和全部产品矩阵继续跟踪。
+
+## 用户要求预览版内部更新（2026-09-11）
+
+用户明确要求 latest.yml 和每 20 分钟检测。alpha.1 改为从本仓库发布订阅发现预览版本，再读取该版本目录的 latest.yml，继续使用固定版本安装包 URL、SHA-512 和体积检查。主进程负责启动及每 20 分钟检查；窗口最小化继续运行，关闭更新检查设置仍生效，下载和安装保持人工触发。
+
+Actions 现在为 alpha 和稳定版本都生成并上传 latest.yml。alpha.0 的旧客户端只支持稳定渠道，须手动安装一次修复版。实现、定时测试和真实桌面证据见 [预览版内部更新](78-preview-auto-updates.md)。以前“alpha 必须手动更新”的段落是 alpha.0 的历史状态，不适用于 alpha.1 及后续修复版。

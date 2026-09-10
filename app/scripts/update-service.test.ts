@@ -7,7 +7,6 @@ const {
   UpdateService,
   validateUpdateInfo,
   FEED_URL,
-  RELEASE_URL,
 } = require("../electron/update-service.cjs");
 const info = {
   version: "0.1.0",
@@ -44,6 +43,7 @@ function fixture(installed = true) {
     currentVersion: "0.1.0-alpha.0",
     packaged: true,
     installed,
+    resolveFeed: async () => FEED_URL,
     loadUpdater: () => ({ autoUpdater: updater, CancellationToken: Token }),
     openRelease: open,
     beforeInstall: before,
@@ -123,7 +123,9 @@ describe("independent TandemSSH release channel", () => {
     );
     await expect(f.service.install()).rejects.toThrow("UPDATE_NOT_DOWNLOADED");
     await f.service.open();
-    expect(f.open).toHaveBeenCalledWith(RELEASE_URL);
+    expect(f.open).toHaveBeenCalledWith(
+      "https://github.com/Zhqiankun/TandemSSH/releases/tag/v0.1.0",
+    );
   });
   it("distinguishes no published release from a successful version check", async () => {
     const f = fixture();

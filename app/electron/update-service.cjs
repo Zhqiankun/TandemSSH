@@ -1,8 +1,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const REPOSITORY = "Zhqiankun/TandemSSH";
-const RELEASE_URL = "https://github.com/" + REPOSITORY + "/releases/latest";
-const FEED_URL = RELEASE_URL + "/download/";
+const { REPOSITORY, RELEASE_URL, FEED_URL } = require("./update-source.cjs");
+const { validVersion, discoverUpdateFeed } = require("./update-feed.cjs");
+const { UpdateCheckSchedule } = require("./update-schedule.cjs");
 const INSTALL_MARKER = ".tandemssh-installed",
   INSTALL_ID = "app.tandemssh.desktop/v1";
 function isInstalled(packaged, platform, executable) {
@@ -22,12 +22,7 @@ function isInstalled(packaged, platform, executable) {
 }
 function validateUpdateInfo(info) {
   const version = info?.version;
-  if (
-    typeof version !== "string" ||
-    !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version) ||
-    version.split(".").some((n) => !Number.isSafeInteger(Number(n)))
-  )
-    throw Error("UPDATE_METADATA_INVALID");
+  if (!validVersion(version)) throw Error("UPDATE_METADATA_INVALID");
   const expected =
     "https://github.com/" +
     REPOSITORY +
@@ -65,9 +60,12 @@ class UpdateService {
     installed,
     loadUpdater = () => require("electron-updater"),
     openRelease,
+    resolveFeed = discoverUpdateFeed,
     beforeInstall = async () => {},
   }) {
     this.loadUpdater = loadUpdater;
+    this.resolveFeed = resolveFeed;
+    this.schedule = new UpdateCheckSchedule(() => this.check());
     this.openRelease = openRelease;
     this.beforeInstall = beforeInstall;
     this.packaged = packaged;
@@ -79,7 +77,14 @@ class UpdateService {
     };
   }
   snapshot() {
-    return structuredClone(this.state);
+    return structuredClone({ ...this.state, ...this.schedule.snapshot() });
+  }
+  setAutomaticChecks(enabled) {
+    this.schedule.setEnabled(this.packaged && enabled);
+    return this.snapshot();
+  }
+  dispose() {
+    this.schedule.dispose();
   }
   configured() {
     if (!this.packaged) throw Error("UPDATE_UNSUPPORTED");
@@ -96,7 +101,7 @@ class UpdateService {
       });
       updater.autoDownload = false;
       updater.autoInstallOnAppQuit = false;
-      updater.allowPrerelease = false;
+      updater.allowPrerelease = this.state.currentVersion.includes("-alpha.");
       updater.allowDowngrade = false;
       updater.disableWebInstaller = true;
       updater.on("error", () => {
@@ -129,13 +134,34 @@ class UpdateService {
         error: undefined,
         progress: undefined,
       };
+      const feed = await this.resolveFeed(this.state.currentVersion);
+      const prefix =
+        "https://github.com/" + REPOSITORY + "/releases/download/v";
+      if (
+        feed !== FEED_URL &&
+        !(
+          feed.startsWith(prefix) &&
+          feed.endsWith("/") &&
+          validVersion(feed.slice(prefix.length, -1))
+        )
+      )
+        throw Error("UPDATE_METADATA_INVALID");
+      autoUpdater.setFeedURL({
+        provider: "generic",
+        url: feed,
+        channel: "latest",
+        useMultipleRangeRequest: false,
+      });
       const result = await autoUpdater.checkForUpdates();
       if (!result) throw Error("UPDATE_CHECK_FAILED");
       const latest = validateUpdateInfo(result.updateInfo);
+      if (feed !== FEED_URL && latest.version !== feed.slice(prefix.length, -1))
+        throw Error("UPDATE_METADATA_INVALID");
       this.state = {
         ...this.state,
         status: result.isUpdateAvailable ? "available" : "current",
         latestVersion: latest.version,
+        lastCheckedAt: Date.now(),
         releaseUrl: latest.releaseUrl,
       };
       return this.snapshot();
@@ -234,7 +260,7 @@ class UpdateService {
     return this.snapshot();
   }
   async open() {
-    await this.openRelease(RELEASE_URL);
+    await this.openRelease(this.state.releaseUrl);
     return this.snapshot();
   }
 }

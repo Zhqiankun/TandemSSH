@@ -5794,7 +5794,9 @@
         "UPDATE_UNSUPPORTED": "请在 Windows 桌面安装版中更新。"
       },
       "availableNotice": "同舟 SSH 有新版本：{{version}}",
-      "view": "查看更新"
+      "view": "查看更新",
+      "periodicHint": "启动时检查，运行期间每 {{minutes}} 分钟检查一次。下载和安装由你确认。",
+      "periodicDisabled": "自动检查已关闭，仍可手动检查版本。"
     },
     "downloadTree": {
       "title": "整批下载预览",

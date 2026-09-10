@@ -5794,7 +5794,9 @@
         "UPDATE_UNSUPPORTED": "update unsupported"
       },
       "availableNotice": "TandemSSH {{version}} is available",
-      "view": "View update"
+      "view": "View update",
+      "periodicHint": "Checks on startup and every {{minutes}} minutes while running. Download and installation require your action.",
+      "periodicDisabled": "Automatic update checks are disabled. You can still check manually."
     },
     "downloadTree": {
       "title": "Batch download preview",

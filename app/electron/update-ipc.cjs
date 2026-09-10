@@ -40,6 +40,8 @@ function registerUpdateIpc({
         throw Error("UPDATE_TRUSTED_WINDOW_REQUIRED");
       let value;
       if (action === "status") value = service.snapshot();
+      else if (action === "auto-check-on" || action === "auto-check-off")
+        value = service.setAutomaticChecks(action === "auto-check-on");
       else if (action === "install") {
         if (confirming || service.snapshot().status !== "downloaded")
           throw Error("UPDATE_NOT_DOWNLOADED");
@@ -74,6 +76,7 @@ function registerUpdateIpc({
       return { ok: false, error: code };
     }
   });
+  app.on("before-quit", () => service.dispose());
   return service;
 }
 module.exports = { registerUpdateIpc };

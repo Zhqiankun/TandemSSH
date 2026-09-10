@@ -16,7 +16,7 @@
 
 桌面仪表盘的版本区域提供“检查更新 / 更新版本”：检查版本、下载进度、取消下载和重启安装。在线安装适用于 Windows 安装版；免安装版可打开发布页下载新版。安装前会要求保存草稿并结束连接。更新源固定为本仓库，不会安装上游 Termix 的发行包。
 
-预览版不进入稳定自动更新渠道，后续 alpha 请在 Releases 手动下载；稳定版发布后使用应用内更新按钮。
+alpha.1 起支持预览版内置更新：启动检查，运行期间每 20 分钟检查一次，下载和安装由人工确认。alpha.0 需先手动安装一次修复版；免安装包通过发布页更新。
 
 普通推送/PR 运行 [CI](https://github.com/Zhqiankun/TandemSSH/actions/workflows/ci.yml)；稳定与 alpha 版本标签推送运行 [Release](https://github.com/Zhqiankun/TandemSSH/actions/workflows/release.yml)，生成 NSIS、ZIP、更新清单和校验和。详细发布方式与实际验证见[版本发布文档](docs/25-github-releases.md)。
 
@@ -117,6 +117,7 @@
 | [独立桌面隧道](docs/74-standalone-c2s.md) | 本机中继、真实三模式数据、旧配置复核和中文启停 |
 | [开发预览下载说明](docs/75-preview-release-notes.md) | Windows 安装/免安装包和当前试用边界 |
 | [隧道在途取消](docs/76-c2s-pending-cancellation.md) | 认证等待取消、旧响应隔离、中文控件与三模式回归 |
+| [预览版内部更新](docs/78-preview-auto-updates.md) | latest.yml、主进程每 20 分钟检查、真实桌面与 Actions 发布 |
 
 ## 产品主线
 
