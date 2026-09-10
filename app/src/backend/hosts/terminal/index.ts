@@ -406,6 +406,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
   let sshConn: SSHClientType | null = null;
   let sshStream: ClientChannel | null = null;
   let lastJumpClient: SSHClientType | null = null;
+  let pendingJumpConnection: AbortController | null = null;
   let interactiveAuthManager: SSHAuthManager | null = null;
   let keyboardInteractiveV1 = false;
   let keyboardInteractiveFinish: ((responses: string[]) => void) | null = null;
@@ -3354,11 +3355,35 @@ wss.on("connection", async (ws: WebSocket, req) => {
     }
 
     if (hasJumpHosts) {
+      if (ws.readyState !== WebSocket.OPEN || !sshConn) return;
+      const jumpAttempt = new AbortController();
+      pendingJumpConnection?.abort(Error("SSH_AUTH_CANCELLED"));
+      pendingJumpConnection = jumpAttempt;
       try {
         const jumpClient = await createJumpHostChain(
           hostConfig.jumpHosts!,
           hostConfig.userId!,
+          jumpAttempt.signal,
+          keyboardInteractiveV1
+            ? {
+                keyboardInteractiveVersion: 1,
+                onPrompt: () => {
+                  clearTimeout(connectionTimeout);
+                  connectionTimeout = setTimeout(onConnectionTimeout, 310000);
+                },
+              }
+            : undefined,
         );
+        if (
+          jumpAttempt.signal.aborted ||
+          ws.readyState !== WebSocket.OPEN ||
+          !sshConn
+        ) {
+          jumpClient?.destroy();
+          return;
+        }
+        clearTimeout(connectionTimeout);
+        connectionTimeout = setTimeout(onConnectionTimeout, 120000);
 
         if (!jumpClient) {
           sshLogger.error("Failed to establish jump host chain");
@@ -3378,6 +3403,15 @@ wss.on("connection", async (ws: WebSocket, req) => {
         lastJumpClient = jumpClient;
 
         jumpClient.forwardOut("127.0.0.1", 0, ip, port, (err, stream) => {
+          if (
+            jumpAttempt.signal.aborted ||
+            ws.readyState !== WebSocket.OPEN ||
+            !sshConn
+          ) {
+            stream?.destroy();
+            jumpClient.destroy();
+            return;
+          }
           if (err) {
             sshLogger.error("Failed to forward through jump host", err, {
               operation: "ssh_jump_forward",
@@ -3422,18 +3456,29 @@ wss.on("connection", async (ws: WebSocket, req) => {
           sshConn.connect(connectConfig);
         });
       } catch (error) {
+        if (jumpAttempt.signal.aborted || ws.readyState !== WebSocket.OPEN)
+          return;
         sshLogger.error("Jump host error", error, {
           operation: "ssh_jump_host",
           hostId: id,
         });
         ws.send(
-          JSON.stringify({
-            type: "error",
-            message:
-              error instanceof JumpHostChainError
-                ? `Failed to connect through jump hosts: ${error.message}`
-                : "Failed to connect through jump hosts",
-          }),
+          JSON.stringify(
+            keyboardInteractiveV1 &&
+              /^SSH_AUTH_[A-Z_]+$/.test(getErrorMessage(error))
+              ? {
+                  type: "keyboard_interactive_error",
+                  code: getErrorMessage(error),
+                  terminal: true,
+                }
+              : {
+                  type: "error",
+                  message:
+                    error instanceof JumpHostChainError
+                      ? `Failed to connect through jump hosts: ${error.message}`
+                      : "Failed to connect through jump hosts",
+                },
+          ),
         );
         if (currentSessionId) {
           sessionManager.destroySession(currentSessionId);
@@ -3520,6 +3565,9 @@ wss.on("connection", async (ws: WebSocket, req) => {
   }
 
   function cleanupAuthState(timeoutId?: NodeJS.Timeout) {
+    // Established shared sessions own their jump chain after the UI detaches.
+    if (!isConnected) pendingJumpConnection?.abort(Error("SSH_AUTH_CANCELLED"));
+    pendingJumpConnection = null;
     interactiveAuthManager?.dispose();
     interactiveAuthManager = null;
     if (timeoutId) {

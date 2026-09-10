@@ -94,6 +94,7 @@
 | [Windows 文件属性](docs/59-windows-file-attributes.md) | 隐藏/系统项、只读属性、取消读取和打包后的真实桌面验证 |
 | [SSH 交互认证](docs/60-keyboard-interactive-auth.md) | 终端多字段/多轮提示、原样回复、取消隔离与认证后的双模式验收 |
 | [文件交互认证](docs/61-file-interactive-auth.md) | SFTP 多轮提示、取消和人工重连、共享认证边界与真实文件传输验证 |
+| [跳板机交互认证](docs/62-jump-interactive-auth.md) | 各跳独立提示、整链取消、中文终端/SFTP 接线与真实传输验证 |
 
 ## 产品主线
 

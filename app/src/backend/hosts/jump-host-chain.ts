@@ -1,4 +1,6 @@
 import { Client as SSHClient } from "ssh2";
+import { randomUUID } from "node:crypto";
+import { attachInteractiveAuth } from "./interactive-auth/production.js";
 import { fileLogger } from "../utils/logger.js";
 import { createSocks5Connection } from "../utils/socks5-helper.js";
 import { SSH_ALGORITHMS } from "../utils/ssh-algorithms.js";
@@ -63,6 +65,7 @@ export async function createJumpHostChain(
   jumpHosts: Array<{ hostId: number }>,
   userId: string,
   signal?: AbortSignal,
+  interaction?: { keyboardInteractiveVersion: 1; onPrompt?: () => void },
 ): Promise<SSHClient | null> {
   signal?.throwIfAborted();
   if (!jumpHosts || jumpHosts.length === 0) {
@@ -154,7 +157,7 @@ export async function createJumpHostChain(
           lastError = signal?.reason ?? Error("SSH_CONNECTION_CANCELLED");
           finish(false);
         };
-        const readyTimeoutMs = 60000;
+        const readyTimeoutMs = interaction ? 310000 : 60000;
         const timeout = setTimeout(() => {
           lastError = new Error(
             `Timed out waiting for jump host ${i + 1}/${totalHops} to authenticate`,
@@ -211,7 +214,7 @@ export async function createJumpHostChain(
               jumpHostConfig.ip?.replace(/^\[|\]$/g, "") || jumpHostConfig.ip,
             port: jumpHostConfig.port || 22,
             username: jumpHostConfig.username,
-            tryKeyboard: jumpHostConfig.authType !== "none",
+            tryKeyboard: !!interaction || jumpHostConfig.authType !== "none",
             readyTimeout: readyTimeoutMs,
             hostVerifier: jumpHostVerifier,
             algorithms: {
@@ -287,6 +290,28 @@ export async function createJumpHostChain(
             }
           }
 
+          const interactive = interaction
+            ? attachInteractiveAuth(
+                jumpClient,
+                {
+                  userId,
+                  connectionId: randomUUID(),
+                  channel: "jump",
+                  hostId: jumpHostConfig.id,
+                  address: jumpHostConfig.ip,
+                  port: jumpHostConfig.port || 22,
+                  username: jumpHostConfig.username,
+                },
+                {
+                  signal,
+                  onPrompt: interaction.onPrompt,
+                  failure: (code) => {
+                    lastError = Error(code);
+                    finish(false);
+                  },
+                },
+              )
+            : undefined;
           jumpClient.on(
             "keyboard-interactive",
             (
@@ -297,6 +322,18 @@ export async function createJumpHostChain(
               finish: (responses: string[]) => void,
             ) => {
               if (signal?.aborted) return;
+              if (interactive) {
+                interactive.handle(
+                  _name,
+                  _instructions,
+                  prompts,
+                  finish,
+                  jumpHostConfig.authType !== "none"
+                    ? jumpHostConfig.password
+                    : undefined,
+                );
+                return;
+              }
               const responses = prompts.map((p) => {
                 if (/password/i.test(p.prompt) && jumpHostConfig.password) {
                   return jumpHostConfig.password as string;
@@ -360,9 +397,9 @@ export async function createJumpHostChain(
       currentClient = jumpClient;
     }
 
-    if (signal && currentClient)
+    if (currentClient)
       currentClient.once("close", () => {
-        signal.removeEventListener("abort", abort);
+        signal?.removeEventListener("abort", abort);
         abort();
       });
     return currentClient;

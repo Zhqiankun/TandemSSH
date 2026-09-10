@@ -1902,6 +1902,7 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
         resolvedJumpHosts,
         userId,
         attempt?.signal,
+        modern ? { keyboardInteractiveVersion: 1 } : undefined,
       );
 
       if (attempt?.signal.aborted) {
@@ -1988,6 +1989,17 @@ app.post("/ssh/file_manager/ssh/connect", async (req, res) => {
         connectClient();
       });
     } catch (error) {
+      const code = getErrorMessage(error);
+      if (modern && /^SSH_AUTH_[A-Z_]+$/.test(code)) {
+        if (!responseSent && !res.destroyed) {
+          responseSent = true;
+          res
+            .status(409)
+            .json({ status: "error", message: code, connectionLogs });
+        }
+        attempt?.cancel();
+        return;
+      }
       fileLogger.error("Jump host error", error, {
         operation: "file_jump_host",
         sessionId,
