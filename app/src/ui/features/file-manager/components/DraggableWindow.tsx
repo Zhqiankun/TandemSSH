@@ -1,4 +1,11 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import { fitFileWindow } from "./window-geometry";
+import React, {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+} from "react";
 import { cn } from "@/lib/utils.ts";
 import { Minus, X, Maximize2, Minimize2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -59,6 +66,42 @@ export function DraggableWindow({
 
   const windowRef = useRef<HTMLDivElement>(null);
   const titleBarRef = useRef<HTMLDivElement>(null);
+
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const container = windowRef.current?.offsetParent as HTMLElement | null;
+    const update = () => {
+      const width = container?.clientWidth ?? window.innerWidth;
+      const height = container?.clientHeight ?? window.innerHeight;
+      setContainerSize((previous) =>
+        previous.width === width && previous.height === height
+          ? previous
+          : { width, height },
+      );
+    };
+    update();
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : new ResizeObserver(update);
+    if (container) observer?.observe(container);
+    window.addEventListener("resize", update);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    if (isMaximized) return;
+    const next = fitFileWindow({ ...position, ...size }, containerSize, {
+      width: minWidth,
+      height: minHeight,
+    });
+    if (next.x !== position.x || next.y !== position.y)
+      setPosition({ x: next.x, y: next.y });
+    if (next.width !== size.width || next.height !== size.height)
+      setSize({ width: next.width, height: next.height });
+  }, [containerSize, position, size, minWidth, minHeight, isMaximized]);
 
   useEffect(() => {
     if (targetSize && !isMaximized) {

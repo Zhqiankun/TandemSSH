@@ -585,7 +585,8 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "85-editor-window-bounds.md"
       ],
       "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
     },
@@ -640,9 +641,10 @@
         "59-windows-file-attributes.md",
         "80-unix-permissions.md",
         "81-symlink-paths.md",
-        "84-file-ownership.md"
+        "84-file-ownership.md",
+        "85-editor-window-bounds.md"
       ],
-      "remaining": "Unix mode 和所有者/组修改已通过真实 Windows + Alpine 读回与无权修改拒绝；链接 HTTP/SFTP 矩阵通过，Windows 主动跟随界面及完整属性流程仍待核对。alpha.2 的列表特殊位遗漏已在后续提交修复，待新版本发行。"
+      "remaining": "权限/所有权和 Windows 主动链接数据链已通过实机验证；截图发现浮动编辑器越界，已修复并通过组件测试，待实际可见控件复测。"
     },
     {
       "id": "B11",

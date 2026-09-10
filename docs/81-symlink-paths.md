@@ -17,3 +17,9 @@
 结果：1 个真实集成场景通过（含两种有效目标、三种拒绝目标），851 毫秒；.cache/symlink-linux-results.json、.cache/symlink-linux-tests.log。首次夹具使用终端 quoteShellWord 创建换行路径，被既有 UNSUPPORTED_TERMINAL_CONTROL_CHARACTER 拒绝；改用 SFTP 创建后通过，未放宽产品终端保护。初次日志 .cache/symlink-linux-initial-failure.log 保留。专属虚拟机 ca9d8dd2-3f2d-47d9-9e0e-fb023a3693bb 正常退出。测试依赖显式 TANDEM_LINUX_MANIFEST，没有该变量时跳过，不把云端普通测试计数当作 Linux 实机证明。
 
 Windows 实际文件列表主动跟随和目标显示仍待验收；不据此标记完整 B10 完成。
+
+## Windows 主动链接操作
+
+自有 Windows 客户端连接隔离 Alpine，经实际鼠标双击文件链接（名称含字面 %2F）后目标文本可见；目录链接进入目标目录；断链、循环链接和管道链接分别显示中文失败提示，未打开编辑器。报告 .cache/desktop-observation-report-cdcb57b5-336e-4bb2-a852-7d11276952ae/link-desktop-result.json，客户端正常退出，VM fdbc8f47-db17-4eec-894f-15565af86afd 正常关闭。截图已查看。
+
+目视同时发现浮动编辑器部分超出容器，关闭动作虽然通过 DOM 控件调用成功，但不能证明用户能在可见区域点击。该布局缺口转入 [85](85-editor-window-bounds.md) 修复及实机复测，未把本次所有 true 字段当作完整界面通过。链接数据链结论保持，完整用户流程继续核对。
