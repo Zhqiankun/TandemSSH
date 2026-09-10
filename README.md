@@ -96,6 +96,8 @@
 | [文件交互认证](docs/61-file-interactive-auth.md) | SFTP 多轮提示、取消和人工重连、共享认证边界与真实文件传输验证 |
 | [跳板机交互认证](docs/62-jump-interactive-auth.md) | 各跳独立提示、整链取消、中文终端/SFTP 接线与真实传输验证 |
 | [监控交互认证](docs/63-monitoring-interactive-auth.md) | 中文多轮登录、取消/人工重连、认证连接复用和真实 Linux 卡片验证 |
+| [跳板机组合验收](docs/64-jump-combined-acceptance.md) | 经交互跳板机的 MCP 自动/协作、接管与 Linux 监控 |
+| [终端压力测量](docs/65-terminal-pressure.md) | 持续输出下的真实接管延迟、正则热点修复与参考机数据 |
 
 ## 产品主线
 

@@ -439,3 +439,16 @@ describe("updateControlStringMode", () => {
     expect(highlightTerminalOutput(partial)).toBe(partial);
   });
 });
+
+describe("high-volume ordinary output", () => {
+  it("preserves long plain log rows and still highlights adjacent useful tokens", () => {
+    const plain = ("P".repeat(126) + "\r\n").repeat(1024);
+    expect(highlightTerminalOutput(plain)).toBe(plain);
+    const output = highlightTerminalOutput(plain + "ERROR code 127\r\n");
+    expect(output.startsWith(plain)).toBe(true);
+    expect(output).toContain(ESC + "[91mERROR");
+    expect(output.replace(/\x1b\[[0-9;]*m/g, "")).toBe(
+      plain + "ERROR code 127\r\n",
+    );
+  });
+});

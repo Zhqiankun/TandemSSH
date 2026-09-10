@@ -84,6 +84,9 @@ const SSH_BRACKET_HEADING_RE =
 
 function isShellPromptLine(bare: string): boolean {
   const plain = bare.replace(STRIP_ANSI_RE, "");
+  // Neither prompt pattern can match without a prompt terminator. Avoid
+  // their overlapping quantifiers scanning every suffix of plain log lines.
+  if (!/[$#%>]/.test(plain)) return false;
   // Matches a trailing prompt: "user@host:~$ ", "root@pi:/home/pi# ", "[user@host dir]$ "
   if (/(?:[\w.-]+@[\w.-]+|[\w.-]+).*?[$#%>]\s*$/.test(plain)) return true;
   // Matches a leading prompt followed by a command: "user@host:/path$ cmd arg"
