@@ -5169,7 +5169,11 @@
         "TASK_RECOVERY_LIMIT": "Progress storage reached its limit. Remove old records.",
         "MODEL_CONFIGURATION_CHANGED": "The original model endpoint, type, or name changed. Review its configuration first.",
         "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "The model configuration cannot be verified. AI recovery was not saved.",
-        "MODEL_RESPONSE_TIMEOUT": "Model response timed out. The request was stopped. Check the provider before retrying; the manual terminal remains available."
+        "MODEL_RESPONSE_TIMEOUT": "Model response timed out. The request was stopped. Check the provider before retrying; the manual terminal remains available.",
+        "MODEL_STREAM_INVALID": "Invalid chat response. Receiving stopped; the displayed content may be incomplete.",
+        "MODEL_STREAM_INTERRUPTED": "The chat response ended without confirmed completion. Review the retained content before retrying.",
+        "MODEL_TOOL_LIMIT": "Tool count or arguments exceeded the limit. Further operations were stopped.",
+        "MODEL_TOOL_RESULT_LIMIT": "Tool results exceeded the retention limit. Further operations were stopped; narrow the query."
       },
       "budget": "Model call budget (including planning)"
     },

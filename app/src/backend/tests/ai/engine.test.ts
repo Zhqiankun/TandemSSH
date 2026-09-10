@@ -187,6 +187,82 @@ describe("runAgent", () => {
     });
   });
 
+  it("rejects large initial context before requesting a model", async () => {
+    const events = await collect([
+      { role: "user", content: "x".repeat(128 * 1024) },
+    ]);
+    expect(events.at(-1)).toMatchObject({
+      type: "error",
+      message: "MODEL_CONTEXT_LIMIT",
+    });
+    expect(streamChat).not.toHaveBeenCalled();
+  });
+  it("does not dispatch already received tools when text overflows", async () => {
+    streamChat.mockReturnValueOnce(
+      chunks(
+        {
+          type: "tool_call",
+          call: { id: "one", name: "list_hosts", arguments: {} },
+        },
+        { type: "text", text: "x".repeat(16 * 1024 + 1) },
+      ),
+    );
+    const events = await collect();
+    expect(events.at(-1)).toMatchObject({
+      type: "error",
+      message: "MODEL_RESPONSE_TOO_LARGE",
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+  it("does not dispatch an oversized batch of tools", async () => {
+    streamChat.mockReturnValueOnce(
+      chunks(
+        ...Array.from({ length: 9 }, (_, i) => ({
+          type: "tool_call" as const,
+          call: { id: String(i), name: "list_hosts", arguments: {} },
+        })),
+      ),
+    );
+    const events = await collect();
+    expect(events.at(-1)).toMatchObject({
+      type: "error",
+      message: "MODEL_TOOL_LIMIT",
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+  it("stops after an oversized tool result without calling the model again", async () => {
+    handler.mockResolvedValue({ output: "x".repeat(64 * 1024) });
+    streamChat.mockReturnValueOnce(
+      chunks({
+        type: "tool_call",
+        call: { id: "one", name: "list_hosts", arguments: {} },
+      }),
+    );
+    const events = await collect();
+    expect(events.at(-1)).toMatchObject({
+      type: "error",
+      message: "MODEL_TOOL_RESULT_LIMIT",
+    });
+    expect(streamChat).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledOnce();
+  });
+  it("does not dispatch a tool when cancelled while its visible call event is being delivered", async () => {
+    const controller = new AbortController();
+    streamChat.mockReturnValueOnce(
+      chunks({
+        type: "tool_call",
+        call: { id: "one", name: "list_hosts", arguments: {} },
+      }),
+    );
+    for await (const event of runAgent({
+      ...BASE,
+      history: [],
+      signal: controller.signal,
+    })) {
+      if (event.type === "tool_call") controller.abort(Error("cancelled"));
+    }
+    expect(handler).not.toHaveBeenCalled();
+  });
   it("stops after too many tool turns", async () => {
     handler.mockResolvedValue({ ok: true });
     streamChat.mockImplementation(() =>

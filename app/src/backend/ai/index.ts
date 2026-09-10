@@ -1,3 +1,4 @@
+import { ChatDelivery } from "./chat-delivery.js";
 import { getErrorMessage } from "../utils/error-message.js";
 import express from "express";
 import type { AuthenticatedRequest } from "../../types/index.js";
@@ -691,23 +692,23 @@ router.post(
 
       const heartbeat = setInterval(() => {
         try {
-          res.write(": keepalive\n\n");
+          if (!res.writableNeedDrain && !res.destroyed)
+            res.write(": keepalive\n\n");
         } catch {
           clearInterval(heartbeat);
         }
       }, 30000);
 
       const abort = new AbortController();
-      req.on("close", () => {
+      res.once("close", () => {
         clearInterval(heartbeat);
         abort.abort();
       });
 
-      const send = (event: unknown) => {
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
-      };
+      const delivery = new ChatDelivery(res, abort);
+      const send = (event: unknown) => delivery.send(event);
 
-      send({ type: "conversation", conversationId: conversation.id });
+      await send({ type: "conversation", conversationId: conversation.id });
 
       const chatHistory: ChatMessage[] = history.map((entry) => ({
         role: entry.role as ChatMessage["role"],
@@ -741,6 +742,7 @@ router.post(
           },
           signal: abort.signal,
         })) {
+          abort.signal.throwIfAborted();
           if (event.type === "assistant_message") {
             assistantText = event.content;
             // Kept so the next message replays them verbatim. Gemini rejects a
@@ -772,11 +774,11 @@ router.post(
               success: true,
             });
 
-            send({ type: "proposal", proposal: stored });
+            await send({ type: "proposal", proposal: stored });
             continue;
           }
 
-          send(event);
+          await send(event);
         }
       } finally {
         clearInterval(heartbeat);
@@ -794,13 +796,14 @@ router.post(
       }
       await repository.touchConversation(conversation.id);
 
-      send({ type: "done" });
+      await send({ type: "done" });
       res.end();
     } catch (err) {
       databaseLogger.error("AI chat stream failed", err, {
         operation: "ai_chat_stream_failed",
         userId,
       });
+      if (res.destroyed) return;
       if (res.headersSent) {
         res.write(
           `data: ${JSON.stringify({ type: "error", message: "The assistant stopped unexpectedly" })}\n\n`,

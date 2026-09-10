@@ -5169,7 +5169,11 @@
         "TASK_RECOVERY_LIMIT": "执行进度达到存储上限，请清理旧记录。",
         "MODEL_CONFIGURATION_CHANGED": "原模型的地址、类型或名称已改变，请先核对模型配置。",
         "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "无法核验模型配置，未保存 AI 恢复记录。",
-        "MODEL_RESPONSE_TIMEOUT": "模型响应等待超时，已停止本次请求。请检查模型服务后重试；人工终端仍可使用。"
+        "MODEL_RESPONSE_TIMEOUT": "模型响应等待超时，已停止本次请求。请检查模型服务后重试；人工终端仍可使用。",
+        "MODEL_STREAM_INVALID": "聊天响应格式异常，已停止接收。已显示的内容可能不完整，请核对后重试。",
+        "MODEL_STREAM_INTERRUPTED": "聊天回复中断，未确认完成。已显示的内容已保留，请核对后重试。",
+        "MODEL_TOOL_LIMIT": "模型请求的工具数量或参数超过上限，已停止后续操作。",
+        "MODEL_TOOL_RESULT_LIMIT": "工具结果超过保留上限，已停止后续操作。请缩小查询范围。"
       },
       "budget": "模型调用预算（含规划）"
     },
