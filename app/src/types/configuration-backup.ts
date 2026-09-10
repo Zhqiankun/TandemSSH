@@ -1,3 +1,7 @@
+import type {
+  TerminalAppearance,
+  BackupTerminalTheme,
+} from "./terminal-appearance.js";
 import type { WorkflowDefinition } from "./workflow.js";
 import type { UiPreferences } from "./ui-preferences.js";
 import type {
@@ -40,6 +44,7 @@ export interface BackupPreset {
 export interface BackupHost {
   ref: string;
   network?: BackupNetwork;
+  terminalAppearance?: TerminalAppearance;
   name: string;
   ip: string;
   port: number;
@@ -60,6 +65,8 @@ export interface ConfigurationBackup {
   workflows: Array<{ ref: string; definition: WorkflowDefinition }>;
   preferences?: UiPreferences;
   appearance?: DesktopAppearance;
+  terminalDefaults?: TerminalAppearance;
+  terminalThemes?: BackupTerminalTheme[];
   keybindings?: BackupKeybinding[];
 }
 export interface BackupWarning {
@@ -85,6 +92,8 @@ export interface BackupPreview {
   jumpHostCount?: number;
   tunnelCount?: number;
   tunnelPresetCount?: number;
+  terminalThemeCount?: number;
+  hasTerminalDefaults?: boolean;
   warnings: BackupWarning[];
 }
 export interface BackupImportResult {
@@ -93,6 +102,7 @@ export interface BackupImportResult {
   workflowIds: string[];
   preferencesRestored: boolean;
   keybindingsImported?: number;
+  terminalThemesImported?: number;
   tunnelPresetIds?: number[];
   desktopConfiguration?: DesktopConfiguration;
 }

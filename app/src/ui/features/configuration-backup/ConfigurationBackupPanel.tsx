@@ -188,6 +188,16 @@ export function ConfigurationBackupPanel() {
               })}
             </p>
           )}
+          {!!(preview.hasTerminalDefaults || preview.terminalThemeCount) && (
+            <p className="text-xs">
+              {t("configBackup.terminalSummary", {
+                defaults: preview.hasTerminalDefaults
+                  ? t("common.yes")
+                  : t("common.no"),
+                themes: preview.terminalThemeCount ?? 0,
+              })}
+            </p>
+          )}
           {!!preview.keybindingsCount && (
             <p className="text-xs">
               {t("configBackup.keybindingsCount", {

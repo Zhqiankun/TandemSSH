@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+import { randomInt } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
 import express from "express";
 import { ConfigurationBackupService } from "../../configuration-backup/service.js";
@@ -34,8 +36,32 @@ async function fixture() {
       next();
     }),
   );
-  const server = app.listen(0, "127.0.0.1");
-  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const server = createServer(app);
+  // Keep fixture allocation above Fetch's blocked service-port range.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const ready = () => {
+          server.off("error", failed);
+          resolve();
+        };
+        const failed = (error: Error) => {
+          server.off("listening", ready);
+          reject(error);
+        };
+        server.once("listening", ready);
+        server.once("error", failed);
+        server.listen(randomInt(20000, 60000), "127.0.0.1");
+      });
+      break;
+    } catch (error) {
+      if (
+        (error as NodeJS.ErrnoException).code !== "EADDRINUSE" ||
+        attempt >= 19
+      )
+        throw error;
+    }
+  }
   cleanup.push(async () => {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));

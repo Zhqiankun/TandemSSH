@@ -390,9 +390,10 @@
       "records": [
         "54-configuration-backup.md",
         "55-application-settings-backup.md",
-        "71-network-configuration-backup.md"
+        "71-network-configuration-backup.md",
+        "72-terminal-preferences-backup.md"
       ],
-      "remaining": "跳板、主机隧道与 C2S 保存预设已补齐并完成导入/重启专项；连接默认值、自定义终端主题库、本机活动 C2S 配置及其余设置仍需闭环。"
+      "remaining": "网络配置、用户终端默认显示值、配色库和主机终端外观已补齐并有迁移专项；实例级连接默认值、本机活动 C2S 配置及其余设置仍需闭环。"
     },
     {
       "id": "F15",
@@ -709,9 +710,10 @@
       "records": [
         "54-configuration-backup.md",
         "55-application-settings-backup.md",
-        "71-network-configuration-backup.md"
+        "71-network-configuration-backup.md",
+        "72-terminal-preferences-backup.md"
       ],
-      "remaining": "跳板、主机隧道与 C2S 保存预设已补齐并完成导入/重启专项；连接默认值、自定义终端主题库、本机活动 C2S 配置及其余设置仍需闭环。"
+      "remaining": "网络配置、用户终端默认显示值、配色库和主机终端外观已补齐并有迁移专项；实例级连接默认值、本机活动 C2S 配置及其余设置仍需闭环。"
     },
     {
       "id": "B16",
@@ -1384,12 +1386,14 @@
       "records": [
         "54-configuration-backup.md",
         "55-application-settings-backup.md",
-        "71-network-configuration-backup.md"
+        "71-network-configuration-backup.md",
+        "72-terminal-preferences-backup.md"
       ],
-      "remaining": "跳板、主机隧道与 C2S 保存预设已补齐并完成导入/重启专项；连接默认值、自定义终端主题库、本机活动 C2S 配置及其余设置仍需闭环。"
+      "remaining": "网络配置、用户终端默认显示值、配色库和主机终端外观已补齐并有迁移专项；实例级连接默认值、本机活动 C2S 配置及其余设置仍需闭环。"
     }
   ],
   "postBaselineRecords": [
-    "71-network-configuration-backup.md"
+    "71-network-configuration-backup.md",
+    "72-terminal-preferences-backup.md"
   ]
 }

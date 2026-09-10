@@ -6481,7 +6481,7 @@
   },
   "configBackup": {
     "title": "Configuration backup and restore",
-    "description": "Back up SSH hosts, jump and tunnel configuration, C2S presets, workflows, appearance, interface preferences and custom shortcuts. Passwords, private keys, API keys, trust decisions and task authorizations are excluded. Review the content before continuing.",
+    "description": "Back up SSH hosts, network configuration, C2S presets, workflows, appearance, terminal defaults, theme library and shortcuts. Passwords, private keys, API keys, trust decisions and task authorizations are excluded. Review the content before continuing.",
     "previewExport": "Preview export",
     "selectImport": "Select backup file",
     "working": "Preparing configuration…",
@@ -6491,7 +6491,7 @@
     "steps_one": "{{count}} step",
     "steps_other": "{{count}} steps",
     "inspectContent": "View exact backup content",
-    "restorePreferences": "Also restore appearance and interface preferences (manual reload required)",
+    "restorePreferences": "Also restore appearance, interface preferences, terminal defaults and theme library (reload manually)",
     "confirmExport": "Confirm and download",
     "confirmImport": "Confirm and import",
     "completed": "Added {{hosts}} hosts and {{workflows}} workflows.",
@@ -6527,7 +6527,10 @@
       "KEYBINDINGS_REVIEW_REQUIRED": "Imported shortcuts stay disabled. Snippet shortcuts require selecting a snippet again.",
       "NETWORK_REVIEW_REQUIRED": "Network references map to imported hosts and autostart remains off. Conflicting preset names receive a numbered suffix. Reconfigure credentials and review listener scopes before enabling.",
       "NETWORK_REFERENCE_EXCLUDED": "Some network references are outside this backup and were excluded. Review the source configuration.",
-      "NETWORK_CONFIG_EXCLUDED": "Unsupported network configurations were excluded. Review the source configuration."
+      "NETWORK_CONFIG_EXCLUDED": "Unsupported network configurations were excluded. Review the source configuration.",
+      "TERMINAL_FIELDS_EXCLUDED": "Non-portable or unsupported terminal fields were excluded. Background images and startup behavior are not migrated.",
+      "TERMINAL_THEME_EXCLUDED": "Unsupported custom themes or themes containing recognized secrets were excluded.",
+      "TERMINAL_PREFERENCES_REVIEW": "User terminal defaults and themes are written only when restoring preferences. Conflicting theme names receive a numbered suffix without overwriting existing themes."
     },
     "errors": {
       "BACKUP_FAILED": "The operation failed. Retry or create a new preview.",
@@ -6556,7 +6559,10 @@
       "BACKUP_JUMP_DEPTH": "The jump chain exceeds the supported depth.",
       "BACKUP_NETWORK_SECRET": "Network configuration contains a recognized secret.",
       "BACKUP_TUNNEL_PRESET_LIMIT": "Restored C2S presets exceed the limit.",
-      "BACKUP_AMBIGUOUS_ENDPOINT": "A tunnel endpoint matches multiple hosts. Use an explicit host ID before backing up."
+      "BACKUP_AMBIGUOUS_ENDPOINT": "A tunnel endpoint matches multiple hosts. Use an explicit host ID before backing up.",
+      "BACKUP_TERMINAL_INVALID": "The current terminal theme data cannot be parsed. Correct it before previewing again.",
+      "BACKUP_TERMINAL_SECRET": "Terminal settings contain a recognized secret. Remove it before previewing again.",
+      "BACKUP_TERMINAL_THEME_LIMIT": "The restored library would exceed 100 themes. This configuration was not written."
     },
     "steps": "{{count}} steps",
     "restoreKeybindings": "Restore custom shortcuts (disabled until reviewed and saved)",
@@ -6566,7 +6572,8 @@
     "localRestorePending": "Database configuration was restored, but local display settings could not be written. Retrying will not import again.",
     "retryLocalRestore": "Retry applying display settings",
     "editShortcut": "Edit shortcut {{combo}}",
-    "networkSummary": "{{jumps}} jump references · {{tunnels}} tunnels · {{presets}} C2S presets"
+    "networkSummary": "{{jumps}} jump references · {{tunnels}} tunnels · {{presets}} C2S presets",
+    "terminalSummary": "Terminal defaults: {{defaults}} · {{themes}} custom themes"
   },
   "sshInteractive": {
     "title": "SSH interactive authentication",

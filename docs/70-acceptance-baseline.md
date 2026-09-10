@@ -129,3 +129,5 @@
 声明与安装保护专项 3 文件/7 项通过，修改文件 lint 通过；真实 Windows 目录包构建通过，四份声明校验及 13 项原生依赖探测通过。本轮未更改产品运行代码，不重复把上一轮的 3554 项回归计作本轮新测结果；CI 仍运行完整门禁。证据：.cache/distribution-notices-tests.log、distribution-notices-package.log、distribution-notices-package-check.json、distribution-notices-native-probe.log。
 
 后续进展：文档 71 已补齐本基线确认缺失的跳板、主机隧道和 C2S 保存预设备份，完成新引用映射、关闭自动启动与实际 Windows 导入/重启验证。机器索引对应项已更新；B15/F14/A37 的其他设置范围仍未全部完成，原基线代码事实保留为时点记录。
+
+后续进展：文档 72 接入用户终端默认显示值、自定义配色库和主机终端外观。默认不恢复用户偏好，明确选择后再写入，主题库追加新 ID；实例级连接默认值和本机活动 C2S 配置继续跟踪，不以个人显示偏好替代全体设置。

@@ -18,6 +18,8 @@ export interface BackupSnapshot {
   preferences?: unknown;
   appearance?: unknown;
   keybindings?: unknown;
+  terminalDefaults?: unknown;
+  customThemes?: unknown;
   tunnelPresets?: Array<Record<string, unknown>>;
 }
 interface PreviewRecord {
@@ -87,7 +89,13 @@ export class ConfigurationBackupService {
         name: row.definition.name,
         steps: row.definition.steps.length,
       })),
-      hasPreferences: !!payload.preferences || !!payload.appearance,
+      hasPreferences:
+        !!payload.preferences ||
+        !!payload.appearance ||
+        !!payload.terminalDefaults ||
+        !!payload.terminalThemes?.length,
+      terminalThemeCount: payload.terminalThemes?.length ?? 0,
+      hasTerminalDefaults: !!payload.terminalDefaults,
       keybindingsCount: payload.keybindings?.length ?? 0,
       jumpHostCount: payload.hosts.reduce(
         (n, h) => n + (h.network?.jumpHostRefs.length ?? 0),
@@ -117,6 +125,7 @@ export class ConfigurationBackupService {
         desktop?.appearance ?? snapshot.appearance,
         snapshot.keybindings,
         snapshot.tunnelPresets,
+        { defaults: snapshot.terminalDefaults, themes: snapshot.customThemes },
       );
     return this.add(
       userId,

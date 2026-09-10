@@ -396,3 +396,123 @@ it("rolls back hosts when preset restoration fails", async () => {
   );
   expect(await adapter.query(sql`SELECT id FROM ssh_data`)).toHaveLength(0);
 });
+it("restores host appearance always, but user defaults and themes only with preference consent", async () => {
+  const f = await fixture();
+  f.request.payload.hosts[0].terminalAppearance = {
+    fontSize: 19,
+    theme: "nord",
+  };
+  f.request.payload.terminalDefaults = { fontSize: 18, scrollback: 5000 };
+  const first = await f.repo.apply("owner", f.request);
+  expect(first.preferencesRestored).toBe(false);
+  let snapshot = await f.repo.snapshot("owner");
+  expect(JSON.parse(snapshot.hosts[0].terminalConfig as string)).toMatchObject({
+    fontSize: 19,
+    theme: "nord",
+  });
+  expect(snapshot.terminalDefaults).toBeUndefined();
+  const second = await f.repo.apply("owner", {
+    ...f.request,
+    id: randomUUID(),
+    fingerprint: snapshot.fingerprint,
+    restorePreferences: true,
+  });
+  expect(second.preferencesRestored).toBe(true);
+  snapshot = await f.repo.snapshot("owner");
+  expect(JSON.parse(snapshot.terminalDefaults!)).toEqual({
+    fontSize: 18,
+    scrollback: 5000,
+  });
+});
+it("invalidates the import preview when terminal defaults change", async () => {
+  const f = await fixture();
+  await adapter.exec(
+    `INSERT INTO user_preferences (user_id,terminal_defaults) VALUES ('owner','{"fontSize":20}')`,
+  );
+  await expect(f.repo.apply("owner", f.request)).rejects.toThrow(
+    "BACKUP_CONFIGURATION_CHANGED",
+  );
+  expect(await adapter.query(sql`SELECT id FROM ssh_data`)).toHaveLength(0);
+});
+it("rolls back imported hosts if the requested theme library would exceed its limit", async () => {
+  const f = await fixture();
+  await adapter.exec(
+    "INSERT INTO user_preferences (user_id,custom_themes) VALUES ('owner','[]')",
+  );
+  f.request.fingerprint = (await f.repo.snapshot("owner")).fingerprint;
+  const colors = {
+    background: "#000",
+    foreground: "#fff",
+    black: "#000",
+    red: "#a00",
+    green: "#0a0",
+    yellow: "#aa0",
+    blue: "#00a",
+    magenta: "#a0a",
+    cyan: "#0aa",
+    white: "#aaa",
+    brightBlack: "#555",
+    brightRed: "#f55",
+    brightGreen: "#5f5",
+    brightYellow: "#ff5",
+    brightBlue: "#55f",
+    brightMagenta: "#f5f",
+    brightCyan: "#5ff",
+    brightWhite: "#fff",
+  };
+  const existing = Array.from({ length: 100 }, (_, i) => ({
+    id: String(i),
+    name: "old-" + i,
+    colors,
+  }));
+  await adapter.exec(
+    "UPDATE user_preferences SET custom_themes='" +
+      JSON.stringify(existing) +
+      "' WHERE user_id='owner'",
+  );
+  f.request.fingerprint = (await f.repo.snapshot("owner")).fingerprint;
+  f.request.payload.terminalThemes = Array.from({ length: 1 }, () => ({
+    ref: randomUUID(),
+    name: "theme",
+    colors,
+  }));
+  await expect(
+    f.repo.apply("owner", { ...f.request, restorePreferences: true }),
+  ).rejects.toThrow("BACKUP_TERMINAL_THEME_LIMIT");
+  expect(await adapter.query(sql`SELECT id FROM ssh_data`)).toHaveLength(0);
+});
+it("appends a valid theme once and preserves its generated identity on confirmation retries", async () => {
+  const f = await fixture();
+  const colors = {
+    background: "#000",
+    foreground: "#fff",
+    black: "#000",
+    red: "#a00",
+    green: "#0a0",
+    yellow: "#aa0",
+    blue: "#00a",
+    magenta: "#a0a",
+    cyan: "#0aa",
+    white: "#aaa",
+    brightBlack: "#555",
+    brightRed: "#f55",
+    brightGreen: "#5f5",
+    brightYellow: "#ff5",
+    brightBlue: "#55f",
+    brightMagenta: "#f5f",
+    brightCyan: "#5ff",
+    brightWhite: "#fff",
+  };
+  f.request.payload.terminalThemes = [
+    { ref: randomUUID(), name: "saved-theme", colors },
+  ];
+  const request = { ...f.request, restorePreferences: true };
+  const first = await f.repo.apply("owner", request),
+    before = (await f.repo.snapshot("owner")).customThemes;
+  expect(first.terminalThemesImported).toBe(1);
+  expect(await f.repo.apply("owner", request)).toEqual(first);
+  expect((await f.repo.snapshot("owner")).customThemes).toBe(before);
+  expect(JSON.parse(before!)[0].id).not.toBe(
+    f.request.payload.terminalThemes[0].ref,
+  );
+});

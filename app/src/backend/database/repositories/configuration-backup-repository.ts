@@ -12,6 +12,7 @@ import {
   restoreTunnel,
   validateNetworkReferences,
 } from "../../configuration-backup/network.js";
+import { appendTerminalThemes } from "../../configuration-backup/terminal.js";
 import { restoreKeybindings } from "../../configuration-backup/keyboard.js";
 import type { DesktopConfiguration } from "../../../types/desktop-preferences.js";
 import type { DatabaseContext } from "./database-context.js";
@@ -70,6 +71,8 @@ export class ConfigurationBackupRepository {
           accentColor: application.accentColor,
           language: application.language,
           customKeybindings: application.customKeybindings,
+          terminalDefaults: application.terminalDefaults,
+          customThemes: application.customThemes,
         }
       : undefined;
     const configuration = rows.map((row) => ({
@@ -86,6 +89,7 @@ export class ConfigurationBackupRepository {
       credentialId: row.credentialId,
       jumpHosts: row.jumpHosts,
       tunnelConnections: row.tunnelConnections,
+      terminalConfig: row.terminalConfig,
     }));
     const fingerprint = createHash("sha256")
       .update(
@@ -132,6 +136,8 @@ export class ConfigurationBackupRepository {
           )
         : undefined,
       keybindings: state.application?.customKeybindings,
+      terminalDefaults: state.application?.terminalDefaults,
+      customThemes: state.application?.customThemes,
       hosts: state.rows.map(
         (row) =>
           DataCrypto.decryptRecord(
@@ -245,6 +251,7 @@ export class ConfigurationBackupRepository {
               disableTcpPing: true,
             }),
             terminalConfig: JSON.stringify({
+              ...host.terminalAppearance,
               backupSourceAuthentication: {
                 method: host.originalAuthType,
                 credentialRef: host.credentialRef,
@@ -332,7 +339,12 @@ export class ConfigurationBackupRepository {
           .run();
       const preferencesRestored =
         request.restorePreferences &&
-        !!(request.payload.preferences || request.payload.appearance);
+        !!(
+          request.payload.preferences ||
+          request.payload.appearance ||
+          request.payload.terminalDefaults ||
+          request.payload.terminalThemes?.length
+        );
       const desktopConfiguration: DesktopConfiguration | undefined =
         preferencesRestored ? {} : undefined;
       if (request.restorePreferences && request.payload.preferences) {
@@ -359,6 +371,20 @@ export class ConfigurationBackupRepository {
         Object.assign(applicationUpdates, request.payload.appearance);
         desktopConfiguration!.appearance = request.payload.appearance;
       }
+      const importedThemes = request.restorePreferences
+        ? (request.payload.terminalThemes ?? [])
+        : [];
+      if (request.restorePreferences && request.payload.terminalDefaults)
+        applicationUpdates.terminalDefaults = JSON.stringify(
+          request.payload.terminalDefaults,
+        );
+      if (importedThemes.length)
+        applicationUpdates.customThemes = JSON.stringify(
+          appendTerminalThemes(
+            before.application?.customThemes,
+            importedThemes,
+          ),
+        );
       const importedKeys = request.restoreKeybindings
         ? restoreKeybindings(request.payload.keybindings ?? [])
         : [];
@@ -391,6 +417,7 @@ export class ConfigurationBackupRepository {
         workflowIds: imported.map((row) => row.id),
         preferencesRestored,
         keybindingsImported: importedKeys.length,
+        terminalThemesImported: importedThemes.length,
         tunnelPresetIds,
         desktopConfiguration,
       };

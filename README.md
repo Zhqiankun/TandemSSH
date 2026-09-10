@@ -104,6 +104,7 @@
 | [聊天流与执行容量](docs/69-chat-stream-bounds.md) | 旧请求隔离、取消与背压、工具预算、桌面认证和中文故障恢复 |
 | [总体验收基线](docs/70-acceptance-baseline.md) | 79 项原始要求索引、已核实交付缺口与后续顺序 |
 | [网络配置备份](docs/71-network-configuration-backup.md) | 跳板、隧道和 C2S 预设迁移、新主机引用、关闭自动启动与重启验证 |
+| [终端显示设置备份](docs/72-terminal-preferences-backup.md) | 用户默认值、配色库、主机外观及恢复后的可见画面验证 |
 
 ## 产品主线
 

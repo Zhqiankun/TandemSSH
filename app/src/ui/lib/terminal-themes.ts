@@ -730,7 +730,9 @@ export const TERMINAL_THEMES: Record<string, TerminalTheme> = {
   },
 
   custom: {
-    name: "Custom",
+    get name() {
+      return translateUiText("Custom");
+    },
     category: "dark",
     colors: {
       background: "#0c0d0b",

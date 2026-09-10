@@ -6481,7 +6481,7 @@
   },
   "configBackup": {
     "title": "配置备份与恢复",
-    "description": "备份 SSH 主机、跳板与隧道配置、C2S 预设、命令流程、外观、界面偏好与自定义快捷键。不携带密码、私钥、API Key、指纹信任和任务授权。继续前请核对预览内容。",
+    "description": "备份 SSH 主机、网络配置、C2S 预设、流程、外观、终端默认值、配色库与快捷键。不携带密码、私钥、API Key、指纹信任和任务授权。继续前请核对预览内容。",
     "previewExport": "预览导出",
     "selectImport": "选择备份文件",
     "working": "正在准备配置…",
@@ -6492,7 +6492,7 @@
     "steps_one": "{{count}} 个步骤",
     "steps_other": "{{count}} 个步骤",
     "inspectContent": "查看备份的完整内容",
-    "restorePreferences": "同时恢复外观和界面偏好（需要手动重新加载）",
+    "restorePreferences": "同时恢复外观、界面偏好、终端默认值与配色库（需要手动重新加载）",
     "confirmExport": "确认并下载",
     "confirmImport": "确认并导入",
     "completed": "已新增 {{hosts}} 台主机、{{workflows}} 个流程。",
@@ -6528,7 +6528,10 @@
       "KEYBINDINGS_REVIEW_REQUIRED": "快捷键导入后保持禁用；运行片段的快捷键需要重新选择片段。",
       "NETWORK_REVIEW_REQUIRED": "网络配置会重新映射到导入的主机，自动启动保持关闭。同名预设追加编号。请重新配置凭据并核对监听范围后手动启用。",
       "NETWORK_REFERENCE_EXCLUDED": "部分跳板或隧道引用不在本次备份内，已排除；请核对原配置。",
-      "NETWORK_CONFIG_EXCLUDED": "部分网络配置格式不受支持，已排除；请核对原配置。"
+      "NETWORK_CONFIG_EXCLUDED": "部分网络配置格式不受支持，已排除；请核对原配置。",
+      "TERMINAL_FIELDS_EXCLUDED": "部分终端字段不是可迁移的显示设置，或格式不受支持，已排除。背景图片和启动行为不会迁移。",
+      "TERMINAL_THEME_EXCLUDED": "部分自定义配色格式不受支持或包含可识别秘密，已排除。",
+      "TERMINAL_PREFERENCES_REVIEW": "用户终端默认值与配色库仅在勾选恢复偏好后写入；同名配色追加编号，不覆盖已有配色。"
     },
     "errors": {
       "BACKUP_FAILED": "操作失败，请重试或重新生成预览。",
@@ -6557,7 +6560,10 @@
       "BACKUP_JUMP_DEPTH": "跳板链超过支持的深度，请缩短链路。",
       "BACKUP_NETWORK_SECRET": "网络配置包含可识别的秘密，请移除后重新预览。",
       "BACKUP_TUNNEL_PRESET_LIMIT": "恢复后的 C2S 预设超过数量上限。",
-      "BACKUP_AMBIGUOUS_ENDPOINT": "隧道端点与多个主机匹配，请改为明确的主机 ID 后重新备份。"
+      "BACKUP_AMBIGUOUS_ENDPOINT": "隧道端点与多个主机匹配，请改为明确的主机 ID 后重新备份。",
+      "BACKUP_TERMINAL_INVALID": "当前终端配色数据无法解析，请先修正后重新预览。",
+      "BACKUP_TERMINAL_SECRET": "终端设置包含可识别的秘密，请移除后重新预览。",
+      "BACKUP_TERMINAL_THEME_LIMIT": "恢复后的配色库超过 100 个主题，未写入本次配置。"
     },
     "restoreKeybindings": "恢复自定义快捷键（先禁用，编辑确认后启用）",
     "keybindingsCount": "{{count}} 个自定义快捷键",
@@ -6566,7 +6572,8 @@
     "localRestorePending": "数据库中的配置已恢复，但本地界面设置未能写入。重试不会重复导入。",
     "retryLocalRestore": "重试应用界面设置",
     "editShortcut": "编辑快捷键 {{combo}}",
-    "networkSummary": "{{jumps}} 个跳板引用 · {{tunnels}} 条隧道 · {{presets}} 个 C2S 预设"
+    "networkSummary": "{{jumps}} 个跳板引用 · {{tunnels}} 条隧道 · {{presets}} 个 C2S 预设",
+    "terminalSummary": "终端默认值：{{defaults}} · {{themes}} 个自定义配色"
   },
   "sshInteractive": {
     "title": "SSH 交互认证",

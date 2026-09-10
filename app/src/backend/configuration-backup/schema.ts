@@ -1,4 +1,12 @@
 import {
+  terminalAppearanceSchema,
+  backupTerminalThemeSchema,
+} from "../../types/terminal-appearance.js";
+import {
+  projectTerminalAppearance,
+  projectTerminalThemes,
+} from "./terminal.js";
+import {
   backupNetworkSchema,
   backupPresetSchema,
   projectNetwork,
@@ -23,6 +31,7 @@ const text = (max: number) =>
     .refine((value) => !/[\u0000]/.test(value));
 const hostSchema = z.object({
   network: backupNetworkSchema.optional(),
+  terminalAppearance: terminalAppearanceSchema.optional(),
   ref: z.string().uuid(),
   name: text(512),
   ip: text(2048)
@@ -50,6 +59,8 @@ const fileSchema = z.object({
     .max(128),
   preferences: z.unknown().optional(),
   appearance: desktopAppearanceSchema.optional(),
+  terminalDefaults: terminalAppearanceSchema.optional(),
+  terminalThemes: z.array(backupTerminalThemeSchema).max(100).optional(),
   keybindings: z.array(backupKeybindingSchema).max(200).optional(),
 });
 function ignored(
@@ -121,18 +132,35 @@ export function parseConfigurationBackup(input: unknown): {
         ? raw.hosts.map((row, index) => {
             if (!row || typeof row !== "object" || Array.isArray(row))
               return row;
-            const { network, ...host } = row as Record<string, unknown>;
+            const { network, terminalAppearance, ...host } = row as Record<
+              string,
+              unknown
+            >;
             if (network !== undefined)
               warnings.push({
                 code: "IGNORED_FIELD",
                 path: `backup.hosts[${index}].network`,
+              });
+            if (terminalAppearance !== undefined)
+              warnings.push({
+                code: "IGNORED_FIELD",
+                path: `backup.hosts[${index}].terminalAppearance`,
               });
             return host;
           })
         : raw.hosts;
       if (raw.tunnelPresets !== undefined)
         warnings.push({ code: "IGNORED_FIELD", path: "backup.tunnelPresets" });
-      parseInput = { ...raw, hosts: legacyHosts, tunnelPresets: undefined };
+      for (const field of ["terminalDefaults", "terminalThemes"])
+        if (raw[field] !== undefined)
+          warnings.push({ code: "IGNORED_FIELD", path: `backup.${field}` });
+      parseInput = {
+        ...raw,
+        hosts: legacyHosts,
+        tunnelPresets: undefined,
+        terminalDefaults: undefined,
+        terminalThemes: undefined,
+      };
     }
   }
   const parsed = fileSchema.parse(parseInput);
@@ -141,6 +169,25 @@ export function parseConfigurationBackup(input: unknown): {
   if (
     hostRefs.size !== parsed.hosts.length ||
     workflowRefs.size !== parsed.workflows.length
+  )
+    throw Error("BACKUP_DUPLICATE_REFERENCE");
+  if (
+    JSON.stringify(
+      redact({
+        defaults: parsed.terminalDefaults,
+        themes: parsed.terminalThemes,
+      }),
+    ) !==
+    JSON.stringify({
+      defaults: parsed.terminalDefaults,
+      themes: parsed.terminalThemes,
+    })
+  )
+    throw Error("BACKUP_TERMINAL_SECRET");
+  if (
+    parsed.terminalThemes &&
+    new Set(parsed.terminalThemes.map((t) => t.ref)).size !==
+      parsed.terminalThemes.length
   )
     throw Error("BACKUP_DUPLICATE_REFERENCE");
   const payload: ConfigurationBackup = {
@@ -165,6 +212,16 @@ export function parseConfigurationBackup(input: unknown): {
       warnings.push({
         code: "NETWORK_CONFIG_EXCLUDED",
         path: `hosts[${index}].network`,
+      });
+    }
+    if (
+      JSON.stringify(safe.terminalAppearance) !==
+      JSON.stringify(host.terminalAppearance)
+    ) {
+      safe.terminalAppearance = undefined;
+      warnings.push({
+        code: "TERMINAL_FIELDS_EXCLUDED",
+        path: `hosts[${index}].terminalAppearance`,
       });
     }
     payload.hosts.push(hostSchema.parse(safe));
@@ -232,6 +289,11 @@ export function parseConfigurationBackup(input: unknown): {
     payload.tunnelPresets.length
   )
     warnings.push({ code: "NETWORK_REVIEW_REQUIRED", path: "network" });
+  if (payload.terminalDefaults || payload.terminalThemes?.length)
+    warnings.push({
+      code: "TERMINAL_PREFERENCES_REVIEW",
+      path: "terminalSettings",
+    });
   ignored(input, payload, "backup", warnings);
   if (JSON.stringify(parsed.hosts) !== JSON.stringify(payload.hosts))
     warnings.push({ code: "RECOGNIZED_SECRET_REDACTED", path: "hosts" });
@@ -252,6 +314,7 @@ export function projectConfigurationBackup(
   appearance?: unknown,
   keybindings?: unknown,
   tunnelPresets: Array<Record<string, unknown>> = [],
+  terminalSettings: { defaults?: unknown; themes?: unknown } = {},
 ) {
   const warnings: BackupWarning[] = [],
     entries: unknown[] = [];
@@ -282,6 +345,11 @@ export function projectConfigurationBackup(
         refs,
         warnings,
         `hosts[${index}]`,
+      ),
+      terminalAppearance: projectTerminalAppearance(
+        host.terminalConfig,
+        warnings,
+        `hosts[${index}].terminalAppearance`,
       ),
       name: String(host.name ?? ""),
       ip: host.ip,
@@ -324,6 +392,12 @@ export function projectConfigurationBackup(
     preferences,
     appearance,
     keybindings: projectedKeys.bindings,
+    terminalDefaults: projectTerminalAppearance(
+      terminalSettings.defaults,
+      warnings,
+      "terminalDefaults",
+    ),
+    terminalThemes: projectTerminalThemes(terminalSettings.themes, warnings),
   });
   return {
     payload: result.payload,
