@@ -911,3 +911,94 @@ it("records the task host snapshot and trusted human approval separately from MC
   );
   await f.runtime.finish(mcp, task.id);
 });
+it.each([
+  ["workflow", human],
+  ["mcp", mcp],
+  ["assistant", { kind: "agent", userId: "user-a", agentRunId: "run-a" }],
+] as const)(
+  "preserves %s provenance through completion and cancellation",
+  async (source, actor) => {
+    const audit = {
+      record: vi.fn(async () => {}),
+      append: vi.fn(async () => {}),
+    };
+    const f = fixture({ audit });
+    try {
+      const task = await f.create("automatic", [], actor);
+      const provenance = {
+        taskId: task.id,
+        hostId: 1,
+        hostName: "user@server:22",
+        sessionId: "session",
+        source,
+        mode: "automatic",
+      };
+      expect(audit.record).toHaveBeenCalledWith(
+        "task.created",
+        expect.objectContaining(provenance),
+      );
+      await f.authorize(task, {
+        matches: [{ kind: "program", program: "pwd" }],
+      });
+      await f.runtime.finish(actor, task.id);
+      expect(audit.record).toHaveBeenCalledWith(
+        "task.completed",
+        expect.objectContaining({
+          ...provenance,
+          state: "completed",
+          hasFailures: false,
+        }),
+      );
+      const cancelled = await f.create(
+        "collaborative",
+        [],
+        actor,
+        "cancel-provenance",
+      );
+      f.runtime.cancel(human, cancelled.id);
+      expect(audit.record).toHaveBeenCalledWith(
+        "task.cancelled",
+        expect.objectContaining({
+          ...provenance,
+          taskId: cancelled.id,
+          mode: "collaborative",
+          state: "cancelled",
+          reason: "USER_CANCELLED",
+        }),
+      );
+      expect(f.writes).not.toContain("pwd");
+    } finally {
+      f.disconnect();
+    }
+  },
+);
+it("preserves provenance when a reviewed plan completes automatically", async () => {
+  const audit = {
+    record: vi.fn(async () => {}),
+    append: vi.fn(async () => {}),
+  };
+  const f = fixture({ audit });
+  try {
+    const task = await f.create("automatic", [{ program: "pwd", args: [] }]);
+    await f.authorize(task, { allowReviewedPlan: true });
+    await vi.waitFor(() =>
+      expect(f.runtime.get(human, task.id).state).toBe("completed"),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      "task.completed",
+      expect.objectContaining({
+        taskId: task.id,
+        hostId: 1,
+        hostName: "user@server:22",
+        sessionId: "session",
+        source: "workflow",
+        mode: "automatic",
+        state: "completed",
+        hasFailures: false,
+      }),
+    );
+    expect(f.commands).toHaveLength(1);
+  } finally {
+    f.disconnect();
+  }
+});

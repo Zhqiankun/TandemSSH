@@ -402,14 +402,9 @@ export class TaskRuntime {
       },
     };
     await audit.record("task.created", {
-      taskId: task.view.id,
-      hostId: task.view.hostId,
-      hostName: task.view.hostName,
+      ...this.auditContext(task),
       createdAt: task.view.createdAt,
       id: task.view.id,
-      sessionId: session.id,
-      title: input.title,
-      source: task.view.source,
       clientId: task.clientId,
     });
     if (actor.kind === "mcp" && !this.clients.has(actor.connectionId))
@@ -583,7 +578,7 @@ export class TaskRuntime {
         },
       };
       await this.ports.audit(task.userId).record("workflow.attached", {
-        taskId: task.view.id,
+        ...this.auditContext(task),
         workflowRunId: run.summary.id,
         workflow: input.workflow,
         name: input.name,
@@ -1080,7 +1075,7 @@ export class TaskRuntime {
       await persist(checkpoint);
       this.cancel(actor, taskId);
       await this.ports.audit(actor.userId).record("task.recovery-saved", {
-        taskId,
+        ...this.auditContext(task),
         nextStep: checkpoint.nextStep,
       });
       return checkpoint;
@@ -1408,7 +1403,7 @@ export class TaskRuntime {
       this.recordRecoveryReview(task, input.reconciliation);
     try {
       await this.ports.audit(actor.userId).record("task.recovered", {
-        taskId: task.view.id,
+        ...this.auditContext(task),
         originalTaskId: checkpoint.id,
         nextStep: task.view.nextStep,
         reconciliation: input.reconciliation,
@@ -1619,7 +1614,7 @@ export class TaskRuntime {
         if (task.activeWorkflowRunId) {
           const run = task.workflowRuns.get(task.activeWorkflowRunId)!;
           await this.ports.audit(task.userId).record("workflow.completed", {
-            taskId: task.view.id,
+            ...this.auditContext(task),
             workflowRunId: run.summary.id,
             hasFailures: !!run.summary.hasFailures,
           });
@@ -1651,7 +1646,7 @@ export class TaskRuntime {
             : "completed";
           this.returnControl(task);
           await this.ports.audit(task.userId).record("task.completed", {
-            taskId: task.view.id,
+            ...this.auditContext(task),
             state: task.view.state,
             hasFailures: task.view.hasFailures ?? false,
           });
@@ -2102,7 +2097,11 @@ export class TaskRuntime {
     )
       throw new Error("CLIENT_DISCONNECTED");
     const version = task.generation;
-    await this.ports.audit(task.userId).record("task.completed", { taskId });
+    await this.ports.audit(task.userId).record("task.completed", {
+      ...this.auditContext(task),
+      state: task.view.hasFailures ? "completed-with-errors" : "completed",
+      hasFailures: task.view.hasFailures ?? false,
+    });
     if (task.generation !== version || task.view.state !== "ready")
       throw new Error("STALE_CONTROL");
     task.view.state = task.view.hasFailures
@@ -2161,14 +2160,23 @@ export class TaskRuntime {
       task.archiving = false;
     }
   }
+  /** Display provenance owned by this task; never used to authorize an operation. */
+  private auditContext(task: RecordTask) {
+    return {
+      taskId: task.view.id,
+      hostId: task.view.hostId,
+      hostName: task.view.hostName,
+      sessionId: task.view.sessionId,
+      title: task.view.title,
+      source: task.view.source,
+      mode: task.view.mode,
+    };
+  }
   private recordCancellation(task: RecordTask, reason: string) {
     void this.ports
       .audit(task.userId)
       .record("task.cancelled", {
-        taskId: task.view.id,
-        title: task.view.title,
-        hostId: task.view.hostId,
-        hostName: task.view.hostName,
+        ...this.auditContext(task),
         state: "cancelled",
         reason,
       })
