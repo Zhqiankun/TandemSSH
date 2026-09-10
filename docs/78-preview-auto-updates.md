@@ -19,3 +19,11 @@
 上一提交 bdbbcc7 的 CI 两个 SFTP 集成场景在 15 秒时限超时。两个场景涉及 4 MiB 分块、落盘、读回摘要及重连校验，本机相同两项合计约 21 秒。TCP_NODELAY 调整无明显收益，已撤回。只把两个场景总时限改为 30 秒；文件大小、完整性断言和单次 SFTP I/O 的 3 秒期限不变。当前完整回归通过，云端仍需验证。
 
 用户要求优先完成内置更新；任务历史导出未完成的本地工作已单独保留，未混入本次发行。现有 alpha.0 公开资源不改写，修复版标签为 v0.1.0-alpha.1。云端验收与公开清单结果发布后追加。
+
+## Actions 发布与公开源验证通过
+
+2026-09-11，提交 `295bf222941649ad567905a5b950d78041c30ae2` 的 [Release 34506929299](https://github.com/Zhqiankun/TandemSSH/actions/runs/34506929299) 全部成功。标准 Windows 构建、真实终端、原生组件、alpha.1 → alpha.2 隔离源安装升级、卸载和数据保留均通过；安装报告所有结果为 true、failures 为空。公开发行仅含 alpha.1，alpha.2 是未发布的升级验收夹具。
+
+[alpha.1 发布页](https://github.com/Zhqiankun/TandemSSH/releases/tag/v0.1.0-alpha.1) 现有 latest.yml、SHA256SUMS.txt、EXE、blockmap 和 ZIP。公开 latest.yml 539 字节，SHA-256 为 `afc2034b4a9c55507d14b62ba7632d0ad080b7b297fe2883b7bcce3663da5d84`，版本为 0.1.0-alpha.1，安装包大小 155352076 字节；已下载并使用产品校验函数验证。
+
+实际 alpha.1 桌面未改写网络，直接访问 GitHub，成功显示当前版本/可用版本均为 0.1.0-alpha.1、当前已是最新版本，以及启动/每 20 分钟检查提示。证据 `.cache/desktop-observation-report-09eaa378-78f2-4a17-9650-103e8aaacb1c/public-alpha-update-result.json` 与 `public-alpha-update.png`；截图已查看。此证明公开发现和清单读取；实际安装升级仍是上面的隔离源验收，不宣称已经通过两份公开 Release 的在线安装。

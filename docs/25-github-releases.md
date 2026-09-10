@@ -114,3 +114,5 @@ alpha 先上传到草稿，资源齐备后发布为 prerelease、latest=false；
 用户明确要求 latest.yml 和每 20 分钟检测。alpha.1 改为从本仓库发布订阅发现预览版本，再读取该版本目录的 latest.yml，继续使用固定版本安装包 URL、SHA-512 和体积检查。主进程负责启动及每 20 分钟检查；窗口最小化继续运行，关闭更新检查设置仍生效，下载和安装保持人工触发。
 
 Actions 现在为 alpha 和稳定版本都生成并上传 latest.yml。alpha.0 的旧客户端只支持稳定渠道，须手动安装一次修复版。实现、定时测试和真实桌面证据见 [预览版内部更新](78-preview-auto-updates.md)。以前“alpha 必须手动更新”的段落是 alpha.0 的历史状态，不适用于 alpha.1 及后续修复版。
+
+alpha.1 已由 [Actions 34506929299](https://github.com/Zhqiankun/TandemSSH/actions/runs/34506929299) 构建发布，包含公开 latest.yml。真实桌面直接访问 GitHub 已正确识别 alpha.1，并显示启动/每 20 分钟检查提示；云端真实 alpha 安装升级与数据保留通过。详见文档 78。alpha.0 用户需手动安装一次 alpha.1，后续安装版可内置更新。
