@@ -120,6 +120,7 @@ alpha.1 起支持预览版内置更新：启动检查，运行期间每 20 分�
 | [任务历史导出](docs/77-history-export.md) | 脱敏完整导出、中文取消与真实 MCP 撤销/文件下载验证 |
 | [预览版内部更新](docs/78-preview-auto-updates.md) | latest.yml、主进程每 20 分钟检查、真实桌面与 Actions 发布 |
 | [执行历史来源与目标](docs/79-history-provenance.md) | 中文来源、主机/会话、策略判断、退出码与脱敏输出摘要 |
+| [Unix 权限编辑](docs/80-unix-permissions.md) | 目录权限解析、中文特殊权限位、完整八进制传递与输入保护 |
 
 ## 产品主线
 

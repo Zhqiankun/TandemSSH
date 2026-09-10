@@ -1,3 +1,4 @@
+import { parsePermissions } from "../permissions";
 import React, { useState, useEffect } from "react";
 import {
   Dialog,
@@ -28,42 +29,6 @@ interface PermissionsDialogProps {
   onSave: (file: FileItem, permissions: string) => Promise<void>;
 }
 
-const parsePermissions = (
-  perms: string,
-): { owner: number; group: number; other: number } => {
-  if (!perms) {
-    return { owner: 0, group: 0, other: 0 };
-  }
-
-  if (/^\d{3,4}$/.test(perms)) {
-    const numStr = perms.slice(-3);
-    return {
-      owner: parseInt(numStr[0] || "0", 10),
-      group: parseInt(numStr[1] || "0", 10),
-      other: parseInt(numStr[2] || "0", 10),
-    };
-  }
-  const cleanPerms = perms.replace(/^-/, "").substring(0, 9);
-
-  const calcBits = (str: string): number => {
-    let value = 0;
-    if (str[0] === "r") value += 4;
-    if (str[1] === "w") value += 2;
-    if (str[2] === "x") value += 1;
-    return value;
-  };
-
-  return {
-    owner: calcBits(cleanPerms.substring(0, 3)),
-    group: calcBits(cleanPerms.substring(3, 6)),
-    other: calcBits(cleanPerms.substring(6, 9)),
-  };
-};
-
-const toNumeric = (owner: number, group: number, other: number): string => {
-  return `${owner}${group}${other}`;
-};
-
 export function PermissionsDialog({
   file,
   open,
@@ -72,8 +37,15 @@ export function PermissionsDialog({
 }: PermissionsDialogProps) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [special, setSpecial] = useState(0);
 
-  const initialPerms = parsePermissions(file?.permissions || "644");
+  const validPermissions = parsePermissions(file?.permissions ?? "");
+  const initialPerms = validPermissions ?? {
+    special: 0,
+    owner: 0,
+    group: 0,
+    other: 0,
+  };
   const [ownerRead, setOwnerRead] = useState((initialPerms.owner & 4) !== 0);
   const [ownerWrite, setOwnerWrite] = useState((initialPerms.owner & 2) !== 0);
   const [ownerExecute, setOwnerExecute] = useState(
@@ -94,7 +66,13 @@ export function PermissionsDialog({
 
   useEffect(() => {
     if (file) {
-      const perms = parsePermissions(file.permissions || "644");
+      const perms = parsePermissions(file.permissions ?? "") ?? {
+        special: 0,
+        owner: 0,
+        group: 0,
+        other: 0,
+      };
+      setSpecial(perms.special);
       setOwnerRead((perms.owner & 4) !== 0);
       setOwnerWrite((perms.owner & 2) !== 0);
       setOwnerExecute((perms.owner & 1) !== 0);
@@ -105,7 +83,7 @@ export function PermissionsDialog({
       setOtherWrite((perms.other & 2) !== 0);
       setOtherExecute((perms.other & 1) !== 0);
     }
-  }, [file]);
+  }, [file, open]);
 
   const calculateOctal = (): string => {
     const owner =
@@ -114,11 +92,11 @@ export function PermissionsDialog({
       (groupRead ? 4 : 0) + (groupWrite ? 2 : 0) + (groupExecute ? 1 : 0);
     const other =
       (otherRead ? 4 : 0) + (otherWrite ? 2 : 0) + (otherExecute ? 1 : 0);
-    return toNumeric(owner, group, other);
+    return `${special}${owner}${group}${other}`;
   };
 
   const handleSave = async () => {
-    if (!file) return;
+    if (!file || !validPermissions) return;
 
     setLoading(true);
     try {
@@ -215,6 +193,8 @@ export function PermissionsDialog({
                   >
                     <input
                       type="checkbox"
+                      aria-label={`${row.label} ${[t("fileManager.read"), t("fileManager.write"), t("fileManager.execute")][j]}`}
+                      disabled={loading}
                       checked={perm.val}
                       onChange={(e) => perm.set(e.target.checked)}
                       className="accent-[var(--accent-brand)] size-4 cursor-pointer"
@@ -225,6 +205,31 @@ export function PermissionsDialog({
             ))}
           </div>
 
+          <fieldset disabled={loading} className="flex flex-wrap gap-3 text-xs">
+            <legend className="mb-2">
+              {t("fileManager.specialPermissions")}
+            </legend>
+            {[
+              [4, "setuid"],
+              [2, "setgid"],
+              [1, "sticky"],
+            ].map(([bit, key]) => (
+              <label key={key} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={(special & Number(bit)) !== 0}
+                  onChange={(event) =>
+                    setSpecial((value) =>
+                      event.target.checked
+                        ? value | Number(bit)
+                        : value & ~Number(bit),
+                    )
+                  }
+                />
+                {t("fileManager." + key)}
+              </label>
+            ))}
+          </fieldset>
           <div className="flex items-center gap-3">
             <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground shrink-0">
               {t("fileManager.octal")}
@@ -240,6 +245,11 @@ export function PermissionsDialog({
           </div>
         </div>
 
+        {!validPermissions && (
+          <p role="alert" className="text-sm text-destructive">
+            {t("fileManager.invalidPermissions")}
+          </p>
+        )}
         <DialogFooter>
           <Button
             variant="ghost"
@@ -252,7 +262,7 @@ export function PermissionsDialog({
           <Button
             variant="outline"
             onClick={handleSave}
-            disabled={loading}
+            disabled={loading || !validPermissions}
             className="border-accent-brand/40 text-accent-brand hover:bg-accent-brand/10 rounded-none text-[10px] font-bold uppercase tracking-widest"
           >
             {loading ? t("common.saving") : t("common.save")}

@@ -633,9 +633,10 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "80-unix-permissions.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": "已修复目录权限解析、特殊位显示/保存与非法八进制拒绝；待真实 Linux 权限读回、符号链接受控跟随及所有者/组修改完整验收。"
     },
     {
       "id": "B11",

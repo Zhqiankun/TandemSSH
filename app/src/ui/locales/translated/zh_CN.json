@@ -2351,7 +2351,12 @@
     "deleteCopiedFileFailed": "删除已复制的文件 {{name}} 失败：{{error}}",
     "moveBackFileFailed": "移回文件 {{name}} 失败：{{error}}",
     "dragMovedItems": "已将 {{count}} 项移至 {{target}}",
-    "terminal": "终端 · {{host}} · {{path}}"
+    "terminal": "终端 · {{host}} · {{path}}",
+    "specialPermissions": "特殊权限",
+    "setuid": "设置用户 ID（setuid）",
+    "setgid": "设置组 ID（setgid）",
+    "sticky": "限制删除（sticky）",
+    "invalidPermissions": "无法识别当前 Unix 权限，请刷新文件列表后再修改。"
   },
   "transfer": {
     "copyToHost": "复制到主机…",

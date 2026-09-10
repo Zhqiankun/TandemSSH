@@ -408,7 +408,7 @@ export function registerFileActionRoutes(
       return res.status(400).json({ error: "File path is required" });
     }
 
-    if (!permissions || !/^\d{3,4}$/.test(permissions)) {
+    if (typeof permissions !== "string" || !/^[0-7]{3,4}$/.test(permissions)) {
       return res.status(400).json({
         error: "Valid permissions required (e.g., 755, 644)",
       });
@@ -417,9 +417,9 @@ export function registerFileActionRoutes(
     sshConn.lastActive = Date.now();
     scheduleSessionCleanup(sessionId);
 
-    const octalPerms = permissions.slice(-3);
+    const octalPerms = permissions.padStart(5, "0");
     const escapedPath = path.replace(/'/g, "'\"'\"'");
-    const command = `chmod ${octalPerms} '${escapedPath}' && echo "SUCCESS"`;
+    const command = `chmod ${octalPerms} -- '${escapedPath}' && echo "SUCCESS"`;
 
     fileLogger.info("Changing file permissions", {
       operation: "change_permissions",

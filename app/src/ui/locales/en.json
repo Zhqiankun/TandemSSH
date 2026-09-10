@@ -2351,7 +2351,12 @@
     "deleteCopiedFileFailed": "Failed to remove copied file {{name}}: {{error}}",
     "moveBackFileFailed": "Failed to move {{name}} back: {{error}}",
     "dragMovedItems": "Moved {{count}} items to {{target}}",
-    "terminal": "Terminal · {{host}} · {{path}}"
+    "terminal": "Terminal · {{host}} · {{path}}",
+    "specialPermissions": "Special permissions",
+    "setuid": "Set user ID (setuid)",
+    "setgid": "Set group ID (setgid)",
+    "sticky": "Restricted deletion (sticky)",
+    "invalidPermissions": "Cannot read the current Unix permissions. Refresh the file list before editing."
   },
   "transfer": {
     "copyToHost": "Copy to host…",
