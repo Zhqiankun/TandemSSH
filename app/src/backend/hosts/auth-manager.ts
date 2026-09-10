@@ -1,4 +1,5 @@
 import type { WebSocket } from "ws";
+import { KeyboardInteractiveExchange } from "./keyboard-interactive.js";
 import { sshLogger, authLogger } from "../utils/logger.js";
 import { createCurrentHostResolutionRepository } from "../database/repositories/factory.js";
 interface ResolvedCredentials {
@@ -27,6 +28,8 @@ interface HostConfig {
 }
 
 interface AuthContext {
+  keyboardInteractiveVersion?: 1;
+  onInteractiveFailure?: () => void;
   userId: string;
   ws: WebSocket;
   hostId: number;
@@ -42,9 +45,52 @@ interface AuthContext {
 
 export class SSHAuthManager {
   public context: AuthContext;
+  private interactive?: KeyboardInteractiveExchange;
 
   constructor(context: AuthContext) {
     this.context = context;
+    if (context.keyboardInteractiveVersion === 1)
+      this.interactive = new KeyboardInteractiveExchange({
+        challenge: (challenge) =>
+          context.ws.send(
+            JSON.stringify({
+              type: "keyboard_interactive_required",
+              challenge,
+            }),
+          ),
+        failure: (code, id) => {
+          context.keyboardInteractiveFinish = null;
+          try {
+            context.ws.send(
+              JSON.stringify({
+                type: "keyboard_interactive_error",
+                id,
+                code,
+                terminal: true,
+              }),
+            );
+          } finally {
+            context.onInteractiveFailure?.();
+          }
+        },
+      });
+  }
+
+  respondKeyboardInteractive(id: unknown, responses: unknown) {
+    if (!this.interactive) throw Error("SSH_AUTH_STALE_PROMPT");
+    this.interactive.respond(id, responses);
+  }
+  cancelKeyboardInteractive(id: unknown) {
+    return this.interactive?.cancel(id) ?? false;
+  }
+  dispose() {
+    this.interactive?.dispose();
+    if (this.context.totpTimeout) clearTimeout(this.context.totpTimeout);
+    if (this.context.warpgateAuthTimeout)
+      clearTimeout(this.context.warpgateAuthTimeout);
+    this.context.keyboardInteractiveFinish = null;
+    this.context.totpTimeout = null;
+    this.context.warpgateAuthTimeout = null;
   }
 
   async resolveCredentials(
@@ -104,6 +150,19 @@ export class SSHAuthManager {
     hostConfig?: HostConfig,
   ): void {
     this.context.isKeyboardInteractive = true;
+    if (this.interactive && !hostConfig?.useWarpgate) {
+      this.context.keyboardInteractiveResponded = true;
+      this.interactive.begin(
+        name,
+        instructions,
+        prompts,
+        finish,
+        resolvedCredentials.authType !== "none"
+          ? resolvedCredentials.password
+          : undefined,
+      );
+      return;
+    }
     const promptTexts = prompts.map((p) => p.prompt);
 
     const warpgatePattern = /warpgate\s+authentication/i;
@@ -336,7 +395,7 @@ export class SSHAuthManager {
       const isPushPrompt = pushPromptPattern.test(prompts[promptIndex].prompt);
 
       this.context.keyboardInteractiveFinish = (userResponses: string[]) => {
-        const userInput = (userResponses[0] || "").trim();
+        const userInput = userResponses[0] ?? "";
 
         const responses = prompts.map((p, index) => {
           if (index === promptIndex) {
@@ -348,6 +407,8 @@ export class SSHAuthManager {
           return "";
         });
 
+        this.context.keyboardInteractiveResponded = false;
+        this.context.keyboardInteractiveFinish = null;
         finish(responses);
       };
 

@@ -35,6 +35,11 @@ import {
   getCommandHistory,
   getHostPassword,
 } from "@/main-axios.ts";
+import { KeyboardInteractiveDialog } from "@/ssh/dialogs/KeyboardInteractiveDialog";
+import {
+  isInteractiveChallenge,
+  type SSHInteractiveChallenge,
+} from "@/types/ssh-interactive-auth";
 import { TOTPDialog } from "@/ssh/dialogs/TOTPDialog.tsx";
 import { SSHAuthDialog } from "@/ssh/dialogs/SSHAuthDialog.tsx";
 import { PassphraseDialog } from "@/ssh/dialogs/PassphraseDialog.tsx";
@@ -249,6 +254,19 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     }, []);
 
     const [, setIsAuthenticated] = useState(false);
+    const [interactiveChallenge, setInteractiveChallenge] =
+      useState<SSHInteractiveChallenge | null>(null);
+    const interactiveChallengeRef = useRef<SSHInteractiveChallenge | null>(
+      null,
+    );
+    const [interactiveWaiting, setInteractiveWaiting] = useState(false);
+    const [interactiveError, setInteractiveError] = useState<string>();
+    const clearInteractiveChallenge = useCallback(() => {
+      interactiveChallengeRef.current = null;
+      setInteractiveChallenge(null);
+      setInteractiveWaiting(false);
+      setInteractiveError(undefined);
+    }, []);
     const [totpRequired, setTotpRequired] = useState(false);
     const [totpPrompt, setTotpPrompt] = useState<string>("");
     const [isPasswordPrompt, setIsPasswordPrompt] = useState(false);
@@ -725,7 +743,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
     function handleTotpSubmit(code: string) {
       const isPushMode = mfaPromptMode === "push";
-      if (webSocketRef.current && (code || isPushMode)) {
+      if (webSocketRef.current && (code || mfaPromptMode !== "totp")) {
         webSocketRef.current.send(
           JSON.stringify({
             type: isPasswordPrompt ? "password_response" : "totp_response",
@@ -1300,6 +1318,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     ) {
       let terminalRepliesSupported = false;
       ws.addEventListener("open", () => {
+        clearInteractiveChallenge();
         alternateScreenModeRef.current = false;
         controlStringModeRef.current = false;
         connectionTimeoutRef.current = setTimeout(() => {
@@ -1372,6 +1391,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             JSON.stringify({
               type: "connectToHost",
               data: {
+                keyboardInteractiveVersion: 1,
                 cols,
                 rows,
                 hostConfig,
@@ -1551,6 +1571,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             updateConnectionError(errorMessage);
             setIsConnecting(false);
           } else if (msg.type === "connected") {
+            clearInteractiveChallenge();
             opksshFailedRef.current = false;
             vaultFailedRef.current = false;
             wasConnectedRef.current = true;
@@ -1656,7 +1677,55 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 msg.message || t("terminal.connectionRejected"),
               );
             }
+          } else if (msg.type === "keyboard_interactive_required") {
+            if (ws !== webSocketRef.current) return;
+            if (!isInteractiveChallenge(msg.challenge)) {
+              shouldNotReconnectRef.current = true;
+              updateConnectionError(
+                t("sshInteractive.errors.SSH_AUTH_INVALID_CHALLENGE"),
+              );
+              ws.close();
+              return;
+            }
+            if (connectionTimeoutRef.current) {
+              clearTimeout(connectionTimeoutRef.current);
+              connectionTimeoutRef.current = null;
+            }
+            if (totpTimeoutRef.current) {
+              clearTimeout(totpTimeoutRef.current);
+              totpTimeoutRef.current = null;
+            }
+            setTotpRequired(false);
+            setWarpgateAuthRequired(false);
+            interactiveChallengeRef.current = msg.challenge;
+            setInteractiveChallenge(msg.challenge);
+            setInteractiveWaiting(false);
+            setInteractiveError(undefined);
+          } else if (msg.type === "keyboard_interactive_error") {
+            if (
+              ws !== webSocketRef.current ||
+              (msg.id && msg.id !== interactiveChallengeRef.current?.id)
+            )
+              return;
+            const code =
+              typeof msg.code === "string"
+                ? msg.code
+                : "SSH_AUTH_CONNECTION_LOST";
+            if (msg.terminal) {
+              clearInteractiveChallenge();
+              shouldNotReconnectRef.current = true;
+              updateConnectionError(
+                t("sshInteractive.errors." + code, {
+                  defaultValue: t("sshInteractive.failed"),
+                }),
+              );
+              setIsConnecting(false);
+            } else {
+              setInteractiveWaiting(false);
+              setInteractiveError(code);
+            }
           } else if (msg.type === "totp_required") {
+            clearInteractiveChallenge();
             setTotpRequired(true);
             setTotpPrompt(msg.prompt || t("terminal.totpCodeLabel"));
             setIsPasswordPrompt(false);
@@ -2151,6 +2220,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       const currentAttemptId = connectionAttemptIdRef.current;
 
       ws.addEventListener("close", (event) => {
+        if (ws === webSocketRef.current) clearInteractiveChallenge();
         if (currentAttemptId !== connectionAttemptIdRef.current) {
           return;
         }
@@ -3617,6 +3687,59 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           logPosition={hasConnectionError ? "top" : "bottom"}
         />
 
+        {interactiveChallenge && (
+          <KeyboardInteractiveDialog
+            key={interactiveChallenge.id}
+            challenge={interactiveChallenge}
+            hostLabel={
+              (hostConfig.name || hostConfig.ip) +
+              " · " +
+              hostConfig.ip +
+              ":" +
+              hostConfig.port
+            }
+            waiting={interactiveWaiting}
+            error={interactiveError}
+            backgroundColor={backgroundColor}
+            onSubmit={(responses) => {
+              const current = interactiveChallengeRef.current,
+                socket = webSocketRef.current;
+              if (
+                !current ||
+                current.id !== interactiveChallenge.id ||
+                !socket ||
+                socket.readyState !== WebSocket.OPEN
+              )
+                return;
+              setInteractiveWaiting(true);
+              setInteractiveError(undefined);
+              socket.send(
+                JSON.stringify({
+                  type: "keyboard_interactive_response",
+                  data: { id: current.id, responses },
+                }),
+              );
+            }}
+            onCancel={() => {
+              shouldNotReconnectRef.current = true;
+              const current = interactiveChallengeRef.current,
+                socket = webSocketRef.current;
+              if (current && socket?.readyState === WebSocket.OPEN)
+                socket.send(
+                  JSON.stringify({
+                    type: "keyboard_interactive_cancel",
+                    data: { id: current.id },
+                  }),
+                );
+              clearInteractiveChallenge();
+              setIsConnecting(false);
+              socket?.close();
+              updateConnectionError(
+                t("sshInteractive.errors.SSH_AUTH_CANCELLED"),
+              );
+            }}
+          />
+        )}
         <TOTPDialog
           isOpen={totpRequired}
           prompt={totpPrompt}

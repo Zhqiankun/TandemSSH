@@ -66,6 +66,7 @@ import {
 } from "./host-identity.js";
 
 interface ConnectToHostData {
+  keyboardInteractiveVersion?: 1;
   cols: number;
   rows: number;
   hostConfig: {
@@ -405,6 +406,8 @@ wss.on("connection", async (ws: WebSocket, req) => {
   let sshConn: SSHClientType | null = null;
   let sshStream: ClientChannel | null = null;
   let lastJumpClient: SSHClientType | null = null;
+  let interactiveAuthManager: SSHAuthManager | null = null;
+  let keyboardInteractiveV1 = false;
   let keyboardInteractiveFinish: ((responses: string[]) => void) | null = null;
   let totpPromptSent = false;
   let totpTimeout: NodeJS.Timeout | null = null;
@@ -482,6 +485,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
         currentSessionId = null;
       }
     }
+    if (!isConnected) sshConn?.destroy();
     cleanupAuthState();
   });
 
@@ -551,6 +555,8 @@ wss.on("connection", async (ws: WebSocket, req) => {
             );
             break;
           }
+          if (connectData.keyboardInteractiveVersion === 1)
+            keyboardInteractiveV1 = true;
           connectData.hostConfig.userId = userId;
           handleConnectToHost(connectData).catch((error) => {
             const errMsg = getErrorMessage(error);
@@ -910,6 +916,34 @@ wss.on("connection", async (ws: WebSocket, req) => {
           break;
         }
 
+        case "keyboard_interactive_response": {
+          const request = data as { id?: unknown; responses?: unknown };
+          try {
+            if (!interactiveAuthManager) throw Error("SSH_AUTH_STALE_PROMPT");
+            interactiveAuthManager.respondKeyboardInteractive(
+              request?.id,
+              request?.responses,
+            );
+          } catch (error) {
+            const code = getErrorMessage(error);
+            ws.send(
+              JSON.stringify({
+                type: "keyboard_interactive_error",
+                id: typeof request?.id === "string" ? request.id : undefined,
+                code: /^SSH_AUTH_[A-Z_]+$/.test(code)
+                  ? code
+                  : "SSH_AUTH_INVALID_RESPONSE",
+                terminal: false,
+              }),
+            );
+          }
+          break;
+        }
+        case "keyboard_interactive_cancel": {
+          const request = data as { id?: unknown };
+          interactiveAuthManager?.cancelKeyboardInteractive(request?.id);
+          break;
+        }
         case "totp_response": {
           const totpData = data as TOTPResponseData;
           if (keyboardInteractiveFinish && totpData?.code) {
@@ -940,7 +974,10 @@ wss.on("connection", async (ws: WebSocket, req) => {
 
         case "password_response": {
           const passwordData = data as TOTPResponseData;
-          if (keyboardInteractiveFinish && passwordData?.code) {
+          if (
+            keyboardInteractiveFinish &&
+            typeof passwordData?.code === "string"
+          ) {
             if (totpTimeout) {
               clearTimeout(totpTimeout);
               totpTimeout = null;
@@ -1870,6 +1907,9 @@ wss.on("connection", async (ws: WebSocket, req) => {
     });
 
     sshConn.on("ready", () => {
+      interactiveAuthManager?.dispose();
+      interactiveAuthManager = null;
+      keyboardInteractiveFinish = null;
       clearTimeout(connectionTimeout);
       isTailscaleRetrying = false;
       if (tailscaleCheckPending) {
@@ -2850,7 +2890,10 @@ wss.on("connection", async (ws: WebSocket, req) => {
       cleanupAuthState(connectionTimeout);
     });
 
-    const sshAuthManager = new SSHAuthManager({
+    const authConnection = sshConn;
+    const attemptAuthManager = new SSHAuthManager({
+      keyboardInteractiveVersion: keyboardInteractiveV1 ? 1 : undefined,
+      onInteractiveFailure: () => authConnection?.destroy(),
       userId,
       ws,
       hostId: id || 0,
@@ -2863,6 +2906,8 @@ wss.on("connection", async (ws: WebSocket, req) => {
       warpgateAuthTimeout,
       totpAttempts: 0,
     });
+    interactiveAuthManager?.dispose();
+    interactiveAuthManager = attemptAuthManager;
 
     sshConn.on(
       "keyboard-interactive",
@@ -2877,27 +2922,30 @@ wss.on("connection", async (ws: WebSocket, req) => {
           clearTimeout(connectionTimeout);
         }
 
-        sshAuthManager.handleKeyboardInteractive(
+        if (interactiveAuthManager !== attemptAuthManager) return;
+        attemptAuthManager.handleKeyboardInteractive(
           name,
           instructions,
           instructionsLang,
           prompts,
           finish,
           resolvedCredentials as unknown as Parameters<
-            typeof sshAuthManager.handleKeyboardInteractive
+            typeof attemptAuthManager.handleKeyboardInteractive
           >[5],
           hostConfig,
         );
 
-        isKeyboardInteractive = sshAuthManager.context.isKeyboardInteractive;
+        isKeyboardInteractive =
+          attemptAuthManager.context.isKeyboardInteractive;
         keyboardInteractiveResponded =
-          sshAuthManager.context.keyboardInteractiveResponded;
+          attemptAuthManager.context.keyboardInteractiveResponded;
         keyboardInteractiveFinish =
-          sshAuthManager.context.keyboardInteractiveFinish;
-        totpPromptSent = sshAuthManager.context.totpPromptSent;
-        warpgateAuthPromptSent = sshAuthManager.context.warpgateAuthPromptSent;
-        totpTimeout = sshAuthManager.context.totpTimeout;
-        warpgateAuthTimeout = sshAuthManager.context.warpgateAuthTimeout;
+          attemptAuthManager.context.keyboardInteractiveFinish;
+        totpPromptSent = attemptAuthManager.context.totpPromptSent;
+        warpgateAuthPromptSent =
+          attemptAuthManager.context.warpgateAuthPromptSent;
+        totpTimeout = attemptAuthManager.context.totpTimeout;
+        warpgateAuthTimeout = attemptAuthManager.context.warpgateAuthTimeout;
       },
     );
 
@@ -3472,6 +3520,8 @@ wss.on("connection", async (ws: WebSocket, req) => {
   }
 
   function cleanupAuthState(timeoutId?: NodeJS.Timeout) {
+    interactiveAuthManager?.dispose();
+    interactiveAuthManager = null;
     if (timeoutId) {
       clearTimeout(timeoutId);
     }

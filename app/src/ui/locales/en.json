@@ -6545,5 +6545,23 @@
     "localRestorePending": "Database configuration was restored, but local display settings could not be written. Retrying will not import again.",
     "retryLocalRestore": "Retry applying display settings",
     "editShortcut": "Edit shortcut {{combo}}"
+  },
+  "sshInteractive": {
+    "title": "SSH interactive authentication",
+    "serverPrompt": "The following prompts come from the selected SSH server.",
+    "response": "Response {{number}}",
+    "emptyAllowed": "Responses are sent as entered. Leave a field empty if the server asks you to press Enter.",
+    "submit": "Send responses",
+    "waiting": "Waiting for the SSH server…",
+    "failed": "SSH authentication failed. Reconnect and try again.",
+    "errors": {
+      "SSH_AUTH_STALE_PROMPT": "This prompt is no longer active. Use the current prompt.",
+      "SSH_AUTH_INVALID_RESPONSE": "Check the response count and length, then try again.",
+      "SSH_AUTH_INVALID_CHALLENGE": "The server sent an invalid authentication challenge.",
+      "SSH_AUTH_TIMEOUT": "Authentication timed out. Reconnect to try again.",
+      "SSH_AUTH_LIMIT": "The server exceeded the authentication round limit.",
+      "SSH_AUTH_CANCELLED": "SSH authentication cancelled.",
+      "SSH_AUTH_CONNECTION_LOST": "The SSH connection closed during authentication."
+    }
   }
 }

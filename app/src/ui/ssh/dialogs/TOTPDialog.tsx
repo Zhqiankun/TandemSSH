@@ -51,8 +51,8 @@ export function TOTPDialog({
     const input = e.currentTarget.elements.namedItem(
       "totpCode",
     ) as HTMLInputElement;
-    if (input?.value.trim()) {
-      onSubmit(input.value.trim());
+    if (input && (!isTotp || input.value.trim())) {
+      onSubmit(isTotp ? input.value.trim() : input.value);
     }
   };
 
@@ -113,6 +113,16 @@ export function TOTPDialog({
                 autoFocus
                 placeholder={t("terminal.mfaMenuPlaceholder")}
                 className="rounded-none bg-muted/50 border-border text-center text-sm tracking-widest"
+              />
+            ) : mode === "password" ? (
+              <Input
+                id="totpCode"
+                name="totpCode"
+                type="password"
+                autoComplete="off"
+                autoFocus
+                maxLength={16384}
+                className="rounded-none bg-muted/50 border-border text-sm"
               />
             ) : (
               <Input

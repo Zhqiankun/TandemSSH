@@ -6545,5 +6545,23 @@
     "localRestorePending": "数据库中的配置已恢复，但本地界面设置未能写入。重试不会重复导入。",
     "retryLocalRestore": "重试应用界面设置",
     "editShortcut": "编辑快捷键 {{combo}}"
+  },
+  "sshInteractive": {
+    "title": "SSH 交互认证",
+    "serverPrompt": "以下提示来自当前选择的 SSH 服务器。",
+    "response": "回复 {{number}}",
+    "emptyAllowed": "回复将按原样发送。服务器要求按回车时，可以留空提交。",
+    "submit": "发送回复",
+    "waiting": "正在等待 SSH 服务器…",
+    "failed": "SSH 认证失败，请重新连接后重试。",
+    "errors": {
+      "SSH_AUTH_STALE_PROMPT": "该认证提示已失效，请使用当前提示。",
+      "SSH_AUTH_INVALID_RESPONSE": "请检查回复的数量和长度后重试。",
+      "SSH_AUTH_INVALID_CHALLENGE": "服务器发送了无效的认证提示。",
+      "SSH_AUTH_TIMEOUT": "认证已超时，请重新连接。",
+      "SSH_AUTH_LIMIT": "服务器的认证轮数超出限制。",
+      "SSH_AUTH_CANCELLED": "已取消 SSH 认证。",
+      "SSH_AUTH_CONNECTION_LOST": "SSH 连接在认证过程中断开。"
+    }
   }
 }
