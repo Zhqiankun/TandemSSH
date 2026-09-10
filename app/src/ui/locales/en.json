@@ -6008,11 +6008,32 @@
         "operation.intent": "Execution started",
         "operation.result": "Operation result",
         "operation.approval": "Human approval",
-        "workflow.completed": "Workflow completed"
+        "workflow.completed": "Workflow completed",
+        "operation.completed": "Operation result",
+        "task.authorization": "Task authorization",
+        "mcp.pairing.revoked": "MCP pairing revoked",
+        "mcp.pairing.create-requested": "MCP pairing requested",
+        "host.trust.intent": "Host identity review requested",
+        "host.trust.decision": "Host identity decision"
       },
       "archive": "Archive and release resources",
       "archiveHint": "Keep local redacted operation logs and a task summary. Release task memory, temporary chat state and local grants without deleting transferred files.",
-      "archiveBlocked": "Unknown results, audit gaps or cleanup work must be resolved before archiving."
+      "archiveBlocked": "Unknown results, audit gaps or cleanup work must be resolved before archiving.",
+      "exportTitle": "Export redacted history",
+      "exportHint": "Exports all retained records matching the task filter, not just this page. Redacts records again; full terminal recordings are not included.",
+      "exportTask": "Export this task",
+      "exportAll": "Export all retained records",
+      "exportProgress": "Preparing {{count}} records · {{kib}} KiB",
+      "exportReady": "Generated an export with {{count}} records. Check the save location for the file.",
+      "exportSkipped": "Found {{count}} damaged or unavailable data segments. The exported file may be missing records.",
+      "exportErrors": {
+        "HISTORY_EXPORT_CANCELLED": "Export cancelled.",
+        "HISTORY_EXPORT_LIMIT": "The export exceeds the supported size. Narrow the task filter and try again.",
+        "HISTORY_EXPORT_BUSY": "Another export is running. Try again after it finishes.",
+        "HISTORY_EXPORT_INCOMPLETE": "The export was interrupted; no partial file was downloaded.",
+        "HISTORY_EXPORT_INVALID": "Export validation failed; no file was downloaded.",
+        "HISTORY_EXPORT_FAILED": "Export failed. No completed file was generated."
+      }
     },
     "tunnelTrustRejected": "Server identity verification did not succeed. Review the address and fingerprint in Host Trust, then reconnect the tunnel manually.",
     "localBrowser": {

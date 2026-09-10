@@ -1,4 +1,9 @@
 import fs from "node:fs/promises";
+import {
+  AUDIT_EXPORT_LIMITS,
+  type AuditExportQuery,
+  type AuditExportFrame,
+} from "../../../types/task-history.js";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -61,6 +66,7 @@ const decode = (v: string) => {
 export class AuditHistoryReader {
   private readonly scope: string;
   private readers = 0;
+  private exporting = false;
   constructor(
     private directory: string,
     private retentionMs: number,
@@ -268,6 +274,92 @@ export class AuditHistoryReader {
       return result;
     } finally {
       this.readers--;
+    }
+  }
+  async *exportHistory(
+    input: AuditExportQuery,
+    signal: AbortSignal,
+  ): AsyncGenerator<AuditExportFrame> {
+    const query = z
+      .object({ taskId: z.string().min(1).max(128).optional() })
+      .strict()
+      .parse(input);
+    if (this.exporting) throw Error("HISTORY_EXPORT_BUSY");
+    this.exporting = true;
+    const startedAt = Date.now(),
+      decoder = new TextDecoder("utf-8", { fatal: true });
+    let records = 0,
+      skipped = 0,
+      scannedBytes = 0;
+    try {
+      signal.throwIfAborted();
+      const files = await this.files();
+      if (files.length > AUDIT_EXPORT_LIMITS.shards)
+        throw Error("HISTORY_EXPORT_LIMIT");
+      yield {
+        kind: "header",
+        schemaVersion: 1,
+        startedAt,
+        taskId: query.taskId ?? null,
+        retentionDays: this.retentionMs / 86400000,
+      };
+      for (const file of files) {
+        signal.throwIfAborted();
+        let buffer: Buffer;
+        try {
+          buffer = await this.read(file);
+        } catch (error) {
+          if (
+            (error as NodeJS.ErrnoException).code !== "ENOENT" &&
+            (error as Error).message !== "HISTORY_RECORD_INVALID"
+          )
+            throw error;
+          skipped++;
+          continue;
+        }
+        scannedBytes += buffer.length;
+        if (scannedBytes > this.maxBytes) throw Error("HISTORY_EXPORT_LIMIT");
+        let end = buffer.length;
+        if (end && buffer[end - 1] !== 10) {
+          skipped++;
+          end = buffer.lastIndexOf(10) + 1;
+        }
+        while (end > 0) {
+          signal.throwIfAborted();
+          const start = end > 1 ? buffer.lastIndexOf(10, end - 2) + 1 : 0;
+          let record: z.infer<typeof recordSchema>;
+          try {
+            record = recordSchema.parse(
+              JSON.parse(decoder.decode(buffer.subarray(start, end - 1))),
+            );
+          } catch {
+            skipped++;
+            end = start;
+            continue;
+          }
+          const row = this.row(record, file, start, end - start);
+          end = start;
+          if (
+            record.at < startedAt - this.retentionMs ||
+            record.at > startedAt ||
+            (query.taskId && row.taskId !== query.taskId)
+          )
+            continue;
+          if (++records > AUDIT_EXPORT_LIMITS.records)
+            throw Error("HISTORY_EXPORT_LIMIT");
+          yield { kind: "record", record: redact(record) };
+        }
+      }
+      signal.throwIfAborted();
+      yield {
+        kind: "summary",
+        completed: true,
+        records,
+        skipped,
+        scannedBytes,
+      };
+    } finally {
+      this.exporting = false;
     }
   }
   async detail(token: string, offset = 0): Promise<AuditHistoryDetail> {

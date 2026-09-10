@@ -1,3 +1,4 @@
+import { HistoryExport } from "./HistoryExport";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/button";
@@ -156,6 +157,7 @@ function HistoryBrowser({ initialTaskId }: { initialTaskId?: string }) {
           {t("tandem.history.all")}
         </Button>
       </form>
+      <HistoryExport key={JSON.stringify(filter ?? null)} taskId={filter} />
       {busy && <p role="status">{t("tandem.history.loading")}</p>}
       {error && (
         <p role="alert" className="text-amber-500">

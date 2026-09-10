@@ -12,7 +12,7 @@ import {
 import i18n from "../../i18n/i18n";
 import type { TaskView } from "@/types/collaboration-task";
 vi.mock("@/api/task-history-api", () => ({
-  taskHistoryApi: { query: vi.fn(), detail: vi.fn() },
+  taskHistoryApi: { query: vi.fn(), detail: vi.fn(), export: vi.fn() },
 }));
 vi.mock("@/api/collaboration-api", () => ({
   collaborationApi: { taskPage: vi.fn(), operationDetail: vi.fn() },
@@ -28,7 +28,7 @@ import { useTaskOperationPage } from "../../features/collaboration/use-task-oper
 const row = {
   id: "event",
   at: Date.now(),
-  type: "operation.result",
+  type: "operation.completed",
   taskId: "task",
   program: "pwd",
   status: "succeeded",
@@ -183,4 +183,61 @@ it("loads only the selected task page and ignores an old task's late response", 
       expect.any(AbortSignal),
     ),
   );
+});
+
+it("cancels the all-records export even when the new task filter is literally all", async () => {
+  await i18n.changeLanguage("zh-CN");
+  vi.mocked(taskHistoryApi.query).mockResolvedValue({
+    items: [],
+    nextCursor: null,
+    skipped: 0,
+    scannedBytes: 0,
+    retentionDays: 7,
+    maxBytes: 104857600,
+  });
+  let finish!: (
+    value: Awaited<ReturnType<typeof taskHistoryApi.export>>,
+  ) => void;
+  vi.mocked(taskHistoryApi.export).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const create = vi.fn();
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: create,
+  });
+  render(
+    <>
+      <TaskHistoryButton />
+      <TaskHistoryDialog userId="owner" />
+    </>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "操作历史" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "筛选" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "导出全部保留记录" }));
+  await waitFor(() => expect(taskHistoryApi.export).toHaveBeenCalledOnce());
+  const signal = vi.mocked(taskHistoryApi.export).mock.calls[0][1];
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "all" } });
+  fireEvent.click(screen.getByRole("button", { name: "筛选" }));
+  await waitFor(() => expect(signal.aborted).toBe(true));
+  await act(async () =>
+    finish({
+      blob: new Blob(["late"]),
+      bytes: 4,
+      summary: {
+        kind: "summary",
+        completed: true,
+        records: 1,
+        skipped: 0,
+        scannedBytes: 4,
+      },
+    }),
+  );
+  expect(create).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "导出该任务记录" })).toBeEnabled();
 });

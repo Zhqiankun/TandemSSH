@@ -6008,11 +6008,32 @@
         "operation.intent": "开始执行",
         "operation.result": "执行结果",
         "operation.approval": "人工批准",
-        "workflow.completed": "流程完成"
+        "workflow.completed": "流程完成",
+        "operation.completed": "执行结果",
+        "task.authorization": "任务授权",
+        "mcp.pairing.revoked": "MCP 配对已撤销",
+        "mcp.pairing.create-requested": "MCP 配对请求",
+        "host.trust.intent": "主机身份确认请求",
+        "host.trust.decision": "主机身份确认结果"
       },
       "archive": "归档并释放资源",
       "archiveHint": "保留本机脱敏操作日志和任务摘要，释放任务内存、临时聊天状态与本地授权；不会删除已传输的文件。",
-      "archiveBlocked": "仍有未知结果、审计缺口或待清理文件，需要核对后才能归档。"
+      "archiveBlocked": "仍有未知结果、审计缺口或待清理文件，需要核对后才能归档。",
+      "exportTitle": "导出脱敏记录",
+      "exportHint": "导出当前任务筛选范围内的全部保留记录，不限当前页。导出时再次脱敏，不包含完整终端录制。",
+      "exportTask": "导出该任务记录",
+      "exportAll": "导出全部保留记录",
+      "exportProgress": "正在准备 {{count}} 条记录 · {{kib}} KiB",
+      "exportReady": "已生成含 {{count}} 条记录的导出文件，请在保存位置确认。",
+      "exportSkipped": "发现 {{count}} 处损坏或不可用数据，导出文件可能缺少记录。",
+      "exportErrors": {
+        "HISTORY_EXPORT_CANCELLED": "导出已取消。",
+        "HISTORY_EXPORT_LIMIT": "导出内容超过支持的容量，请缩小任务筛选范围后重试。",
+        "HISTORY_EXPORT_BUSY": "另一个导出正在进行，请等待完成后重试。",
+        "HISTORY_EXPORT_INCOMPLETE": "导出中断，未下载不完整文件。",
+        "HISTORY_EXPORT_INVALID": "导出校验失败，未下载文件。",
+        "HISTORY_EXPORT_FAILED": "导出失败，未生成完整文件。"
+      }
     },
     "tunnelTrustRejected": "服务器身份验证未通过。请在主机信任面板核对地址和指纹，再手动连接隧道。",
     "localBrowser": {

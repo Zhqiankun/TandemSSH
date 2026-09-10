@@ -1,5 +1,8 @@
 import { AuditHistoryReader } from "./history-reader.js";
-import type { AuditHistoryQuery } from "../../../types/task-history.js";
+import type {
+  AuditHistoryQuery,
+  AuditExportQuery,
+} from "../../../types/task-history.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -34,6 +37,19 @@ export class AuditJournal implements OperationAuditPort {
   async queryHistory(query: AuditHistoryQuery) {
     await this.queue;
     return this.history.query(query);
+  }
+  async *exportHistory(query: AuditExportQuery, signal: AbortSignal) {
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => reject(signal.reason);
+      signal.addEventListener("abort", abort, { once: true });
+      this.queue.then(() => {
+        signal.removeEventListener("abort", abort);
+        resolve();
+      });
+      if (signal.aborted) abort();
+    });
+    signal.throwIfAborted();
+    yield* this.history.exportHistory(query, signal);
   }
   async historyDetail(token: string, offset?: number) {
     await this.queue;

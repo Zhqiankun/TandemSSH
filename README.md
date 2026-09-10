@@ -117,6 +117,7 @@ alpha.1 起支持预览版内置更新：启动检查，运行期间每 20 分�
 | [独立桌面隧道](docs/74-standalone-c2s.md) | 本机中继、真实三模式数据、旧配置复核和中文启停 |
 | [开发预览下载说明](docs/75-preview-release-notes.md) | Windows 安装/免安装包和当前试用边界 |
 | [隧道在途取消](docs/76-c2s-pending-cancellation.md) | 认证等待取消、旧响应隔离、中文控件与三模式回归 |
+| [任务历史导出](docs/77-history-export.md) | 脱敏完整导出、中文取消与真实 MCP 撤销/文件下载验证 |
 | [预览版内部更新](docs/78-preview-auto-updates.md) | latest.yml、主进程每 20 分钟检查、真实桌面与 Actions 发布 |
 
 ## 产品主线

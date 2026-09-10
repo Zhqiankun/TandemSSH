@@ -1,3 +1,4 @@
+import { historyExportHandler } from "../audit/history-export-http.js";
 import { taskRecovery } from "../recovery/production.js";
 import { taskRecoveryRoutes } from "../recovery/http-routes.js";
 import { releaseTaskFiles } from "../files/production.js";
@@ -137,6 +138,10 @@ const pageOptions = (req: express.Request) => {
       operationOffset: req.query.operationOffset,
     });
 };
+router.post(
+  "/history/export",
+  historyExportHandler((req) => journalFor(actor(req).userId)),
+);
 router.post(
   "/history/query",
   route((req) =>

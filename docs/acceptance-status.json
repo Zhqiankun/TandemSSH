@@ -292,9 +292,10 @@
         "65-terminal-pressure.md",
         "66-terminal-output-bounds.md",
         "67-recording-write-bounds.md",
-        "69-chat-stream-bounds.md"
+        "69-chat-stream-bounds.md",
+        "77-history-export.md"
       ],
-      "remaining": "脱敏记录与局部缺口处理已实现；所有记录入口、导出和资源生命周期仍需覆盖证明。"
+      "remaining": "已补齐任务/全部保留记录的脱敏导出并实际下载；完整来源、目标、审批与策略版本展示仍按本项逐一核对。"
     },
     {
       "id": "F09",
@@ -1127,7 +1128,7 @@
       "id": "A25",
       "requirement": "MCP 撤销和日志导出",
       "acceptance": "撤销后不接受新操作，导出不含已知秘密",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/mcp",
       "records": [
         "13-mcp.md",
@@ -1135,9 +1136,12 @@
         "35-directory-workbench.md",
         "43-task-execution-recovery.md",
         "48-task-download-directory-recovery.md",
-        "64-jump-combined-acceptance.md"
+        "64-jump-combined-acceptance.md",
+        "77-history-export.md"
       ],
-      "remaining": "已存在 38 工具及打包 Codex 发现证据；撤销、导出和所有工具权限矩阵仍需逐项闭环。"
+      "remaining": "",
+      "verifiedAt": "2026-09-11",
+      "verification": "真实 Windows/MCP/SSH 撤销、拒绝新请求和旧配置重连、人工继续操作；实际下载 28/67 条脱敏记录并核对字节与已知秘密。"
     },
     {
       "id": "A26",

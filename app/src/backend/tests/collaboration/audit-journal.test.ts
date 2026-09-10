@@ -210,3 +210,116 @@ it("does not expose expired records even before the next writer retention pass",
     "HISTORY_RECORD_NOT_FOUND",
   );
 });
+
+async function exportFrames(journal: AuditJournal, taskId?: string) {
+  const frames = [];
+  for await (const frame of journal.exportHistory(
+    { taskId },
+    new AbortController().signal,
+  ))
+    frames.push(frame);
+  return frames;
+}
+it("exports every retained event beyond a history page and filters within the current user", async () => {
+  const f = await fixture();
+  for (let i = 0; i < 61; i++)
+    await f.journal.record("operation.result", {
+      context: { taskId: i % 2 ? "other" : "selected" },
+      id: randomUUID(),
+      output: "API_KEY=export-secret-" + i,
+    });
+  const all = await exportFrames(f.journal),
+    selected = await exportFrames(f.journal, "selected"),
+    foreign = await exportFrames(new AuditJournal(f.root, "different-user"));
+  expect(all.filter((f) => f.kind === "record")).toHaveLength(61);
+  expect(selected.filter((f) => f.kind === "record")).toHaveLength(31);
+  expect(all.at(-1)).toMatchObject({
+    kind: "summary",
+    completed: true,
+    records: 61,
+    skipped: 0,
+  });
+  expect(foreign.at(-1)).toMatchObject({ records: 0 });
+  expect(JSON.stringify(all)).not.toContain("export-secret-");
+});
+it("redacts legacy plaintext again and counts damaged and incomplete records", async () => {
+  const f = await fixture();
+  await f.journal.record("task.created", { id: "selected" });
+  const name = (await fs.readdir(f.directory))[0],
+    file = path.join(f.directory, name);
+  await fs.appendFile(
+    file,
+    JSON.stringify({
+      schemaVersion: 1,
+      id: randomUUID(),
+      at: Date.now(),
+      type: "operation.result",
+      data: {
+        context: { taskId: "selected" },
+        password: "legacy-password",
+        args: ["--token", "legacy-argument"],
+        output: "API_KEY=legacy-assignment",
+      },
+    }) + '\n{broken}\n{"incomplete":',
+  );
+  const frames = await exportFrames(f.journal, "selected");
+  expect(frames.at(-1)).toMatchObject({ records: 2, skipped: 2 });
+  const output = JSON.stringify(frames);
+  for (const secret of [
+    "legacy-password",
+    "legacy-argument",
+    "legacy-assignment",
+  ])
+    expect(output).not.toContain(secret);
+  expect(output).toContain("[redacted]");
+});
+it("releases the export slot after cancellation and rejects overlapping scans", async () => {
+  const f = await fixture();
+  await f.journal.record("event", {});
+  const stop = new AbortController(),
+    first = f.journal.exportHistory({}, stop.signal);
+  expect((await first.next()).value).toMatchObject({ kind: "header" });
+  await expect(
+    f.journal.exportHistory({}, new AbortController().signal).next(),
+  ).rejects.toThrow("HISTORY_EXPORT_BUSY");
+  stop.abort(Error("cancelled"));
+  await expect(first.next()).rejects.toThrow("cancelled");
+  expect((await exportFrames(f.journal)).at(-1)).toMatchObject({ records: 1 });
+});
+it("fails an oversized retained scan without producing a success summary", async () => {
+  const f = await fixture(600);
+  await f.journal.record("event", {});
+  const name = (await fs.readdir(f.directory))[0];
+  await fs.appendFile(
+    path.join(f.directory, name),
+    JSON.stringify({
+      schemaVersion: 1,
+      id: randomUUID(),
+      at: Date.now(),
+      type: "event",
+      data: { text: "x".repeat(700) },
+    }) + "\n",
+  );
+  await expect(exportFrames(f.journal)).rejects.toThrow("HISTORY_EXPORT_LIMIT");
+});
+
+it("counts invalid UTF-8 as damaged data instead of silently replacing characters", async () => {
+  const f = await fixture();
+  await f.journal.record("event", {});
+  const name = (await fs.readdir(f.directory))[0];
+  const broken = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 1,
+      id: randomUUID(),
+      at: Date.now(),
+      type: "event",
+      data: { text: "bad-value" },
+    }) + "\n",
+  );
+  broken[broken.indexOf("bad-value")] = 255;
+  await fs.appendFile(path.join(f.directory, name), broken);
+  expect((await exportFrames(f.journal)).at(-1)).toMatchObject({
+    records: 1,
+    skipped: 1,
+  });
+});
