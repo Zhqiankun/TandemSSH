@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import express from "express";
+import { randomInt } from "node:crypto";
 import type { Server } from "http";
 import { createCompressionMiddleware } from "../../utils/compression-config.js";
 
@@ -32,9 +33,28 @@ describe("createCompressionMiddleware", () => {
     app.use(createCompressionMiddleware());
     configure(app);
 
-    server = await new Promise<Server>((resolve) => {
-      const s = app.listen(0, "127.0.0.1", () => resolve(s));
-    });
+    // Some Windows port ranges include service ports rejected by Fetch.
+    // Bind a high private port instead; keep the HTTP requests and assertions intact.
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        server = await new Promise<Server>((resolve, reject) => {
+          const candidate = app.listen(
+            randomInt(49152, 65536),
+            "127.0.0.1",
+            () => resolve(candidate),
+          );
+          candidate.once("error", reject);
+        });
+        break;
+      } catch (error) {
+        if (
+          (error as NodeJS.ErrnoException).code !== "EADDRINUSE" ||
+          attempt === 9
+        )
+          throw error;
+      }
+    }
+    if (!server) throw new Error("HTTP fixture did not start");
     const address = server.address();
     if (!address || typeof address === "string") {
       throw new Error("expected a TCP address");
