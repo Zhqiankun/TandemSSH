@@ -1,3 +1,4 @@
+import { OwnershipEditor } from "./OwnershipEditor";
 import { parsePermissions } from "../permissions";
 import React, { useState, useEffect } from "react";
 import {
@@ -27,6 +28,7 @@ interface PermissionsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (file: FileItem, permissions: string) => Promise<void>;
+  onSaveOwnership?: (file: FileItem, uid: number, gid: number) => Promise<void>;
 }
 
 export function PermissionsDialog({
@@ -34,6 +36,7 @@ export function PermissionsDialog({
   open,
   onOpenChange,
   onSave,
+  onSaveOwnership,
 }: PermissionsDialogProps) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
@@ -249,6 +252,17 @@ export function PermissionsDialog({
           <p role="alert" className="text-sm text-destructive">
             {t("fileManager.invalidPermissions")}
           </p>
+        )}
+        {onSaveOwnership && (
+          <OwnershipEditor
+            key={file.path + String(open)}
+            owner={file.owner}
+            group={file.group}
+            disabled={loading}
+            onBusyChange={setLoading}
+            onSave={(uid, gid) => onSaveOwnership(file, uid, gid)}
+            onSaved={() => onOpenChange(false)}
+          />
         )}
         <DialogFooter>
           <Button

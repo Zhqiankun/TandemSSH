@@ -1,3 +1,4 @@
+import { changeFileOwnership } from "@/api/file-ownership-api";
 import {
   UploadTreeDialog,
   type DirectoryUploadRequest,
@@ -2116,6 +2117,13 @@ function FileManagerContent({
     setPermissionsDialogFile(file);
   }
 
+  async function handleSaveOwnership(file: FileItem, uid: number, gid: number) {
+    if (!sshSessionId) throw Error("SSH_SESSION_UNAVAILABLE");
+    await changeFileOwnership(sshSessionId, file.path, uid, gid);
+    await handleRefreshDirectory();
+    toast.success(t("fileManager.ownershipSaved"));
+  }
+
   async function handleSavePermissions(file: FileItem, permissions: string) {
     if (!sshSessionId) {
       toast.error(t("fileManager.noSSHConnection"));
@@ -3402,6 +3410,7 @@ function FileManagerContent({
         permissionsDialogFile={permissionsDialogFile}
         setPermissionsDialogFile={setPermissionsDialogFile}
         handleSavePermissions={handleSavePermissions}
+        handleSaveOwnership={handleSaveOwnership}
         sudoDialogOpen={sudoDialogOpen}
         setSudoDialogOpen={setSudoDialogOpen}
         setPendingSudoOperation={setPendingSudoOperation}

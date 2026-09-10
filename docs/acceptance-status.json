@@ -639,9 +639,10 @@
         "58-local-remote-file-panels.md",
         "59-windows-file-attributes.md",
         "80-unix-permissions.md",
-        "81-symlink-paths.md"
+        "81-symlink-paths.md",
+        "84-file-ownership.md"
       ],
-      "remaining": "Unix 特殊权限与完整链接路径已修复，真实 Alpine/OpenSSH 权限读回及 HTTP/SFTP 链接矩阵通过；待 Windows 实际交互、GNU 权限环境及所有者/组修改完整验收。"
+      "remaining": "Unix mode 与链接路径已通过真实 Alpine 验证；所有者/组修改 UI 和接口已补齐、专项通过，待真实 Linux 权限与 Windows 属性操作验收，GNU 权限环境亦待核对。"
     },
     {
       "id": "B11",

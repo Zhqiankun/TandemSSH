@@ -2356,7 +2356,14 @@
     "setuid": "Set user ID (setuid)",
     "setgid": "Set group ID (setgid)",
     "sticky": "Restricted deletion (sticky)",
-    "invalidPermissions": "Cannot read the current Unix permissions. Refresh the file list before editing."
+    "invalidPermissions": "Cannot read the current Unix permissions. Refresh the file list before editing.",
+    "ownershipTitle": "Owner and group",
+    "ownerUid": "Owner UID",
+    "groupGid": "Group GID",
+    "ownershipHint": "Requires permission on the server. Uses numeric IDs and changes a selected link itself. Special mode bits may be cleared by the server.",
+    "ownershipFailed": "Change failed or could not be confirmed. Refresh the file properties before trying again.",
+    "saveOwnership": "Save owner and group",
+    "ownershipSaved": "Owner and group updated"
   },
   "transfer": {
     "copyToHost": "Copy to host…",

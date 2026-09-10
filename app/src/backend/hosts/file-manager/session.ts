@@ -175,11 +175,13 @@ export function execChannel(
     err: Error | undefined,
     stream: import("ssh2").ClientChannel,
   ) => void,
+  beforeOpen?: () => void,
 ): void {
   session.channelOpener
     .run(
       () =>
         new Promise<import("ssh2").ClientChannel>((resolve, reject) => {
+          beforeOpen?.();
           session.client.exec(command, (err, stream) => {
             if (err) return reject(err);
             resolve(stream);

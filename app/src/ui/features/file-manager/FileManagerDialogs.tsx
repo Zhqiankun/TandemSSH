@@ -33,6 +33,11 @@ type FileManagerDialogsProps = {
   permissionsDialogFile: FileItem | null;
   setPermissionsDialogFile: (file: FileItem | null) => void;
   handleSavePermissions: (file: FileItem, permissions: string) => Promise<void>;
+  handleSaveOwnership: (
+    file: FileItem,
+    uid: number,
+    gid: number,
+  ) => Promise<void>;
   sudoDialogOpen: boolean;
   setSudoDialogOpen: (open: boolean) => void;
   setPendingSudoOperation: (operation: PendingSudoOperation | null) => void;
@@ -61,6 +66,7 @@ export function FileManagerDialogs({
   permissionsDialogFile,
   setPermissionsDialogFile,
   handleSavePermissions,
+  handleSaveOwnership,
   sudoDialogOpen,
   setSudoDialogOpen,
   setPendingSudoOperation,
@@ -116,6 +122,7 @@ export function FileManagerDialogs({
           if (!open) setPermissionsDialogFile(null);
         }}
         onSave={handleSavePermissions}
+        onSaveOwnership={handleSaveOwnership}
       />
 
       <SudoPasswordDialog

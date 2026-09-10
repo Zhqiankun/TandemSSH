@@ -1,3 +1,4 @@
+import { registerOwnershipRoute } from "./ownership-route.js";
 import type { Express } from "express";
 import type { AuthenticatedRequest } from "../../../types/index.js";
 import { fileLogger } from "../../utils/logger.js";
@@ -17,6 +18,7 @@ export function registerFileActionRoutes(
     verifySessionOwnership,
   }: FileActionRoutesDeps,
 ): void {
+  registerOwnershipRoute(app, { sshSessions, verifySessionOwnership });
   /**
    * @openapi
    * /ssh/file_manager/ssh/copyItem:

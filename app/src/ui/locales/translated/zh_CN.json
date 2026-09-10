@@ -2356,7 +2356,14 @@
     "setuid": "设置用户 ID（setuid）",
     "setgid": "设置组 ID（setgid）",
     "sticky": "限制删除（sticky）",
-    "invalidPermissions": "无法识别当前 Unix 权限，请刷新文件列表后再修改。"
+    "invalidPermissions": "无法识别当前 Unix 权限，请刷新文件列表后再修改。",
+    "ownershipTitle": "所有者与组",
+    "ownerUid": "所有者 UID",
+    "groupGid": "组 GID",
+    "ownershipHint": "需要远端账户具备权限。使用数字 ID；选择链接时修改链接自身。远端系统可能清除特殊权限位。",
+    "ownershipFailed": "修改失败或未能确认。请刷新文件属性核对结果后再操作。",
+    "saveOwnership": "保存所有者/组",
+    "ownershipSaved": "所有者与组已更新"
   },
   "transfer": {
     "copyToHost": "复制到主机…",
