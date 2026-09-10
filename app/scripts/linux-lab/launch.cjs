@@ -96,7 +96,7 @@ async function freePort() {
       [
         "sh",
         "-c",
-        "mkdir -p /home/alpine/tandem-test /mnt/tandem-full /srv/tandem-denied; chown alpine:alpine /home/alpine/tandem-test; chmod 700 /srv/tandem-denied; mount -t tmpfs -o size=1048576 tmpfs /mnt/tandem-full; chmod 777 /mnt/tandem-full; rc-service sshd restart; printf '\\nTANDEM_LINUX_READY\\n' > /dev/ttyS0",
+        "addgroup -g 1600 tandem-files; addgroup alpine tandem-files; mkdir -p /home/alpine/tandem-test /mnt/tandem-full /srv/tandem-denied; chown alpine:alpine /home/alpine/tandem-test; chmod 700 /srv/tandem-denied; mount -t tmpfs -o size=1048576 tmpfs /mnt/tandem-full; chmod 777 /mnt/tandem-full; rc-service sshd restart; printf '\\nTANDEM_LINUX_READY\\n' > /dev/ttyS0",
       ],
     ],
   };

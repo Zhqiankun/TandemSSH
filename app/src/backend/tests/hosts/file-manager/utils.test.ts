@@ -148,3 +148,17 @@ describe("detectBinary", () => {
     expect(detectBinary(Buffer.from("line1\r\nline2\tend"))).toBe(false);
   });
 });
+
+describe("special permission bits in SFTP listings", () => {
+  it("preserves special bits with and without execute access", () => {
+    expect(modeToPermissions(0o042755)).toBe("drwxr-sr-x");
+    expect(modeToPermissions(0o041777)).toBe("drwxrwxrwt");
+    expect(modeToPermissions(0o107654)).toBe("-rwSr-sr-T");
+  });
+  it("recognizes executable special bits without treating uppercase S/T as executable", () => {
+    expect(isExecutableFile("---s------", "tool")).toBe(true);
+    expect(isExecutableFile("------s---", "tool")).toBe(true);
+    expect(isExecutableFile("---------t", "tool")).toBe(true);
+    expect(isExecutableFile("---S--S--T", "tool")).toBe(false);
+  });
+});

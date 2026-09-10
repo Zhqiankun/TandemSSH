@@ -642,7 +642,7 @@
         "81-symlink-paths.md",
         "84-file-ownership.md"
       ],
-      "remaining": "Unix mode 与链接路径已通过真实 Alpine 验证；所有者/组修改 UI 和接口已补齐、专项通过，待真实 Linux 权限与 Windows 属性操作验收，GNU 权限环境亦待核对。"
+      "remaining": "Unix mode 和所有者/组修改已通过真实 Windows + Alpine 读回与无权修改拒绝；链接 HTTP/SFTP 矩阵通过，Windows 主动跟随界面及完整属性流程仍待核对。alpha.2 的列表特殊位遗漏已在后续提交修复，待新版本发行。"
     },
     {
       "id": "B11",

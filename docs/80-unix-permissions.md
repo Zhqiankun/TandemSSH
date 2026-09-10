@@ -23,3 +23,5 @@
 可复用测试：app/src/backend/tests/linux/permissions-acceptance.test.ts。运行时设置 TANDEM_LINUX_MANIFEST 为项目脚本创建的隔离 connection.json，再运行该 Vitest 文件；未配置时显式跳过，不声称普通 CI 已运行 Linux VM。证据 .cache/unix-permissions-linux-results.json，1 个真实集成场景通过（含上述子断言），873 毫秒；类型检查和新增测试 ESLint 通过。虚拟机 4129213a-350d-48dc-b8c5-ba1257e278f7 正常退出，vmExited.code=0，日志 .cache/unix-permissions-linux-lab.log。
 
 该结果证明 Alpine/BusyBox 和 OpenSSH 上的实际权限行为，尚不代替 GNU 工具环境、Windows 实际对话框及所有者/组修改和链接跟随的完整 B10 验收。
+
+后续 Windows 实机发现 alpha.2 的列表 modeToPermissions 仍遗漏特殊位；已在后续提交修复 s/S/t/T，并通过真实属性对话框 2755 → 0755 的显示及读回验证。详见 [84](84-file-ownership.md)。alpha.2 不含此后续修复。

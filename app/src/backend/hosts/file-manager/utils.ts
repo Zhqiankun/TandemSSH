@@ -2,8 +2,11 @@ export function isExecutableFile(
   permissions: string,
   fileName: string,
 ): boolean {
-  const hasExecutePermission =
-    permissions[3] === "x" || permissions[6] === "x" || permissions[9] === "x";
+  const hasExecutePermission = [
+    permissions[3],
+    permissions[6],
+    permissions[9],
+  ].some((bit) => bit === "x" || bit === "s" || bit === "t");
 
   const scriptExtensions = [
     ".sh",
@@ -44,13 +47,13 @@ export function modeToPermissions(mode: number): string {
   const perms = [
     mode & 0o400 ? "r" : "-",
     mode & 0o200 ? "w" : "-",
-    mode & 0o100 ? "x" : "-",
+    mode & 0o4000 ? (mode & 0o100 ? "s" : "S") : mode & 0o100 ? "x" : "-",
     mode & 0o040 ? "r" : "-",
     mode & 0o020 ? "w" : "-",
-    mode & 0o010 ? "x" : "-",
+    mode & 0o2000 ? (mode & 0o010 ? "s" : "S") : mode & 0o010 ? "x" : "-",
     mode & 0o004 ? "r" : "-",
     mode & 0o002 ? "w" : "-",
-    mode & 0o001 ? "x" : "-",
+    mode & 0o1000 ? (mode & 0o001 ? "t" : "T") : mode & 0o001 ? "x" : "-",
   ].join("");
 
   return prefix + perms;

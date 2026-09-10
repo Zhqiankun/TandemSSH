@@ -15,3 +15,13 @@
 4 文件 / 34 项通过：参数范围/身份、字面路径、远端失败、读回不一致、超时关闭、不重试、真实通道队列发送前拒绝、中文校验/失败保留及重复提交保护，并回归原权限对话框。类型检查通过；修改文件 ESLint 0 错误、1 项原 FileManager 未使用 windowId 警告；静态翻译键无缺失。证据 .cache/ownership-tests.log、.cache/ownership-final-types.log、.cache/ownership-lint.log。
 
 尚未完成真实 Linux 所有权修改/权限拒绝与 Windows 属性界面验收；本次改动不包含在已公开 alpha.2，暂不宣称完整 B10 完成。
+
+## 真实 Linux 与 Windows 界面验收通过
+
+隔离 Alpine 3.24.1 夹具新增补充组 tandem-files（GID 1600），仅用于验证实际允许的组变更，普通 SSH 用户仍为 UID 1000。真实 HTTP/OpenSSH 测试将文件组 1000 → 1600 → 1000，每次 SFTP 读回一致；修改链接组为 1600 后链接目标仍为 1000。改为 UID 0 或 GID 0 均拒绝且原值、内容保留，特殊字符文件名未执行额外命令。与 mode/链接测试联合 3 文件 / 3 个实际集成场景通过，2.77 秒；.cache/ownership-linux-results.json。
+
+第一次 Windows 实机观测中，组修改、刷新显示和无权修改的中文错误正常；随后发现 SFTP 列表 modeToPermissions 没有编码特殊位，导致目录 setgid 在对话框丢失。修复 utils.ts 的 s/S/t/T 转换，同时让可执行判断识别小写 s/t。该问题也影响已发布 alpha.2，修复在后续提交，不声称旧包已经修复。失败证据 .cache/desktop-observation-report-534f98a4-1451-48f3-8bb2-16699bfa0369。
+
+修复后相关 4 文件 / 47 项通过，前后端构建及本机开发目录包成功。真实 Windows 再次操作属性菜单：组保存、刷新后 GID 1600 可见、UID 0 拒绝且原所有权不变、中文失败提示保留，以及目录 2755 → 0755 的 setgid 显示/清除全部通过。报告 .cache/desktop-observation-report-cfca715b-cfe7-44ab-8c45-7c8009c63480/ownership-desktop-result.json，失败提示截图已查看。客户端正常退出，专属 VM 195fcff7-c171-400c-8518-e62605c8b84c 正常关闭，vmExited.code=0。
+
+修改文件静态检查通过。此实测不宣称所有 Unix 环境、Windows 链接跟随界面或整个 B10 均已验收完成，公开安装包需后续 Actions 发行。
