@@ -9,6 +9,11 @@ async function probe(root) {
     path.join(root, "TandemSSH.exe").toLowerCase()
   )
     throw Error("Probe must run in the packaged executable");
+  const notices =
+    require("./verify-distribution-notices.cjs").verifyDistributionNotices(
+      root,
+    );
+  if (notices.length !== 4) throw Error("Distribution notices incomplete");
   const load = createRequire(
     path.join(
       root,

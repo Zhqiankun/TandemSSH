@@ -1,0 +1,1389 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-09-10",
+  "codeBaseline": "86aaaca76455852cbb37b606e6ac90df67c38ba7",
+  "meaning": "not-fully-verified is not no implementation; existing scoped evidence does not yet prove the complete requirement.",
+  "requirements": [
+    {
+      "id": "R01",
+      "requirement": "项目开源",
+      "acceptance": "核心 SSH、协同和自定义模型功能不依赖本软件会员",
+      "status": "not-fully-verified",
+      "implementation": ".github/workflows/release.yml",
+      "records": [
+        "10-open-source-base.md",
+        "11-m0-validation.md",
+        "25-github-releases.md",
+        "46-online-update-acceptance.md"
+      ],
+      "remaining": "GitHub Release 列表当前为空；已测在线更新为隔离夹具，公开渠道和历史版本迁移未验收，发行依赖/资源许可清单未完成。"
+    },
+    {
+      "id": "R02",
+      "requirement": "Windows 桌面优先",
+      "acceptance": "第一版必须在干净 Windows 环境安装、打开和使用",
+      "status": "not-fully-verified",
+      "implementation": ".github/workflows/release.yml",
+      "records": [
+        "10-open-source-base.md",
+        "11-m0-validation.md",
+        "25-github-releases.md",
+        "46-online-update-acceptance.md"
+      ],
+      "remaining": "GitHub Release 列表当前为空；已测在线更新为隔离夹具，公开渠道和历史版本迁移未验收，发行依赖/资源许可清单未完成。"
+    },
+    {
+      "id": "R03",
+      "requirement": "人机协同",
+      "acceptance": "人和 AI 操作同一 SSH 会话，输出和上下文可衔接",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/sessions/control.ts",
+      "records": [
+        "12-implementation.md",
+        "14-built-in-ai.md",
+        "32-terminal-reliability.md",
+        "43-task-execution-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "64-jump-combined-acceptance.md",
+        "68-provider-response-bounds.md"
+      ],
+      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+    },
+    {
+      "id": "R04",
+      "requirement": "随时接管",
+      "acceptance": "接管确认后旧 AI 写入不得进入会话；交还必须是明确操作",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/sessions/control.ts",
+      "records": [
+        "12-implementation.md",
+        "14-built-in-ai.md",
+        "32-terminal-reliability.md",
+        "43-task-execution-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "64-jump-combined-acceptance.md",
+        "68-provider-response-bounds.md"
+      ],
+      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+    },
+    {
+      "id": "R05",
+      "requirement": "执行可见",
+      "acceptance": "命令、文件操作、执行者、状态、输出与失败原因可追踪",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/audit",
+      "records": [
+        "37-task-history-and-retention.md",
+        "65-terminal-pressure.md",
+        "66-terminal-output-bounds.md",
+        "67-recording-write-bounds.md",
+        "69-chat-stream-bounds.md"
+      ],
+      "remaining": "脱敏记录与局部缺口处理已实现；所有记录入口、导出和资源生命周期仍需覆盖证明。"
+    },
+    {
+      "id": "R06",
+      "requirement": "可全部交给 AI",
+      "acceptance": "授权范围内连续执行；不自动扩大服务器、权限或预算",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/ai",
+      "records": [
+        "14-built-in-ai.md",
+        "44-ai-task-recovery.md",
+        "68-provider-response-bounds.md",
+        "69-chat-stream-bounds.md"
+      ],
+      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+    },
+    {
+      "id": "R07",
+      "requirement": "自带 API",
+      "acceptance": "自定义接口地址、模型和 Key，直接使用用户选择的服务商",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/ai",
+      "records": [
+        "14-built-in-ai.md",
+        "44-ai-task-recovery.md",
+        "68-provider-response-bounds.md",
+        "69-chat-stream-bounds.md"
+      ],
+      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+    },
+    {
+      "id": "R08",
+      "requirement": "可配置黑白名单",
+      "acceptance": "全局、服务器组、服务器和任务规则可管理，冲突可解释",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration",
+      "records": [
+        "18-file-operation-gateway.md",
+        "20-legacy-command-migration.md",
+        "23-host-trust.md",
+        "29-local-file-grants.md"
+      ],
+      "remaining": "策略、路径授权与主机信任有专项；仍需完整规则组合、撤销与 UI 来源解释逐项核对。"
+    },
+    {
+      "id": "R09",
+      "requirement": "自定义命令流程",
+      "acceptance": "多条命令打包为配置，按顺序执行，可手动或由 AI 调用",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/workflows",
+      "records": [
+        "15-saved-workflows.md",
+        "16-ai-mcp-workflows.md",
+        "20-legacy-command-migration.md",
+        "31-workflow-files.md",
+        "36-workflow-directory-steps.md",
+        "43-task-execution-recovery.md",
+        "45-parent-workflow-recovery.md"
+      ],
+      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+    },
+    {
+      "id": "R10",
+      "requirement": "完整基础 SSH/SFTP 功能",
+      "acceptance": "用户明确要求上传、下载、在线编辑；常规基础项按专门清单补齐，不以 AI 功能代替",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "R11",
+      "requirement": "结合 FinalShell、XTerminal，评估开源改造",
+      "acceptance": "功能结合与代码来源分开；先核对许可、构建、功能和接管改造边界",
+      "status": "not-fully-verified",
+      "implementation": ".github/workflows/release.yml",
+      "records": [
+        "10-open-source-base.md",
+        "11-m0-validation.md",
+        "25-github-releases.md",
+        "46-online-update-acceptance.md"
+      ],
+      "remaining": "GitHub Release 列表当前为空；已测在线更新为隔离夹具，公开渠道和历史版本迁移未验收，发行依赖/资源许可清单未完成。"
+    },
+    {
+      "id": "F01",
+      "requirement": "服务器管理",
+      "acceptance": "新增/编辑/复制/删除、分组、收藏、搜索、最近连接、配置导入导出",
+      "status": "not-fully-verified",
+      "implementation": "app/src/ui/sidebar/HostEditor.tsx",
+      "records": [
+        "54-configuration-backup.md",
+        "58-local-remote-file-panels.md"
+      ],
+      "remaining": "主机编辑与管理已有实现；复制、分组、搜索、最近、导入导出完整 UI 矩阵尚未逐项确认。"
+    },
+    {
+      "id": "F02",
+      "requirement": "SSH 连接",
+      "acceptance": "密码、带口令私钥、SSH agent、交互认证、基础跳板连接、主机指纹核验、保活与重连",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/hosts",
+      "records": [
+        "53-ssh-agent-authentication.md",
+        "60-keyboard-interactive-auth.md",
+        "61-file-interactive-auth.md",
+        "62-jump-interactive-auth.md",
+        "63-monitoring-interactive-auth.md",
+        "64-jump-combined-acceptance.md"
+      ],
+      "remaining": "基础认证有专项证据；仍需按密码/加密私钥/agent/交互认证及单跳逐项闭环，覆盖重连与权限撤销。"
+    },
+    {
+      "id": "F03",
+      "requirement": "终端工作区",
+      "acceptance": "多标签、分屏、搜索、复制粘贴、快捷键、编码、字体主题、历史与连接状态",
+      "status": "not-fully-verified",
+      "implementation": "app/src/ui/features/terminal/Terminal.tsx",
+      "records": [
+        "57-terminal-protocol-replies.md",
+        "65-terminal-pressure.md",
+        "66-terminal-output-bounds.md",
+        "67-recording-write-bounds.md"
+      ],
+      "remaining": "共享终端与压力/缺口有证据；分屏、搜索、多行粘贴、编码/主题和快捷键仍需完整 UI 复核。"
+    },
+    {
+      "id": "F04",
+      "requirement": "协作控制",
+      "acceptance": "接管、交还、暂停任务、取消队列、发送中断分别呈现",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/sessions/control.ts",
+      "records": [
+        "12-implementation.md",
+        "14-built-in-ai.md",
+        "32-terminal-reliability.md",
+        "43-task-execution-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "64-jump-combined-acceptance.md",
+        "68-provider-response-bounds.md"
+      ],
+      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+    },
+    {
+      "id": "F05",
+      "requirement": "模型配置",
+      "acceptance": "OpenAI 兼容工具调用接口、流式响应、自定义 URL/模型/Key、连接测试",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/ai",
+      "records": [
+        "14-built-in-ai.md",
+        "44-ai-task-recovery.md",
+        "68-provider-response-bounds.md",
+        "69-chat-stream-bounds.md"
+      ],
+      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+    },
+    {
+      "id": "F06",
+      "requirement": "AI 任务",
+      "acceptance": "目标、步骤、操作建议、执行结果、有限轮次工具循环",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/ai",
+      "records": [
+        "14-built-in-ai.md",
+        "44-ai-task-recovery.md",
+        "68-provider-response-bounds.md",
+        "69-chat-stream-bounds.md"
+      ],
+      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+    },
+    {
+      "id": "F07",
+      "requirement": "规则管理",
+      "acceptance": "命令允许/拒绝/确认、服务器范围、文件路径范围、规则试算",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration",
+      "records": [
+        "18-file-operation-gateway.md",
+        "20-legacy-command-migration.md",
+        "23-host-trust.md",
+        "29-local-file-grants.md"
+      ],
+      "remaining": "策略、路径授权与主机信任有专项；仍需完整规则组合、撤销与 UI 来源解释逐项核对。"
+    },
+    {
+      "id": "F08",
+      "requirement": "执行时间线",
+      "acceptance": "人/AI/MCP 来源、目标、操作、状态、输出片段、审批及策略版本",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/audit",
+      "records": [
+        "37-task-history-and-retention.md",
+        "65-terminal-pressure.md",
+        "66-terminal-output-bounds.md",
+        "67-recording-write-bounds.md",
+        "69-chat-stream-bounds.md"
+      ],
+      "remaining": "脱敏记录与局部缺口处理已实现；所有记录入口、导出和资源生命周期仍需覆盖证明。"
+    },
+    {
+      "id": "F09",
+      "requirement": "完整文件工作台",
+      "acceptance": "文件/目录上传下载、拖拽、队列、暂停/恢复、在线编辑、目录操作、权限和冲突处理，见 B04—B11",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "F10",
+      "requirement": "外部 MCP",
+      "acceptance": "本机接入，共用策略和会话控制；首版仅开放有限工具",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/mcp",
+      "records": [
+        "13-mcp.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "43-task-execution-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "64-jump-combined-acceptance.md"
+      ],
+      "remaining": "已存在 38 工具及打包 Codex 发现证据；撤销、导出和所有工具权限矩阵仍需逐项闭环。"
+    },
+    {
+      "id": "F11",
+      "requirement": "自定义命令流程",
+      "acceptance": "串行步骤、参数、工作目录、失败停止、进度、暂停/接管/恢复和无凭据导入导出",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/workflows",
+      "records": [
+        "15-saved-workflows.md",
+        "16-ai-mcp-workflows.md",
+        "20-legacy-command-migration.md",
+        "31-workflow-files.md",
+        "36-workflow-directory-steps.md",
+        "43-task-execution-recovery.md",
+        "45-parent-workflow-recovery.md"
+      ],
+      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+    },
+    {
+      "id": "F12",
+      "requirement": "SSH 隧道",
+      "acceptance": "本地、远程和动态转发，启停、状态、端口冲突和作用范围",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/hosts/tunnel",
+      "records": [
+        "49-tunnel-trust-and-lifecycle.md",
+        "50-tunnel-cancellation.md"
+      ],
+      "remaining": "本地转发与取消/信任有实测；local/remote/dynamic × C2S/S2S 的适用组合、范围、冲突、重连及认证尚未完整验收。"
+    },
+    {
+      "id": "F13",
+      "requirement": "服务器状态",
+      "acceptance": "CPU、内存、磁盘、网络、系统和进程查看；采样状态可见",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/hosts/metrics",
+      "records": [
+        "51-monitoring-collection.md",
+        "52-monitoring-viewer-lifecycle.md",
+        "63-monitoring-interactive-auth.md",
+        "64-jump-combined-acceptance.md"
+      ],
+      "remaining": "采样生命周期、交互登录、真实内存/运行时间有证据；CPU/磁盘/网络/系统/进程全集及历史聚合仍需闭环。"
+    },
+    {
+      "id": "F14",
+      "requirement": "设置与数据",
+      "acceptance": "本地配置备份/恢复、日志位置与清理、界面偏好、导入预览",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/database/repositories/configuration-backup-repository.ts",
+      "records": [
+        "54-configuration-backup.md",
+        "55-application-settings-backup.md"
+      ],
+      "remaining": "已确认功能缺失：导出不含跳板/隧道，导入写入空数组；C2S 预设、连接默认值/自定义主题库尚未纳入。"
+    },
+    {
+      "id": "F15",
+      "requirement": "本地终端",
+      "acceptance": "Windows PowerShell / 可选已安装 Shell，用于本机命令与上传前检查",
+      "status": "not-fully-verified",
+      "implementation": "app/electron",
+      "records": [
+        "11-m0-validation.md",
+        "53-ssh-agent-authentication.md",
+        "56-linux-ssh-acceptance.md"
+      ],
+      "remaining": "原生 PTY/安装验证存在；本地 Shell 选择、起始目录和与远端身份区别需要专门 UI 证据。"
+    },
+    {
+      "id": "B01",
+      "requirement": "连接管理",
+      "acceptance": "新建/编辑/复制/删除、分组、收藏、搜索、最近连接、备注、导入导出",
+      "status": "not-fully-verified",
+      "implementation": "app/src/ui/sidebar/HostEditor.tsx",
+      "records": [
+        "54-configuration-backup.md",
+        "58-local-remote-file-panels.md"
+      ],
+      "remaining": "主机编辑与管理已有实现；复制、分组、搜索、最近、导入导出完整 UI 矩阵尚未逐项确认。"
+    },
+    {
+      "id": "B02",
+      "requirement": "认证与连接",
+      "acceptance": "密码、带口令私钥、SSH agent、keyboard-interactive、单跳代理、指纹信任、超时/保活/重连",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/hosts",
+      "records": [
+        "53-ssh-agent-authentication.md",
+        "60-keyboard-interactive-auth.md",
+        "61-file-interactive-auth.md",
+        "62-jump-interactive-auth.md",
+        "63-monitoring-interactive-auth.md",
+        "64-jump-combined-acceptance.md"
+      ],
+      "remaining": "基础认证有专项证据；仍需按密码/加密私钥/agent/交互认证及单跳逐项闭环，覆盖重连与权限撤销。"
+    },
+    {
+      "id": "B03",
+      "requirement": "终端",
+      "acceptance": "多标签/分屏、输出搜索、复制粘贴、多行粘贴预览、快捷键、编码和字体主题",
+      "status": "not-fully-verified",
+      "implementation": "app/src/ui/features/terminal/Terminal.tsx",
+      "records": [
+        "57-terminal-protocol-replies.md",
+        "65-terminal-pressure.md",
+        "66-terminal-output-bounds.md",
+        "67-recording-write-bounds.md"
+      ],
+      "remaining": "共享终端与压力/缺口有证据；分屏、搜索、多行粘贴、编码/主题和快捷键仍需完整 UI 复核。"
+    },
+    {
+      "id": "B04",
+      "requirement": "文件浏览",
+      "acceptance": "本地/远端双面板、路径栏、返回/上级/刷新、隐藏文件、排序、多选、名称筛选和属性",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "B05",
+      "requirement": "上传下载",
+      "acceptance": "单文件、多文件、文件夹递归、拖拽、目标选择、传输前预览和逐项结果",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "B06",
+      "requirement": "传输管理",
+      "acceptance": "队列、可配置并发、速度/字节数/预计剩余时间、暂停、恢复、取消和失败重试",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "B07",
+      "requirement": "冲突处理",
+      "acceptance": "同名跳过、改名、明确覆盖、逐项/本批策略；不能默认合并覆盖全部目录",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "B08",
+      "requirement": "在线文本编辑",
+      "acceptance": "远程打开、多文件标签、行号、高亮、搜索替换、撤销重做、编码/换行提示、保存和另存",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "B09",
+      "requirement": "文件与目录操作",
+      "acceptance": "新建文件/目录、重命名、移动、复制、删除；批量操作与部分失败说明",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "B10",
+      "requirement": "权限与链接",
+      "acceptance": "属性、Unix mode 查看/修改、符号链接识别与受控跟随；所有者/组修改须具备权限",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "B11",
+      "requirement": "文件与终端联动",
+      "acceptance": "复制远端路径、在此目录打开终端、可信 cwd 跟随、打开本地下载目录",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "B12",
+      "requirement": "服务器监控",
+      "acceptance": "CPU/内存/磁盘/网络/运行时间/系统信息/进程查看、采样间隔和停用入口",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/hosts/metrics",
+      "records": [
+        "51-monitoring-collection.md",
+        "52-monitoring-viewer-lifecycle.md",
+        "63-monitoring-interactive-auth.md",
+        "64-jump-combined-acceptance.md"
+      ],
+      "remaining": "采样生命周期、交互登录、真实内存/运行时间有证据；CPU/磁盘/网络/系统/进程全集及历史聚合仍需闭环。"
+    },
+    {
+      "id": "B13",
+      "requirement": "隧道管理",
+      "acceptance": "本地/远程/动态转发、范围限制、启停、连接状态、端口占用和重连说明",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/hosts/tunnel",
+      "records": [
+        "49-tunnel-trust-and-lifecycle.md",
+        "50-tunnel-cancellation.md"
+      ],
+      "remaining": "本地转发与取消/信任有实测；local/remote/dynamic × C2S/S2S 的适用组合、范围、冲突、重连及认证尚未完整验收。"
+    },
+    {
+      "id": "B14",
+      "requirement": "快捷命令",
+      "acceptance": "收藏命令、带参数片段、顺序命令流程、编辑预览、执行记录",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/workflows",
+      "records": [
+        "15-saved-workflows.md",
+        "16-ai-mcp-workflows.md",
+        "20-legacy-command-migration.md",
+        "31-workflow-files.md",
+        "36-workflow-directory-steps.md",
+        "43-task-execution-recovery.md",
+        "45-parent-workflow-recovery.md"
+      ],
+      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+    },
+    {
+      "id": "B15",
+      "requirement": "设置与数据",
+      "acceptance": "布局/快捷键/主题/编码设置、配置备份恢复、脱敏日志导出、留存与清理",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/database/repositories/configuration-backup-repository.ts",
+      "records": [
+        "54-configuration-backup.md",
+        "55-application-settings-backup.md"
+      ],
+      "remaining": "已确认功能缺失：导出不含跳板/隧道，导入写入空数组；C2S 预设、连接默认值/自定义主题库尚未纳入。"
+    },
+    {
+      "id": "B16",
+      "requirement": "本地终端",
+      "acceptance": "Windows 本机 Shell、Shell 选择、起始目录、与远端不同的明确标识",
+      "status": "not-fully-verified",
+      "implementation": "app/electron",
+      "records": [
+        "11-m0-validation.md",
+        "53-ssh-agent-authentication.md",
+        "56-linux-ssh-acceptance.md"
+      ],
+      "remaining": "原生 PTY/安装验证存在；本地 Shell 选择、起始目录和与远端身份区别需要专门 UI 证据。"
+    },
+    {
+      "id": "A01",
+      "requirement": "密码和私钥连接",
+      "acceptance": "正确认证能连接，失败不泄露秘密、不循环尝试",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/hosts",
+      "records": [
+        "53-ssh-agent-authentication.md",
+        "60-keyboard-interactive-auth.md",
+        "61-file-interactive-auth.md",
+        "62-jump-interactive-auth.md",
+        "63-monitoring-interactive-auth.md",
+        "64-jump-combined-acceptance.md"
+      ],
+      "remaining": "基础认证有专项证据；仍需按密码/加密私钥/agent/交互认证及单跳逐项闭环，覆盖重连与权限撤销。"
+    },
+    {
+      "id": "A02",
+      "requirement": "主机指纹变化",
+      "acceptance": "阻断连接；不会自动改写信任记录",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration",
+      "records": [
+        "18-file-operation-gateway.md",
+        "20-legacy-command-migration.md",
+        "23-host-trust.md",
+        "29-local-file-grants.md"
+      ],
+      "remaining": "策略、路径授权与主机信任有专项；仍需完整规则组合、撤销与 UI 来源解释逐项核对。"
+    },
+    {
+      "id": "A03",
+      "requirement": "切标签时 AI 派发",
+      "acceptance": "动作仍绑定原会话，不能落到新活动标签",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/sessions/control.ts",
+      "records": [
+        "12-implementation.md",
+        "14-built-in-ai.md",
+        "32-terminal-reliability.md",
+        "43-task-execution-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "64-jump-combined-acceptance.md",
+        "68-provider-response-bounds.md"
+      ],
+      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+    },
+    {
+      "id": "A04",
+      "requirement": "排队命令中接管",
+      "acceptance": "接管成功后旧队列无 remote.write",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/sessions/control.ts",
+      "records": [
+        "12-implementation.md",
+        "14-built-in-ai.md",
+        "32-terminal-reliability.md",
+        "43-task-execution-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "64-jump-combined-acceptance.md",
+        "68-provider-response-bounds.md"
+      ],
+      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+    },
+    {
+      "id": "A05",
+      "requirement": "派发瞬间接管",
+      "acceptance": "已发送动作可见；未发送动作取消；状态与事实一致",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/sessions/control.ts",
+      "records": [
+        "12-implementation.md",
+        "14-built-in-ai.md",
+        "32-terminal-reliability.md",
+        "43-task-execution-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "64-jump-combined-acceptance.md",
+        "68-provider-response-bounds.md"
+      ],
+      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+    },
+    {
+      "id": "A06",
+      "requirement": "模型迟到响应",
+      "acceptance": "旧 epoch/generation 的请求被拒绝",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/sessions/control.ts",
+      "records": [
+        "12-implementation.md",
+        "14-built-in-ai.md",
+        "32-terminal-reliability.md",
+        "43-task-execution-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "64-jump-combined-acceptance.md",
+        "68-provider-response-bounds.md"
+      ],
+      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+    },
+    {
+      "id": "A07",
+      "requirement": "外部 MCP 抢写",
+      "acceptance": "不具控制权时返回 CONTROL_BUSY/STALE_CONTROL",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/mcp",
+      "records": [
+        "13-mcp.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "43-task-execution-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "64-jump-combined-acceptance.md"
+      ],
+      "remaining": "已存在 38 工具及打包 Codex 发现证据；撤销、导出和所有工具权限矩阵仍需逐项闭环。"
+    },
+    {
+      "id": "A08",
+      "requirement": "交还 AI",
+      "acceptance": "读取人工新增记录，旧批准不复用",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/sessions/control.ts",
+      "records": [
+        "12-implementation.md",
+        "14-built-in-ai.md",
+        "32-terminal-reliability.md",
+        "43-task-execution-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "64-jump-combined-acceptance.md",
+        "68-provider-response-bounds.md"
+      ],
+      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+    },
+    {
+      "id": "A09",
+      "requirement": "全局拒绝与服务器允许冲突",
+      "acceptance": "最终拒绝，显示规则来源",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration",
+      "records": [
+        "18-file-operation-gateway.md",
+        "20-legacy-command-migration.md",
+        "23-host-trust.md",
+        "29-local-file-grants.md"
+      ],
+      "remaining": "策略、路径授权与主机信任有专项；仍需完整规则组合、撤销与 UI 来源解释逐项核对。"
+    },
+    {
+      "id": "A10",
+      "requirement": "策略变更与审批竞态",
+      "acceptance": "派发前重新判断，旧审批失效",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration",
+      "records": [
+        "18-file-operation-gateway.md",
+        "20-legacy-command-migration.md",
+        "23-host-trust.md",
+        "29-local-file-grants.md"
+      ],
+      "remaining": "策略、路径授权与主机信任有专项；仍需完整规则组合、撤销与 UI 来源解释逐项核对。"
+    },
+    {
+      "id": "A11",
+      "requirement": "参数包含引号、换行、替换语法",
+      "acceptance": "保持单个参数或明确拒绝，不生成额外命令",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/workflows",
+      "records": [
+        "15-saved-workflows.md",
+        "16-ai-mcp-workflows.md",
+        "20-legacy-command-migration.md",
+        "31-workflow-files.md",
+        "36-workflow-directory-steps.md",
+        "43-task-execution-recovery.md",
+        "45-parent-workflow-recovery.md"
+      ],
+      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+    },
+    {
+      "id": "A12",
+      "requirement": "Shell/解释器/TUI 无法判定",
+      "acceptance": "不声称通过安全校验，严格模式拒绝",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration",
+      "records": [
+        "18-file-operation-gateway.md",
+        "20-legacy-command-migration.md",
+        "23-host-trust.md",
+        "29-local-file-grants.md"
+      ],
+      "remaining": "策略、路径授权与主机信任有专项；仍需完整规则组合、撤销与 UI 来源解释逐项核对。"
+    },
+    {
+      "id": "A13",
+      "requirement": "requestId 重复/客户端重试",
+      "acceptance": "返回原操作，不重复触发副作用",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/sessions/control.ts",
+      "records": [
+        "12-implementation.md",
+        "14-built-in-ai.md",
+        "32-terminal-reliability.md",
+        "43-task-execution-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "64-jump-combined-acceptance.md",
+        "68-provider-response-bounds.md"
+      ],
+      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+    },
+    {
+      "id": "A14",
+      "requirement": "命令执行后断线",
+      "acceptance": "标为 unknown，检查后才允许重试",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/sessions/control.ts",
+      "records": [
+        "12-implementation.md",
+        "14-built-in-ai.md",
+        "32-terminal-reliability.md",
+        "43-task-execution-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "64-jump-combined-acceptance.md",
+        "68-provider-response-bounds.md"
+      ],
+      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+    },
+    {
+      "id": "A15",
+      "requirement": "审计不可写/输出有缺口",
+      "acceptance": "暂停自动副作用；人工可接管，记录缺口可见",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/audit",
+      "records": [
+        "37-task-history-and-retention.md",
+        "65-terminal-pressure.md",
+        "66-terminal-output-bounds.md",
+        "67-recording-write-bounds.md",
+        "69-chat-stream-bounds.md"
+      ],
+      "remaining": "脱敏记录与局部缺口处理已实现；所有记录入口、导出和资源生命周期仍需覆盖证明。"
+    },
+    {
+      "id": "A16",
+      "requirement": "系统加密不可用",
+      "acceptance": "不写明文 Key；可选择当前会话内存使用",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/ai",
+      "records": [
+        "14-built-in-ai.md",
+        "44-ai-task-recovery.md",
+        "68-provider-response-bounds.md",
+        "69-chat-stream-bounds.md"
+      ],
+      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+    },
+    {
+      "id": "A17",
+      "requirement": "文件路径 .. / 符号链接 / 目标被替换",
+      "acceptance": "正确拒绝或检测冲突；记录不能防御的远端竞态",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "A18",
+      "requirement": "恶意终端输出要求读取本机私钥",
+      "acceptance": "不改变策略、身份或访问范围",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration",
+      "records": [
+        "18-file-operation-gateway.md",
+        "20-legacy-command-migration.md",
+        "23-host-trust.md",
+        "29-local-file-grants.md"
+      ],
+      "remaining": "策略、路径授权与主机信任有专项；仍需完整规则组合、撤销与 UI 来源解释逐项核对。"
+    },
+    {
+      "id": "A19",
+      "requirement": "流程第二步失败",
+      "acceptance": "第三步不发送，显示失败原因",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/workflows",
+      "records": [
+        "15-saved-workflows.md",
+        "16-ai-mcp-workflows.md",
+        "20-legacy-command-migration.md",
+        "31-workflow-files.md",
+        "36-workflow-directory-steps.md",
+        "43-task-execution-recovery.md",
+        "45-parent-workflow-recovery.md"
+      ],
+      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+    },
+    {
+      "id": "A20",
+      "requirement": "流程途中接管再交还",
+      "acceptance": "选择恢复点，不重跑已完成步骤",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/workflows",
+      "records": [
+        "15-saved-workflows.md",
+        "16-ai-mcp-workflows.md",
+        "20-legacy-command-migration.md",
+        "31-workflow-files.md",
+        "36-workflow-directory-steps.md",
+        "43-task-execution-recovery.md",
+        "45-parent-workflow-recovery.md"
+      ],
+      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+    },
+    {
+      "id": "A21",
+      "requirement": "流程模板运行中被编辑",
+      "acceptance": "本次继续使用快照，下一次才采用新版",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/workflows",
+      "records": [
+        "15-saved-workflows.md",
+        "16-ai-mcp-workflows.md",
+        "20-legacy-command-migration.md",
+        "31-workflow-files.md",
+        "36-workflow-directory-steps.md",
+        "43-task-execution-recovery.md",
+        "45-parent-workflow-recovery.md"
+      ],
+      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+    },
+    {
+      "id": "A22",
+      "requirement": "恶意流程/连接/规则导入",
+      "acceptance": "只预览、不自动执行、不自动放宽权限",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/workflows",
+      "records": [
+        "15-saved-workflows.md",
+        "16-ai-mcp-workflows.md",
+        "20-legacy-command-migration.md",
+        "31-workflow-files.md",
+        "36-workflow-directory-steps.md",
+        "43-task-execution-recovery.md",
+        "45-parent-workflow-recovery.md"
+      ],
+      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+    },
+    {
+      "id": "A23",
+      "requirement": "模型 Key 错误/无工具能力/限流",
+      "acceptance": "明确报错，保留人工 SSH 功能",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/ai",
+      "records": [
+        "14-built-in-ai.md",
+        "44-ai-task-recovery.md",
+        "68-provider-response-bounds.md",
+        "69-chat-stream-bounds.md"
+      ],
+      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+    },
+    {
+      "id": "A24",
+      "requirement": "自动任务超预算",
+      "acceptance": "暂停，不自动切端点、扩权限或继续收费",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/ai",
+      "records": [
+        "14-built-in-ai.md",
+        "44-ai-task-recovery.md",
+        "68-provider-response-bounds.md",
+        "69-chat-stream-bounds.md"
+      ],
+      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+    },
+    {
+      "id": "A25",
+      "requirement": "MCP 撤销和日志导出",
+      "acceptance": "撤销后不接受新操作，导出不含已知秘密",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/mcp",
+      "records": [
+        "13-mcp.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "43-task-execution-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "64-jump-combined-acceptance.md"
+      ],
+      "remaining": "已存在 38 工具及打包 Codex 发现证据；撤销、导出和所有工具权限矩阵仍需逐项闭环。"
+    },
+    {
+      "id": "A26",
+      "requirement": "人工点击运行被拒绝命令的流程",
+      "acceptance": "workflow 入口仍受硬规则限制，不伪装为自由人工输入",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/workflows",
+      "records": [
+        "15-saved-workflows.md",
+        "16-ai-mcp-workflows.md",
+        "20-legacy-command-migration.md",
+        "31-workflow-files.md",
+        "36-workflow-directory-steps.md",
+        "43-task-execution-recovery.md",
+        "45-parent-workflow-recovery.md"
+      ],
+      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+    },
+    {
+      "id": "A27",
+      "requirement": "流程执行时人工输入或父 AI 派发",
+      "acceptance": "人工先接管，父 AI 等待；不会混入两套命令",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/collaboration/workflows",
+      "records": [
+        "15-saved-workflows.md",
+        "16-ai-mcp-workflows.md",
+        "20-legacy-command-migration.md",
+        "31-workflow-files.md",
+        "36-workflow-directory-steps.md",
+        "43-task-execution-recovery.md",
+        "45-parent-workflow-recovery.md"
+      ],
+      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+    },
+    {
+      "id": "A28",
+      "requirement": "文件/目录/批量双向传输",
+      "acceptance": "路径映射正确、逐项进度与结果、完整性检查状态准确",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "A29",
+      "requirement": "传输暂停后源或目标改变",
+      "acceptance": "不盲目续传，提供重新传输/另存或核实入口",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "A30",
+      "requirement": "在线编辑保存时外部修改",
+      "acceptance": "冲突可见、草稿保留，不静默覆盖",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "A31",
+      "requirement": "编码、换行、BOM、特殊文件名",
+      "acceptance": "无损或明确提示转换；不触发命令注入/重名覆盖",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "A32",
+      "requirement": "磁盘满、权限不足、传输部分失败",
+      "acceptance": "不假成功，已完成项与残留目标准确",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "A33",
+      "requirement": "关闭终端仍有编辑/传输",
+      "acceptance": "不提前释放连接、不丢未保存草稿",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "A34",
+      "requirement": "文件删除/权限/符号链接",
+      "acceptance": "明确作用目标，拒绝路径逃逸和静默提权",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/files",
+      "records": [
+        "17-file-documents.md",
+        "19-ai-mcp-files.md",
+        "22-upload-transfers.md",
+        "24-download-transfers.md",
+        "27-directory-uploads.md",
+        "30-transfer-tools.md",
+        "35-directory-workbench.md",
+        "38-encrypted-file-drafts.md",
+        "39-download-recovery.md",
+        "40-upload-recovery.md",
+        "42-download-batch-recovery.md",
+        "47-task-directory-recovery.md",
+        "48-task-download-directory-recovery.md",
+        "56-linux-ssh-acceptance.md",
+        "58-local-remote-file-panels.md",
+        "59-windows-file-attributes.md"
+      ],
+      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+    },
+    {
+      "id": "A35",
+      "requirement": "隧道与监控",
+      "acceptance": "端口范围正确、不混入 PTY、采样可关闭、资源可释放",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/hosts/tunnel",
+      "records": [
+        "49-tunnel-trust-and-lifecycle.md",
+        "50-tunnel-cancellation.md"
+      ],
+      "remaining": "本地转发与取消/信任有实测；local/remote/dynamic × C2S/S2S 的适用组合、范围、冲突、重连及认证尚未完整验收。"
+    },
+    {
+      "id": "A36",
+      "requirement": "基础认证与配置导入",
+      "acceptance": "私钥口令/agent/交互认证/单跳可用，导入不执行隐藏命令",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/hosts",
+      "records": [
+        "53-ssh-agent-authentication.md",
+        "60-keyboard-interactive-auth.md",
+        "61-file-interactive-auth.md",
+        "62-jump-interactive-auth.md",
+        "63-monitoring-interactive-auth.md",
+        "64-jump-combined-acceptance.md"
+      ],
+      "remaining": "基础认证有专项证据；仍需按密码/加密私钥/agent/交互认证及单跳逐项闭环，覆盖重连与权限撤销。"
+    },
+    {
+      "id": "A37",
+      "requirement": "备份恢复与本地终端",
+      "acceptance": "凭据迁移边界清楚，本地/远端身份明确",
+      "status": "not-fully-verified",
+      "implementation": "app/src/backend/database/repositories/configuration-backup-repository.ts",
+      "records": [
+        "54-configuration-backup.md",
+        "55-application-settings-backup.md"
+      ],
+      "remaining": "已确认功能缺失：导出不含跳板/隧道，导入写入空数组；C2S 预设、连接默认值/自定义主题库尚未纳入。"
+    }
+  ]
+}
