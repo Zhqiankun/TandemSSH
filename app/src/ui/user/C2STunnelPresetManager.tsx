@@ -26,7 +26,6 @@ import {
   Activity,
   ChevronDown,
   Download,
-  Loader2,
   Pencil,
   Play,
   Plus,
@@ -211,6 +210,7 @@ export function C2STunnelPresetManager(): React.ReactElement {
   const [tunnelTests, setTunnelTests] = React.useState<Record<string, boolean>>(
     {},
   );
+  const tunnelOperations = React.useRef(new Map<string, symbol>());
   const previousTunnelStatusesRef = React.useRef<Record<string, TunnelStatus>>(
     {},
   );
@@ -246,6 +246,12 @@ export function C2STunnelPresetManager(): React.ReactElement {
     [savedLocalConfig, localConfig],
   );
   const hasPresets = presets.length > 0;
+  const hasActiveTunnels =
+    Object.values(tunnelActions).some(Boolean) ||
+    Object.values(tunnelTests).some(Boolean) ||
+    Object.values(tunnelStatuses).some(
+      (status) => getStatusKind(status) !== "disconnected",
+    );
 
   function toggleTunnel(index: number) {
     setOpenTunnels((current) => {
@@ -547,12 +553,17 @@ export function C2STunnelPresetManager(): React.ReactElement {
       setTunnelMetadata(index, { lastError: validationError });
       return;
     }
+    const operation = Symbol(tunnelName);
+    tunnelOperations.current.set(tunnelName, operation);
+    const isCurrent = () =>
+      tunnelOperations.current.get(tunnelName) === operation;
     setTunnelTests((current) => ({ ...current, [tunnelName]: true }));
     try {
       const result = await window.electronAPI.testC2STunnel(
         normalizedTunnel,
         index,
       );
+      if (!isCurrent()) return;
       if (!result.success)
         throw new Error(result.error || t("tunnels.tunnelTestFailed"));
       setTunnelMetadata(index, {
@@ -561,11 +572,15 @@ export function C2STunnelPresetManager(): React.ReactElement {
       });
       toast.success(t("tunnels.tunnelTestSucceeded"));
     } catch (error) {
+      if (!isCurrent()) return;
       const message = c2sErrorMessage(error, t);
       setTunnelMetadata(index, { lastError: message });
       toast.error(message);
     } finally {
-      setTunnelTests((current) => ({ ...current, [tunnelName]: false }));
+      if (isCurrent()) {
+        tunnelOperations.current.delete(tunnelName);
+        setTunnelTests((current) => ({ ...current, [tunnelName]: false }));
+      }
     }
   };
 
@@ -581,15 +596,21 @@ export function C2STunnelPresetManager(): React.ReactElement {
       setTunnelMetadata(index, { lastError: validationError });
       return;
     }
+    const operation = Symbol(tunnelName);
+    tunnelOperations.current.set(tunnelName, operation);
+    const isCurrent = () =>
+      tunnelOperations.current.get(tunnelName) === operation;
     setTunnelActions((current) => ({ ...current, [tunnelName]: true }));
     try {
       const result = await window.electronAPI.startC2STunnel(
         normalizedTunnel,
         index,
       );
+      if (!isCurrent()) return;
       if (!result.success)
         throw new Error(result.error || t("tunnels.manualControlError"));
       const statuses = await window.electronAPI.getC2STunnelStatuses();
+      if (!isCurrent()) return;
       setTunnelStatuses(statuses as Record<string, TunnelStatus>);
       setTunnelMetadata(index, {
         lastStartedAt: new Date().toISOString(),
@@ -597,32 +618,47 @@ export function C2STunnelPresetManager(): React.ReactElement {
       });
       toast.success(t("tunnels.clientTunnelStarted"));
     } catch (error) {
+      if (!isCurrent()) return;
       const message = c2sErrorMessage(error, t);
       setTunnelMetadata(index, { lastError: message });
       toast.error(message);
     } finally {
-      setTunnelActions((current) => ({ ...current, [tunnelName]: false }));
+      if (isCurrent()) {
+        tunnelOperations.current.delete(tunnelName);
+        setTunnelActions((current) => ({ ...current, [tunnelName]: false }));
+      }
     }
   };
 
   const handleTunnelStop = async (tunnel: ClientTunnel, index: number) => {
     const tunnelName = getTunnelName(tunnel, index);
+    const operation = Symbol(tunnelName);
+    tunnelOperations.current.set(tunnelName, operation);
+    const isCurrent = () =>
+      tunnelOperations.current.get(tunnelName) === operation;
     setTunnelActions((current) => ({ ...current, [tunnelName]: true }));
     try {
       const result = await window.electronAPI.stopC2STunnel(tunnelName);
+      if (!isCurrent()) return;
       if (!result.success)
         throw new Error(result.error || t("tunnels.manualControlError"));
       const statuses = await window.electronAPI.getC2STunnelStatuses();
+      if (!isCurrent()) return;
       setTunnelStatuses(statuses as Record<string, TunnelStatus>);
       toast.success(t("tunnels.clientTunnelStopped"));
     } catch (error) {
+      if (!isCurrent()) return;
       toast.error(
         error instanceof Error
           ? error.message
           : t("tunnels.manualControlError"),
       );
     } finally {
-      setTunnelActions((current) => ({ ...current, [tunnelName]: false }));
+      if (isCurrent()) {
+        tunnelOperations.current.delete(tunnelName);
+        setTunnelActions((current) => ({ ...current, [tunnelName]: false }));
+        setTunnelTests((current) => ({ ...current, [tunnelName]: false }));
+      }
     }
   };
 
@@ -642,7 +678,7 @@ export function C2STunnelPresetManager(): React.ReactElement {
   };
 
   const handleLoadPreset = async () => {
-    if (!selectedPreset || selectedMatchesCurrent) return;
+    if (hasActiveTunnels || !selectedPreset || selectedMatchesCurrent) return;
     try {
       await saveLocalConfig(selectedPreset.config.map(normalizeClientTunnel));
       toast.success(t("profile.c2sPresetLoaded"));
@@ -722,6 +758,11 @@ export function C2STunnelPresetManager(): React.ReactElement {
       <p className="mb-3 text-xs text-muted-foreground">
         {t("tunnels.c2sLocalRelayHint")}
       </p>
+      {hasActiveTunnels && (
+        <p className="mb-3 text-xs text-muted-foreground">
+          {t("tunnels.stopBeforeEditing")}
+        </p>
+      )}
       {/* Tunnel items */}
       <div className="flex flex-col gap-1.5">
         {localConfig.length === 0 ? (
@@ -826,17 +867,15 @@ export function C2STunnelPresetManager(): React.ReactElement {
                         {t("tunnels.test")}
                       </Button>
 
-                      {isTunnelActionLoading ? (
+                      {isTunnelActionLoading || isTunnelTestLoading ? (
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-6 px-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-border"
-                          disabled
+                          className="h-6 px-2 text-[10px] font-bold uppercase tracking-widest text-destructive border-destructive/40"
+                          onClick={() => handleTunnelStop(tunnel, index)}
                         >
-                          <Loader2 className="size-3 animate-spin" />
-                          {isDisconnected
-                            ? t("tunnels.start")
-                            : t("tunnels.stop")}
+                          <Square className="size-3" />
+                          {t("common.cancel")}
                         </Button>
                       ) : isDisconnected ? (
                         <Button
@@ -870,6 +909,12 @@ export function C2STunnelPresetManager(): React.ReactElement {
                         variant="ghost"
                         size="icon"
                         className="size-6 text-muted-foreground hover:text-destructive ml-auto"
+                        disabled={hasActiveTunnels}
+                        aria-label={
+                          t("common.delete") +
+                          " " +
+                          getTunnelDisplayName(tunnel, index)
+                        }
                         onClick={() => {
                           setLocalConfig((current) =>
                             current.filter((_, idx) => idx !== index),
@@ -888,229 +933,244 @@ export function C2STunnelPresetManager(): React.ReactElement {
                       </Button>
                     </div>
 
-                    {/* Display name */}
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                        {t("tunnels.tunnelName")}
-                      </label>
-                      <Input
-                        value={tunnel.displayName || ""}
-                        onChange={(e) =>
-                          updateTunnel(index, { displayName: e.target.value })
-                        }
-                        placeholder={getTunnelDisplayName(tunnel, index)}
-                        className="h-7 text-xs bg-muted/50 border-border rounded-none"
-                      />
-                    </div>
-
-                    {/* Mode */}
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                        {t("tunnels.type")}
-                      </label>
-                      <select
-                        value={mode}
-                        onChange={(e) =>
-                          updateTunnel(index, {
-                            mode: e.target.value as TunnelMode,
-                            tunnelType: getTunnelTypeForMode(
-                              e.target.value as TunnelMode,
-                            ),
-                          })
-                        }
-                        className="px-2 py-1 text-xs bg-background border border-border text-foreground outline-none focus:ring-1 focus:ring-ring w-full h-7"
-                      >
-                        <option value="local">{t("tunnels.typeLocal")}</option>
-                        <option value="remote">
-                          {t("tunnels.typeRemote")}
-                        </option>
-                        <option value="dynamic">
-                          {t("tunnels.typeDynamic")}
-                        </option>
-                      </select>
-                      <span className="text-[10px] text-muted-foreground">
-                        {modeDescription}
-                      </span>
-                    </div>
-
-                    {/* SSH host */}
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                        {t("tunnels.endpointSshConfig")}
-                      </label>
-                      <select
-                        value={
-                          tunnel.sourceHostId ? String(tunnel.sourceHostId) : ""
-                        }
-                        onChange={(e) =>
-                          handleEndpointChange(index, e.target.value)
-                        }
-                        className="px-2 py-1 text-xs bg-background border border-border text-foreground outline-none focus:ring-1 focus:ring-ring w-full h-7"
-                      >
-                        <option value="">
-                          {t("tunnels.endpointSshHostPlaceholder")}
-                        </option>
-                        {sshHosts.map((host) => (
-                          <option key={host.id} value={String(host.id)}>
-                            {host.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Ports */}
-                    <div className="grid grid-cols-2 gap-2">
+                    <fieldset
+                      disabled={
+                        isTunnelActionLoading ||
+                        isTunnelTestLoading ||
+                        !isDisconnected
+                      }
+                      className="contents"
+                    >
+                      {/* Display name */}
                       <div className="flex flex-col gap-1">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                          {sourcePortLabel}
+                          {t("tunnels.tunnelName")}
                         </label>
                         <Input
-                          type="number"
-                          value={tunnel.sourcePort}
+                          value={tunnel.displayName || ""}
                           onChange={(e) =>
-                            updateTunnel(index, {
-                              sourcePort: Number(e.target.value),
-                            })
+                            updateTunnel(index, { displayName: e.target.value })
                           }
-                          placeholder={t("placeholders.defaultPort")}
+                          placeholder={getTunnelDisplayName(tunnel, index)}
                           className="h-7 text-xs bg-muted/50 border-border rounded-none"
                         />
                       </div>
-                      {mode !== "dynamic" && (
+
+                      {/* Mode */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                          {t("tunnels.type")}
+                        </label>
+                        <select
+                          value={mode}
+                          onChange={(e) =>
+                            updateTunnel(index, {
+                              mode: e.target.value as TunnelMode,
+                              tunnelType: getTunnelTypeForMode(
+                                e.target.value as TunnelMode,
+                              ),
+                            })
+                          }
+                          className="px-2 py-1 text-xs bg-background border border-border text-foreground outline-none focus:ring-1 focus:ring-ring w-full h-7"
+                        >
+                          <option value="local">
+                            {t("tunnels.typeLocal")}
+                          </option>
+                          <option value="remote">
+                            {t("tunnels.typeRemote")}
+                          </option>
+                          <option value="dynamic">
+                            {t("tunnels.typeDynamic")}
+                          </option>
+                        </select>
+                        <span className="text-[10px] text-muted-foreground">
+                          {modeDescription}
+                        </span>
+                      </div>
+
+                      {/* SSH host */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                          {t("tunnels.endpointSshConfig")}
+                        </label>
+                        <select
+                          value={
+                            tunnel.sourceHostId
+                              ? String(tunnel.sourceHostId)
+                              : ""
+                          }
+                          onChange={(e) =>
+                            handleEndpointChange(index, e.target.value)
+                          }
+                          className="px-2 py-1 text-xs bg-background border border-border text-foreground outline-none focus:ring-1 focus:ring-ring w-full h-7"
+                        >
+                          <option value="">
+                            {t("tunnels.endpointSshHostPlaceholder")}
+                          </option>
+                          {sshHosts.map((host) => (
+                            <option key={host.id} value={String(host.id)}>
+                              {host.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Ports */}
+                      <div className="grid grid-cols-2 gap-2">
                         <div className="flex flex-col gap-1">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                            {endpointPortLabel}
+                            {sourcePortLabel}
                           </label>
                           <Input
                             type="number"
-                            value={tunnel.endpointPort}
+                            value={tunnel.sourcePort}
                             onChange={(e) =>
                               updateTunnel(index, {
-                                endpointPort: Number(e.target.value),
+                                sourcePort: Number(e.target.value),
                               })
                             }
-                            placeholder={t("placeholders.defaultEndpointPort")}
+                            placeholder={t("placeholders.defaultPort")}
                             className="h-7 text-xs bg-muted/50 border-border rounded-none"
                           />
                         </div>
+                        {mode !== "dynamic" && (
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                              {endpointPortLabel}
+                            </label>
+                            <Input
+                              type="number"
+                              value={tunnel.endpointPort}
+                              onChange={(e) =>
+                                updateTunnel(index, {
+                                  endpointPort: Number(e.target.value),
+                                })
+                              }
+                              placeholder={t(
+                                "placeholders.defaultEndpointPort",
+                              )}
+                              className="h-7 text-xs bg-muted/50 border-border rounded-none"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bind IP */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                          {t("tunnels.bindIp")}
+                        </label>
+                        <Input
+                          value={tunnel.bindHost}
+                          onChange={(e) =>
+                            updateTunnel(index, {
+                              bindHost: e.target.value.trim(),
+                            })
+                          }
+                          placeholder={getBindPlaceholder(mode)}
+                          className="h-7 text-xs bg-muted/50 border-border rounded-none"
+                        />
+                      </div>
+
+                      {/* Route summary */}
+                      <div
+                        className="border border-border bg-muted/30 px-2 py-1 text-[10px] font-mono text-muted-foreground"
+                        title={tunnelSummary}
+                      >
+                        <span className="font-bold text-foreground">
+                          {t("tunnels.route")}
+                        </span>{" "}
+                        {tunnelSummary}
+                      </div>
+
+                      {mode === "remote" && (
+                        <p className="text-[10px] text-muted-foreground">
+                          {t("tunnels.clientRemoteServerNote")}
+                        </p>
                       )}
-                    </div>
 
-                    {/* Bind IP */}
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                        {t("tunnels.bindIp")}
-                      </label>
-                      <Input
-                        value={tunnel.bindHost}
-                        onChange={(e) =>
-                          updateTunnel(index, {
-                            bindHost: e.target.value.trim(),
-                          })
-                        }
-                        placeholder={getBindPlaceholder(mode)}
-                        className="h-7 text-xs bg-muted/50 border-border rounded-none"
-                      />
-                    </div>
-
-                    {/* Route summary */}
-                    <div
-                      className="border border-border bg-muted/30 px-2 py-1 text-[10px] font-mono text-muted-foreground"
-                      title={tunnelSummary}
-                    >
-                      <span className="font-bold text-foreground">
-                        {t("tunnels.route")}
-                      </span>{" "}
-                      {tunnelSummary}
-                    </div>
-
-                    {mode === "remote" && (
-                      <p className="text-[10px] text-muted-foreground">
-                        {t("tunnels.clientRemoteServerNote")}
-                      </p>
-                    )}
-
-                    {/* Last activity */}
-                    {(lastError || lastStarted || lastTested) && (
-                      <div className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
-                        {lastStarted && (
-                          <span>
-                            {t("tunnels.lastStarted")}: {lastStarted}
-                          </span>
-                        )}
-                        {lastTested && (
-                          <span>
-                            {t("tunnels.lastTested")}: {lastTested}
-                          </span>
-                        )}
-                        {lastError && (
-                          <span
-                            className="text-destructive truncate"
-                            title={lastError}
-                          >
-                            {t("tunnels.lastError")}: {lastError}
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Retries */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                          {t("tunnels.maxRetries")}
-                        </label>
-                        <Input
-                          type="number"
-                          value={tunnel.maxRetries}
-                          onChange={(e) =>
-                            updateTunnel(index, {
-                              maxRetries: Number(e.target.value),
-                            })
-                          }
-                          placeholder={t("placeholders.maxRetries")}
-                          className="h-7 text-xs bg-muted/50 border-border rounded-none"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                          {t("tunnels.retryInterval")}
-                        </label>
-                        <Input
-                          type="number"
-                          value={tunnel.retryInterval}
-                          onChange={(e) =>
-                            updateTunnel(index, {
-                              retryInterval: Number(e.target.value),
-                            })
-                          }
-                          placeholder={t("placeholders.retryInterval")}
-                          className="h-7 text-xs bg-muted/50 border-border rounded-none"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Auto-start */}
-                    <div className="flex items-center justify-between border border-border bg-muted/20 px-2 py-1.5">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-xs font-medium">
-                          {t("tunnels.autoStart")}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {t(
-                            tunnel.autoStart
-                              ? "tunnels.clientAutoStartDesc"
-                              : "tunnels.clientManualStartDesc",
+                      {/* Last activity */}
+                      {(lastError || lastStarted || lastTested) && (
+                        <div className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
+                          {lastStarted && (
+                            <span>
+                              {t("tunnels.lastStarted")}: {lastStarted}
+                            </span>
                           )}
-                        </span>
+                          {lastTested && (
+                            <span>
+                              {t("tunnels.lastTested")}: {lastTested}
+                            </span>
+                          )}
+                          {lastError && (
+                            <span
+                              className="text-destructive truncate"
+                              title={lastError}
+                            >
+                              {t("tunnels.lastError")}: {lastError}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Retries */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                            {t("tunnels.maxRetries")}
+                          </label>
+                          <Input
+                            type="number"
+                            value={tunnel.maxRetries}
+                            onChange={(e) =>
+                              updateTunnel(index, {
+                                maxRetries: Number(e.target.value),
+                              })
+                            }
+                            placeholder={t("placeholders.maxRetries")}
+                            className="h-7 text-xs bg-muted/50 border-border rounded-none"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                            {t("tunnels.retryInterval")}
+                          </label>
+                          <Input
+                            type="number"
+                            value={tunnel.retryInterval}
+                            onChange={(e) =>
+                              updateTunnel(index, {
+                                retryInterval: Number(e.target.value),
+                              })
+                            }
+                            placeholder={t("placeholders.retryInterval")}
+                            className="h-7 text-xs bg-muted/50 border-border rounded-none"
+                          />
+                        </div>
                       </div>
-                      <FakeSwitch
-                        checked={tunnel.autoStart}
-                        onChange={(checked) =>
-                          updateTunnel(index, { autoStart: checked })
-                        }
-                      />
-                    </div>
+
+                      {/* Auto-start */}
+                      <div className="flex items-center justify-between border border-border bg-muted/20 px-2 py-1.5">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-xs font-medium">
+                            {t("tunnels.autoStart")}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {t(
+                              tunnel.autoStart
+                                ? "tunnels.clientAutoStartDesc"
+                                : "tunnels.clientManualStartDesc",
+                            )}
+                          </span>
+                        </div>
+                        <FakeSwitch
+                          checked={tunnel.autoStart}
+                          onChange={(checked) =>
+                            updateTunnel(index, { autoStart: checked })
+                          }
+                        />
+                      </div>
+                    </fieldset>
                   </div>
                 )}
               </div>
@@ -1204,7 +1264,9 @@ export function C2STunnelPresetManager(): React.ReactElement {
             variant="outline"
             size="sm"
             className="h-6 px-2 text-[10px] font-bold uppercase tracking-widest rounded-none border-accent-brand/40 text-accent-brand hover:bg-accent-brand/10"
-            disabled={!selectedPreset || selectedMatchesCurrent}
+            disabled={
+              hasActiveTunnels || !selectedPreset || selectedMatchesCurrent
+            }
             onClick={handleLoadPreset}
           >
             <Download className="size-3" />

@@ -1726,9 +1726,9 @@ function checkLocalPortAvailable(host, port) {
   });
 }
 
-function checkTcpConnection(host, port) {
+function checkTcpConnection(host, port, signal) {
   return new Promise((resolve) => {
-    const socket = net.createConnection({ host, port });
+    const socket = net.createConnection({ host, port, signal });
     const timer = setTimeout(() => {
       socket.destroy();
       resolve({ success: false, error: "Connection timed out" });
@@ -1756,7 +1756,7 @@ const C2S_STREAM_WRITE_LIMIT = 8 * 1024 * 1024;
 function getC2SRelayUrl() {
   return c2sSession.url;
 }
-async function getC2SRelayHeaders(tunnel) {
+function getC2SRelayHeaders(tunnel) {
   return c2sSession.headers(tunnel);
 }
 
@@ -1862,8 +1862,10 @@ async function openC2SRelay(
   initialData,
 ) {
   const tunnelName = tunnel.name || getC2STunnelName(tunnel);
+  const runtime = c2sTunnelRuntimes.get(tunnelName);
+  if (!runtime || socket.destroyed) throw Error("C2S_CANCELLED");
   const relayUrl = getC2SRelayUrl();
-  const headers = await getC2SRelayHeaders(tunnel);
+  const headers = getC2SRelayHeaders(tunnel);
   logToFile(`[c2s] opening relay for ${tunnelName}`, {
     relayUrl,
     targetHost,
@@ -1908,16 +1910,19 @@ async function openC2SRelay(
   socket.on("data", sendChunk);
   socket.on("close", cleanup);
   socket.on("error", (error) => {
-    setC2STunnelError(tunnelName, error.message || "Local socket error");
+    if (!closed && c2sTunnelRuntimes.get(tunnelName) === runtime)
+      setC2STunnelError(tunnelName, error.message || "Local socket error");
     cleanup();
   });
   ws.on("close", cleanup);
   ws.on("error", (error) => {
-    setC2STunnelError(tunnelName, error.message || "Relay connection failed");
+    if (!closed && c2sTunnelRuntimes.get(tunnelName) === runtime)
+      setC2STunnelError(tunnelName, error.message || "Relay connection failed");
     cleanup();
   });
 
   ws.on("open", () => {
+    if (closed || c2sTunnelRuntimes.get(tunnelName) !== runtime) return;
     logToFile(`[c2s] relay connected for ${tunnelName}`);
     ws.send(
       JSON.stringify({
@@ -1930,6 +1935,7 @@ async function openC2SRelay(
   });
 
   ws.on("message", (data, isBinary) => {
+    if (closed || c2sTunnelRuntimes.get(tunnelName) !== runtime) return;
     if (isBinary) {
       socket.write(Buffer.isBuffer(data) ? data : Buffer.from(data));
       return;
@@ -1966,74 +1972,32 @@ async function openC2SRelay(
   });
 }
 
-async function testC2SRelay(tunnel, targetHost, targetPort) {
+function testC2SRelay(tunnel, targetHost, targetPort, operation) {
+  operation.signal.throwIfAborted();
   const relayUrl = getC2SRelayUrl();
-  const headers = await getC2SRelayHeaders(tunnel);
-  const ws = new WebSocket(
-    relayUrl,
-    getWebSocketOptions(relayUrl, { headers }),
-  );
-
-  return new Promise((resolve) => {
-    let settled = false;
-    const settle = (result) => {
-      if (settled) return;
-      settled = true;
-      try {
-        ws.close();
-      } catch {
-        // expected during shutdown
-      }
-      resolve(result);
-    };
-
-    const timer = setTimeout(() => {
-      settle({ success: false, error: "Tunnel test timed out" });
-    }, 15000);
-
-    ws.on("open", () => {
-      ws.send(
-        JSON.stringify({
-          type: "test",
-          tunnelConfig: tunnel,
-          targetHost,
-          targetPort,
-        }),
-      );
-    });
-    ws.on("message", (data, isBinary) => {
-      if (isBinary) return;
-
-      try {
-        const message = JSON.parse(data.toString());
-        if (message.type === "ready") {
-          clearTimeout(timer);
-          settle({ success: true });
-        } else if (message.type === "error") {
-          clearTimeout(timer);
-          settle({
-            success: false,
-            error: message.error || "Tunnel test failed",
-          });
-        }
-      } catch (error) {
-        clearTimeout(timer);
-        settle({ success: false, error: error.message });
-      }
-    });
-    ws.on("error", (error) => {
-      clearTimeout(timer);
-      settle({ success: false, error: error.message });
-    });
-    ws.on("close", () => {
-      clearTimeout(timer);
-      settle({ success: false, error: "Tunnel test connection closed" });
-    });
+  return require("./c2s-relay-probe.cjs").probeC2SRelay({
+    url: relayUrl,
+    options: getWebSocketOptions(relayUrl, {
+      headers: getC2SRelayHeaders(tunnel),
+    }),
+    tunnel,
+    targetHost,
+    targetPort,
+    signal: operation.signal,
   });
 }
 
 async function testC2STunnel(tunnel, index = 0) {
   tunnel = c2sSession.bind(tunnel);
+  const operation = c2sSession.request(tunnel, getC2STunnelName(tunnel, index));
+  try {
+    return await testC2STunnelRequest(tunnel, index, operation);
+  } finally {
+    operation.release();
+  }
+}
+
+async function testC2STunnelRequest(tunnel, index, operation) {
   const mode = tunnel.mode || tunnel.tunnelType || "local";
   const testTunnel = {
     ...tunnel,
@@ -2049,7 +2013,12 @@ async function testC2STunnel(tunnel, index = 0) {
   }
 
   if (mode === "remote") {
-    const localTarget = await checkTcpConnection(bindHost, endpointPort);
+    const localTarget = await checkTcpConnection(
+      bindHost,
+      endpointPort,
+      operation.signal,
+    );
+    operation.signal.throwIfAborted();
     if (!localTarget.success) {
       return {
         success: false,
@@ -2057,7 +2026,7 @@ async function testC2STunnel(tunnel, index = 0) {
       };
     }
 
-    return testC2SRelay(testTunnel, undefined, undefined);
+    return testC2SRelay(testTunnel, undefined, undefined, operation);
   }
 
   if (!Number.isInteger(sourcePort) || sourcePort < 1 || sourcePort > 65535) {
@@ -2067,6 +2036,7 @@ async function testC2STunnel(tunnel, index = 0) {
   const runtime = c2sTunnelRuntimes.get(getC2STunnelName(tunnel, index));
   if (!runtime) {
     const availability = await checkLocalPortAvailable(bindHost, sourcePort);
+    operation.signal.throwIfAborted();
     if (!availability.available) {
       return {
         success: false,
@@ -2076,7 +2046,7 @@ async function testC2STunnel(tunnel, index = 0) {
   }
 
   if (mode === "dynamic") {
-    return testC2SRelay(testTunnel, undefined, undefined);
+    return testC2SRelay(testTunnel, undefined, undefined, operation);
   }
 
   if (!Number.isInteger(endpointPort) || endpointPort < 1) {
@@ -2087,16 +2057,19 @@ async function testC2STunnel(tunnel, index = 0) {
     testTunnel,
     tunnel.targetHost || "127.0.0.1",
     endpointPort,
+    operation,
   );
 }
 
 function handleC2SDynamicConnection(tunnel, socket) {
   const tunnelName = tunnel.name || getC2STunnelName(tunnel);
+  const runtime = c2sTunnelRuntimes.get(tunnelName);
   let buffer = Buffer.alloc(0);
   let stage = "greeting";
 
   const fail = (code = 0x01, message = "SOCKS5 request failed") => {
-    setC2STunnelError(tunnelName, message);
+    if (c2sTunnelRuntimes.get(tunnelName) === runtime)
+      setC2STunnelError(tunnelName, message);
     if (!socket.destroyed) {
       socket.write(Buffer.from([0x05, code, 0x00, 0x01, 0, 0, 0, 0, 0, 0]));
       socket.destroy();
@@ -2147,11 +2120,13 @@ function handleC2SDynamicConnection(tunnel, socket) {
 
 function handleC2SLocalConnection(tunnel, socket) {
   const tunnelName = tunnel.name || getC2STunnelName(tunnel);
+  const runtime = c2sTunnelRuntimes.get(tunnelName);
   const targetHost = tunnel.targetHost || "127.0.0.1";
   const targetPort = Number(tunnel.endpointPort);
   openC2SRelay(tunnel, targetHost, targetPort, socket).catch((error) => {
     logToFile("[c2s] local relay failed:", error.message);
-    setC2STunnelError(tunnelName, error.message || "Local relay failed");
+    if (c2sTunnelRuntimes.get(tunnelName) === runtime)
+      setC2STunnelError(tunnelName, error.message || "Local relay failed");
     socket.destroy();
   });
 }
@@ -2205,7 +2180,7 @@ function writeC2SRemoteChunk(target, chunk, ws, closeTarget) {
   }
 }
 
-async function startC2SRemoteTunnel(tunnel, index = 0) {
+async function startC2SRemoteTunnel(tunnel, index, operation) {
   const tunnelName = getC2STunnelName(tunnel, index);
   const localHost = tunnel.bindHost || "127.0.0.1";
   const localPort = Number(tunnel.endpointPort);
@@ -2221,7 +2196,12 @@ async function startC2SRemoteTunnel(tunnel, index = 0) {
     return { success: false, error: "Invalid local port" };
   }
 
-  const localTarget = await checkTcpConnection(localHost, localPort);
+  const localTarget = await checkTcpConnection(
+    localHost,
+    localPort,
+    operation.signal,
+  );
+  operation.signal.throwIfAborted();
   if (!localTarget.success) {
     return {
       success: false,
@@ -2235,7 +2215,7 @@ async function startC2SRemoteTunnel(tunnel, index = 0) {
       existing.status?.status === "ERROR" ||
       existing.status?.status === "FAILED"
     )
-      await stopC2STunnel(tunnelName);
+      await stopC2STunnel(tunnelName, operation);
     else return { success: true, tunnelName };
   }
 
@@ -2252,8 +2232,9 @@ async function startC2SRemoteTunnel(tunnel, index = 0) {
     }
   }
 
+  operation.signal.throwIfAborted();
   const relayUrl = getC2SRelayUrl();
-  const headers = await getC2SRelayHeaders(tunnel);
+  const headers = getC2SRelayHeaders(tunnel);
   const ws = new WebSocket(
     relayUrl,
     getWebSocketOptions(relayUrl, { headers }),
@@ -2269,13 +2250,13 @@ async function startC2SRemoteTunnel(tunnel, index = 0) {
     }
     sockets.clear();
     try {
-      ws.close();
+      ws.terminate();
     } catch {
       // expected during shutdown
     }
   };
 
-  c2sTunnelRuntimes.set(tunnelName, {
+  const runtime = {
     ws,
     sockets,
     mode: "remote",
@@ -2284,7 +2265,8 @@ async function startC2SRemoteTunnel(tunnel, index = 0) {
     bindHost: localHost,
     status: { connected: false, status: "CONNECTING" },
     close: cleanup,
-  });
+  };
+  c2sTunnelRuntimes.set(tunnelName, runtime);
   emitC2STunnelStatuses();
 
   return new Promise((resolve) => {
@@ -2292,10 +2274,24 @@ async function startC2SRemoteTunnel(tunnel, index = 0) {
     const settle = (result) => {
       if (settled) return;
       settled = true;
+      operation.signal.removeEventListener("abort", abort);
       resolve(result);
     };
 
+    const abort = () => {
+      cleanup();
+      settle({
+        success: false,
+        error: operation.signal.reason?.message || "C2S_CANCELLED",
+      });
+    };
     ws.on("open", () => {
+      if (
+        closed ||
+        operation.signal.aborted ||
+        c2sTunnelRuntimes.get(tunnelName) !== runtime
+      )
+        return;
       logToFile(`[c2s] opening remote tunnel ${tunnelName}`, {
         relayUrl,
         remotePort,
@@ -2311,7 +2307,8 @@ async function startC2SRemoteTunnel(tunnel, index = 0) {
     });
 
     ws.on("message", (data, isBinary) => {
-      if (isBinary) return;
+      if (closed || isBinary || c2sTunnelRuntimes.get(tunnelName) !== runtime)
+        return;
 
       let message;
       try {
@@ -2336,7 +2333,8 @@ async function startC2SRemoteTunnel(tunnel, index = 0) {
         const error = message.error || "Relay rejected the client tunnel";
         setC2STunnelError(tunnelName, error);
         cleanup();
-        c2sTunnelRuntimes.delete(tunnelName);
+        if (c2sTunnelRuntimes.get(tunnelName) === runtime)
+          c2sTunnelRuntimes.delete(tunnelName);
         emitC2STunnelStatuses();
         settle({ success: false, error });
         return;
@@ -2414,23 +2412,40 @@ async function startC2SRemoteTunnel(tunnel, index = 0) {
 
     ws.on("close", () => {
       cleanup();
-      c2sTunnelRuntimes.delete(tunnelName);
+      if (c2sTunnelRuntimes.get(tunnelName) === runtime)
+        c2sTunnelRuntimes.delete(tunnelName);
       emitC2STunnelStatuses();
       settle({ success: false, error: "Remote tunnel relay closed" });
     });
 
     ws.on("error", (error) => {
-      setC2STunnelError(tunnelName, error.message || "Relay connection failed");
+      if (!closed && c2sTunnelRuntimes.get(tunnelName) === runtime)
+        setC2STunnelError(
+          tunnelName,
+          error.message || "Relay connection failed",
+        );
       cleanup();
-      c2sTunnelRuntimes.delete(tunnelName);
+      if (c2sTunnelRuntimes.get(tunnelName) === runtime)
+        c2sTunnelRuntimes.delete(tunnelName);
       emitC2STunnelStatuses();
       settle({ success: false, error: error.message });
     });
+    operation.signal.addEventListener("abort", abort, { once: true });
+    if (operation.signal.aborted) abort();
   });
 }
 
 async function startC2STunnel(tunnel, index = 0) {
   tunnel = c2sSession.bind(tunnel);
+  const operation = c2sSession.request(tunnel, getC2STunnelName(tunnel, index));
+  try {
+    return await startC2STunnelRequest(tunnel, index, operation);
+  } finally {
+    operation.release();
+  }
+}
+
+async function startC2STunnelRequest(tunnel, index, operation) {
   const mode = tunnel.mode || tunnel.tunnelType || "local";
   const tunnelName = getC2STunnelName(tunnel, index);
   const bindHost = tunnel.bindHost || "127.0.0.1";
@@ -2444,7 +2459,7 @@ async function startC2STunnel(tunnel, index = 0) {
   });
 
   if (mode === "remote") {
-    return startC2SRemoteTunnel(tunnel, index);
+    return startC2SRemoteTunnel(tunnel, index, operation);
   }
   if (!tunnel.sourceHostId) {
     return { success: false, error: "Endpoint SSH host is required" };
@@ -2459,7 +2474,7 @@ async function startC2STunnel(tunnel, index = 0) {
       existing.status?.status === "ERROR" ||
       existing.status?.status === "FAILED"
     )
-      await stopC2STunnel(tunnelName);
+      await stopC2STunnel(tunnelName, operation);
     else return { success: true, tunnelName };
   }
 
@@ -2477,6 +2492,7 @@ async function startC2STunnel(tunnel, index = 0) {
   }
 
   const availability = await checkLocalPortAvailable(bindHost, sourcePort);
+  operation.signal.throwIfAborted();
   if (!availability.available) {
     return {
       success: false,
@@ -2528,42 +2544,49 @@ async function startC2STunnel(tunnel, index = 0) {
         reason: "Verifying endpoint SSH connection",
       });
 
+      const verification = c2sSession.request(tunnel, tunnelName);
       const verifyTunnel =
         mode === "dynamic"
           ? testC2SRelay(
               { ...tunnel, name: `${tunnelName}::verify`, mode },
               undefined,
               undefined,
+              verification,
             )
           : testC2SRelay(
               { ...tunnel, name: `${tunnelName}::verify`, mode },
               tunnel.targetHost || "127.0.0.1",
               Number(tunnel.endpointPort),
+              verification,
             );
 
-      verifyTunnel.then((result) => {
-        if (c2sTunnelRuntimes.get(tunnelName) !== runtime) return;
-        if (result.success) {
-          setC2STunnelStatus(tunnelName, {
-            connected: true,
-            status: "CONNECTED",
-          });
-        } else {
-          for (const socket of sockets) socket.destroy();
-          server.close();
-          setC2STunnelError(
-            tunnelName,
-            result.error || "Endpoint SSH connection failed",
-          );
-        }
-      });
+      verifyTunnel
+        .catch((error) => ({ success: false, error: error.message }))
+        .finally(() => verification.release())
+        .then((result) => {
+          if (c2sTunnelRuntimes.get(tunnelName) !== runtime) return;
+          if (result.success) {
+            setC2STunnelStatus(tunnelName, {
+              connected: true,
+              status: "CONNECTED",
+            });
+          } else {
+            for (const socket of sockets) socket.destroy();
+            server.close();
+            setC2STunnelError(
+              tunnelName,
+              result.error || "Endpoint SSH connection failed",
+            );
+          }
+        });
 
       resolve({ success: true, tunnelName });
     });
   });
 }
 
-async function stopC2STunnel(tunnelName) {
+async function stopC2STunnel(tunnelName, preserveOperation) {
+  c2sSession.cancel(tunnelName, "C2S_CANCELLED", preserveOperation?.signal);
   const runtime = c2sTunnelRuntimes.get(tunnelName);
   if (!runtime) {
     return { success: true };
@@ -2574,10 +2597,10 @@ async function stopC2STunnel(tunnelName) {
     status: "DISCONNECTING",
   });
 
+  c2sTunnelRuntimes.delete(tunnelName);
   return new Promise((resolve) => {
     if (typeof runtime.close === "function") {
       runtime.close();
-      c2sTunnelRuntimes.delete(tunnelName);
       emitC2STunnelStatuses();
       resolve({ success: true });
       return;
@@ -2587,7 +2610,6 @@ async function stopC2STunnel(tunnelName) {
       socket.destroy();
     }
     runtime.server?.close(() => {
-      c2sTunnelRuntimes.delete(tunnelName);
       emitC2STunnelStatuses();
       resolve({ success: true });
     });
@@ -2595,6 +2617,7 @@ async function stopC2STunnel(tunnelName) {
 }
 
 function stopAllC2STunnels() {
+  for (const name of [...c2sSession.requests.keys()]) c2sSession.cancel(name);
   for (const [tunnelName, runtime] of c2sTunnelRuntimes.entries()) {
     try {
       if (typeof runtime.close === "function") {

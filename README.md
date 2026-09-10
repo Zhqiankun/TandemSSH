@@ -116,6 +116,7 @@
 | [隧道模式协议矩阵](docs/73-tunnel-mode-matrix.md) | 实际转发/中继数据、监听冲突、错误分类和零重试验证 |
 | [独立桌面隧道](docs/74-standalone-c2s.md) | 本机中继、真实三模式数据、旧配置复核和中文启停 |
 | [开发预览下载说明](docs/75-preview-release-notes.md) | Windows 安装/免安装包和当前试用边界 |
+| [隧道在途取消](docs/76-c2s-pending-cancellation.md) | 认证等待取消、旧响应隔离、中文控件与三模式回归 |
 
 ## 产品主线
 

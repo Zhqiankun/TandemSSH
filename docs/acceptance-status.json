@@ -365,9 +365,10 @@
         "49-tunnel-trust-and-lifecycle.md",
         "50-tunnel-cancellation.md",
         "73-tunnel-mode-matrix.md",
-        "74-standalone-c2s.md"
+        "74-standalone-c2s.md",
+        "76-c2s-pending-cancellation.md"
       ],
-      "remaining": "独立 Windows C2S 三种模式、真实 Linux 数据、旧配置复核、中文界面启停和登录清除已通过；全套 S2S/Linux 组合、地址范围、权限撤销、认证及完整重连仍需闭环。"
+      "remaining": "独立 C2S 三模式 Linux 数据、中文启停、认证等待取消/注销、参数锁定和重试已实测；端口监听前极早取消、全套认证与权限撤销、地址范围、S2S/Linux 组合及完整重连仍需闭环。"
     },
     {
       "id": "F13",
@@ -684,9 +685,10 @@
         "49-tunnel-trust-and-lifecycle.md",
         "50-tunnel-cancellation.md",
         "73-tunnel-mode-matrix.md",
-        "74-standalone-c2s.md"
+        "74-standalone-c2s.md",
+        "76-c2s-pending-cancellation.md"
       ],
-      "remaining": "独立 Windows C2S 三种模式、真实 Linux 数据、旧配置复核、中文界面启停和登录清除已通过；全套 S2S/Linux 组合、地址范围、权限撤销、认证及完整重连仍需闭环。"
+      "remaining": "独立 C2S 三模式 Linux 数据、中文启停、认证等待取消/注销、参数锁定和重试已实测；端口监听前极早取消、全套认证与权限撤销、地址范围、S2S/Linux 组合及完整重连仍需闭环。"
     },
     {
       "id": "B14",
@@ -1363,9 +1365,10 @@
         "49-tunnel-trust-and-lifecycle.md",
         "50-tunnel-cancellation.md",
         "73-tunnel-mode-matrix.md",
-        "74-standalone-c2s.md"
+        "74-standalone-c2s.md",
+        "76-c2s-pending-cancellation.md"
       ],
-      "remaining": "独立 Windows C2S 三种模式、真实 Linux 数据、旧配置复核、中文界面启停和登录清除已通过；全套 S2S/Linux 组合、地址范围、权限撤销、认证及完整重连仍需闭环。"
+      "remaining": "独立 C2S 三模式 Linux 数据、中文启停、认证等待取消/注销、参数锁定和重试已实测；端口监听前极早取消、全套认证与权限撤销、地址范围、S2S/Linux 组合及完整重连仍需闭环。"
     },
     {
       "id": "A36",

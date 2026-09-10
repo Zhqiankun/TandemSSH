@@ -2554,9 +2554,11 @@
       "C2S_AUTH_REQUIRED": "Sign in to the local workspace before starting a client tunnel.",
       "C2S_SESSION_CHANGED": "The local session changed. Restart the tunnel request.",
       "C2S_SOURCE_CHANGED": "The host configuration changed. Select and review the host again.",
-      "C2S_TRUSTED_WINDOW_REQUIRED": "Use the main application window to manage client tunnels."
+      "C2S_TRUSTED_WINDOW_REQUIRED": "Use the main application window to manage client tunnels.",
+      "C2S_CANCELLED": "Tunnel operation cancelled."
     },
-    "c2sLocalRelayHint": "Client tunnels use this local workspace to connect to the selected SSH host; no remote sync server is required. Re-select and review the host for older configurations."
+    "c2sLocalRelayHint": "Client tunnels use this local workspace to connect to the selected SSH host; no remote sync server is required. Re-select and review the host for older configurations.",
+    "stopBeforeEditing": "Stop tunnels before editing their parameters or loading a preset."
   },
   "cardGrid": {
     "dragToMove": "Drag to move",

@@ -75,3 +75,53 @@ it("rejects child frames and unrelated windows before changing credentials", () 
   );
   expect(f.changed).not.toHaveBeenCalled();
 });
+
+it("cancels only the selected tunnel group and releases completed requests", () => {
+  const f = fixture();
+  f.context.set(f.event, "token");
+  const bound = f.context.bind(tunnel);
+  const first = f.context.request(bound, "first"),
+    verify = f.context.request(bound, "first"),
+    second = f.context.request(bound, "second");
+  f.context.cancel("first");
+  expect(first.signal.aborted).toBe(true);
+  expect(verify.signal.reason.message).toBe("C2S_CANCELLED");
+  expect(second.signal.aborted).toBe(false);
+  const replacement = f.context.request(bound, "first");
+  first.release();
+  verify.release();
+  expect(replacement.signal.aborted).toBe(false);
+  f.context.cancel("first");
+  expect(replacement.signal.aborted).toBe(true);
+  second.release();
+  f.context.cancel("second");
+  expect(second.signal.aborted).toBe(false);
+  expect(f.context.requests.size).toBe(0);
+});
+it("revokes every pending request on logout and rejects stale registration", () => {
+  const f = fixture();
+  f.context.set(f.event, "token");
+  const bound = f.context.bind(tunnel);
+  const first = f.context.request(bound, "first"),
+    second = f.context.request(bound, "second");
+  f.context.clear();
+  expect(first.signal.reason.message).toBe("C2S_SESSION_CHANGED");
+  expect(second.signal.aborted).toBe(true);
+  expect(f.context.requests.size).toBe(0);
+  f.context.set(f.event, "new-token");
+  expect(() => f.context.request(bound, "late")).toThrow("C2S_SESSION_CHANGED");
+});
+
+it("keeps the replacement start alive while cancelling the failed instance's probes", () => {
+  const f = fixture();
+  f.context.set(f.event, "token");
+  const bound = f.context.bind(tunnel);
+  const old = f.context.request(bound, "same"),
+    replacement = f.context.request(bound, "same");
+  f.context.cancel("same", "C2S_CANCELLED", replacement.signal);
+  expect(old.signal.aborted).toBe(true);
+  expect(replacement.signal.aborted).toBe(false);
+  old.release();
+  replacement.release();
+  expect(f.context.requests.size).toBe(0);
+});

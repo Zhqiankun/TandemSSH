@@ -8,6 +8,7 @@ class C2sSession {
     this.onChange = onChange;
     this.token = null;
     this.epoch = 0;
+    this.requests = new Map();
   }
   trusted(event) {
     const window = this.getWindow(),
@@ -44,6 +45,8 @@ class C2sSession {
   clear() {
     this.token = null;
     this.epoch++;
+    for (const name of [...this.requests.keys()])
+      this.cancel(name, "C2S_SESSION_CHANGED");
     this.onChange();
   }
   bind(tunnel) {
@@ -68,6 +71,32 @@ class C2sSession {
     if (tunnel?.c2sSessionEpoch !== this.epoch)
       throw Error("C2S_SESSION_CHANGED");
     return { Authorization: "Bearer " + this.token, "X-Electron-App": "true" };
+  }
+  request(tunnel, name) {
+    this.headers(tunnel);
+    const controller = new AbortController();
+    let group = this.requests.get(name);
+    if (!group) this.requests.set(name, (group = new Set()));
+    group.add(controller);
+    return {
+      signal: controller.signal,
+      release: () => {
+        group.delete(controller);
+        if (this.requests.get(name) === group && !group.size)
+          this.requests.delete(name);
+      },
+    };
+  }
+  cancel(name, code = "C2S_CANCELLED", exceptSignal) {
+    const group = this.requests.get(name);
+    if (!group) return;
+    for (const controller of [...group]) {
+      if (controller.signal === exceptSignal) continue;
+      group.delete(controller);
+      controller.abort(Error(code));
+    }
+    if (this.requests.get(name) === group && !group.size)
+      this.requests.delete(name);
   }
   get url() {
     return "ws://127.0.0.1:30003/ssh/tunnel/c2s/stream";
