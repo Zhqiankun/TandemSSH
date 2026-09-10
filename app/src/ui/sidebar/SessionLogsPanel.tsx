@@ -1,3 +1,4 @@
+import { parseRecordingFailure } from "@/types/terminal-recording";
 import { translateUiText } from "@/i18n/ui-text";
 import { LocalizedText } from "@/i18n/LocalizedText";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -138,6 +139,11 @@ function LogRow({
         <span className="text-xs font-semibold truncate text-foreground">
           {hostLabel}
         </span>
+        {parseRecordingFailure(log.terminationReason) && (
+          <span className="text-xs text-amber-600">
+            {t("terminal.recordingIncomplete")}
+          </span>
+        )}
         <span className="text-[10px] text-muted-foreground/60 truncate">
           {formatDate(log.startedAt)}
           {" · "}
@@ -395,6 +401,11 @@ export function SessionLogsPanel() {
             <span className="text-xs font-semibold truncate text-foreground">
               {hostLabel}
             </span>
+            {parseRecordingFailure(viewLog.terminationReason) && (
+              <p role="status" className="text-xs text-amber-600">
+                {t("terminal.recordingIncompleteDetails")}
+              </p>
+            )}
             <span className="text-[10px] text-muted-foreground/50">
               {formatDate(viewLog.startedAt)}
               {` · ${viewLog.protocol.toUpperCase()}`}

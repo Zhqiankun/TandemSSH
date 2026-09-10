@@ -1,5 +1,10 @@
 import { type Client, type ClientChannel } from "ssh2";
 import { terminalOutputDelivery } from "./output-delivery.js";
+import { RecordingWriter } from "./recording-writer.js";
+import {
+  recordingFailureReason,
+  type RecordingFailure,
+} from "../../../types/terminal-recording.js";
 import {
   ControlError,
   SessionControl,
@@ -19,13 +24,6 @@ const SESSION_LOGS_DIR = path.join(DATA_DIR, "session_logs");
 const DEFAULT_TIMEOUT_MINUTES = 30;
 const HEALTH_CHECK_INTERVAL_MS = 60_000;
 const MAX_SESSIONS_PER_USER = 10;
-// Coalesces recording writes: a chatty SSH stream can emit dozens of "data"
-// events per second, and appending to disk on every single one saturates the
-// libuv threadpool (default size 4), starving unrelated fs/DNS/crypto work
-// and stalling the WS ping/pong health check enough to look like connection
-// drops. Batch pending lines and flush on a short trailing edge instead.
-const RECORDING_FLUSH_INTERVAL_MS = 300;
-
 export interface SessionParticipant {
   ws: WebSocket;
   userId: string | null; // null for anonymous link guests
@@ -67,10 +65,13 @@ export interface TerminalSession {
   recordingHeader: string | null;
   recordingBytes: number;
   recordingId: number | null;
-  recordingWriteChain: Promise<void>;
+  recordingWriter: RecordingWriter | null;
+  recordingFailure: RecordingFailure | null;
+  recordingEndedAt: number | null;
   recordingPersistChain: Promise<void>;
-  pendingRecordingData: string;
-  recordingFlushTimer: NodeJS.Timeout | null;
+  recordingPersistRunning: boolean;
+  recordingPersistRequested: boolean;
+  lastPersistedFailure: RecordingFailure | null;
   tmuxSessionName: string | null;
   sessionLoggingEnabled: boolean;
   sessionStartedAt: number;
@@ -215,7 +216,16 @@ class TerminalSessionManager {
             if (!current?.sshStream)
               throw new ControlError("TRANSPORT_UNAVAILABLE");
             const input = Buffer.from(data);
+            const before = current.control.snapshot();
             this.bufferInput(id, input.toString("utf8"));
+            const after = current.control.snapshot();
+            if (
+              before.controller.kind === "automation" &&
+              (after.controlEpoch !== before.controlEpoch ||
+                after.generation !== before.generation ||
+                after.closed)
+            )
+              throw new ControlError("STALE_CONTROL");
             current.sshStream.write(input);
           },
         },
@@ -244,10 +254,13 @@ class TerminalSessionManager {
       recordingHeader,
       recordingBytes: 0,
       recordingId: null,
-      recordingWriteChain: Promise.resolve(),
+      recordingWriter: null,
+      recordingFailure: null,
+      recordingEndedAt: null,
       recordingPersistChain: Promise.resolve(),
-      pendingRecordingData: "",
-      recordingFlushTimer: null,
+      recordingPersistRunning: false,
+      recordingPersistRequested: false,
+      lastPersistedFailure: null,
       tmuxSessionName: null,
       sessionLoggingEnabled,
       sessionStartedAt: now,
@@ -255,6 +268,41 @@ class TerminalSessionManager {
       terminatedByOwner: false,
       terminationReason: null,
     };
+    if (recordingPath) {
+      const targetPath = recordingPath;
+      session.recordingWriter = new RecordingWriter({
+        write: async (chunk, first) => {
+          if (first) {
+            await fs.promises.mkdir(path.dirname(targetPath), {
+              recursive: true,
+            });
+            await fs.promises.writeFile(
+              targetPath,
+              session.recordingHeader + chunk,
+              { encoding: "utf8", flag: "wx" },
+            );
+          } else {
+            await fs.promises.appendFile(targetPath, chunk, "utf8");
+          }
+        },
+        committed: (bytes) => {
+          session.recordingBytes += bytes;
+          if (session.recordingFailure) this.maybePersistLog(session, true);
+        },
+        failed: (reason) => {
+          session.recordingFailure = reason;
+          session.recordingEndedAt ??= Date.now();
+          if (!session.control.snapshot().closed) session.control.takeover();
+          this.broadcast(session.id, {
+            type: "context.gap",
+            reason: "recording-stopped",
+            recordingFailure: reason,
+            sessionId: session.id,
+          });
+          this.maybePersistLog(session, true);
+        },
+      });
+    }
     this.sessions.set(id, session);
 
     sshLogger.info("Terminal session created", {
@@ -536,10 +584,19 @@ class TerminalSessionManager {
   }
 
   replayOutput(session: TerminalSession, ws: WebSocket): void {
-    if (session.outputTruncated || session.outputGap)
+    if (
+      session.outputTruncated ||
+      session.outputGap ||
+      session.recordingFailure
+    )
       this.sendToParticipant(session, ws, {
         type: "context.gap",
-        reason: session.outputGap ? "output-backpressure" : "history-truncated",
+        reason: session.outputGap
+          ? "output-backpressure"
+          : session.recordingFailure
+            ? "recording-stopped"
+            : "history-truncated",
+        recordingFailure: session.recordingFailure,
         sessionId: session.id,
       });
     const text = this.getBuffer(session);
@@ -559,6 +616,7 @@ class TerminalSessionManager {
       firstCursor: session.outputSequence - session.outputBuffer.length,
       generation: session.control.snapshot().generation,
       truncated: session.outputTruncated || session.outputGap,
+      recordingFailure: session.recordingFailure,
     };
   }
 
@@ -659,10 +717,9 @@ class TerminalSessionManager {
       session.detachTimeout = null;
     }
 
+    session.recordingEndedAt ??= Date.now();
+    void session.recordingWriter?.close();
     this.maybePersistLog(session, true);
-    if (session.recordingPath && session.recordingBytes === 0) {
-      fs.promises.unlink(session.recordingPath).catch(() => {});
-    }
 
     for (const participant of session.participants.values()) {
       if (participant.isOwner) continue;
@@ -723,71 +780,81 @@ class TerminalSessionManager {
   }
 
   private maybePersistLog(session: TerminalSession, force = false): void {
-    if (!session.sessionLoggingEnabled) return;
-    if (session.recordingFlushTimer) {
-      clearTimeout(session.recordingFlushTimer);
-      session.recordingFlushTimer = null;
-      this.flushRecording(session);
-    }
-    if (session.recordingBytes === 0) return;
-    if (!force && session.recordingBytes === session.lastPersistedBytes) return;
-    session.lastPersistedBytes = session.recordingBytes;
-    session.recordingPersistChain = session.recordingPersistChain
-      .then(() => this.persistSessionLog(session))
-      .catch((err) => {
+    const writer = session.recordingWriter;
+    if (!writer || (!writer.acceptedBytes && !session.recordingFailure)) return;
+    if (
+      !force &&
+      session.recordingBytes === session.lastPersistedBytes &&
+      writer.acceptedBytes === session.recordingBytes &&
+      session.recordingFailure === session.lastPersistedFailure
+    )
+      return;
+    session.recordingPersistRequested = true;
+    if (session.recordingPersistRunning) return;
+    session.recordingPersistRunning = true;
+    session.recordingPersistChain = Promise.resolve()
+      .then(async () => {
+        while (session.recordingPersistRequested) {
+          session.recordingPersistRequested = false;
+          await writer.flush();
+          await this.persistSessionLog(session);
+        }
+      })
+      .catch((error) => {
         sshLogger.warn("Failed to persist session log", {
           operation: "session_log_persist_error",
           sessionId: session.id,
-          error: err instanceof Error ? err.message : String(err),
+          error: error instanceof Error ? error.message : String(error),
         });
+      })
+      .finally(() => {
+        session.recordingPersistRunning = false;
+        if (session.recordingPersistRequested)
+          this.maybePersistLog(session, true);
       });
   }
 
   private async persistSessionLog(session: TerminalSession): Promise<void> {
     if (!session.recordingPath) return;
-    await session.recordingWriteChain;
-    const endedAt = Date.now();
+    const bytes = session.recordingBytes;
+    const failure = session.recordingFailure;
+    const endedAt = session.recordingEndedAt ?? Date.now();
     const duration = Math.floor((endedAt - session.sessionStartedAt) / 1000);
-
-    try {
-      const repo = createCurrentSessionRecordingRepository();
-      if (session.recordingId == null) {
-        const created = await repo.create({
-          hostId: session.hostId,
-          userId: session.userId,
-          startedAt: new Date(session.sessionStartedAt).toISOString(),
-          endedAt: new Date(endedAt).toISOString(),
-          duration,
-          recordingPath: session.recordingPath,
-          protocol: "ssh",
-          format: "asciicast",
-          terminatedByOwner: session.terminatedByOwner || undefined,
-          terminationReason: session.terminationReason ?? undefined,
-        });
-        session.recordingId = created.id;
-      } else {
-        await repo.updateEnded(session.recordingId, {
-          endedAt: new Date(endedAt).toISOString(),
-          duration,
-          terminatedByOwner: session.terminatedByOwner || undefined,
-          terminationReason: session.terminationReason ?? undefined,
-        });
-      }
-    } catch (err) {
-      sshLogger.warn("Failed to insert session recording row", {
-        operation: "session_recording_insert_error",
-        sessionId: session.id,
-        error: err instanceof Error ? err.message : String(err),
+    const outcome = {
+      endedAt: new Date(endedAt).toISOString(),
+      duration,
+      terminatedByOwner: failure
+        ? false
+        : session.terminatedByOwner || undefined,
+      terminationReason: failure
+        ? recordingFailureReason(failure)
+        : (session.terminationReason ?? undefined),
+    };
+    const repo = createCurrentSessionRecordingRepository();
+    if (session.recordingId == null) {
+      const created = await repo.create({
+        hostId: session.hostId,
+        userId: session.userId,
+        startedAt: new Date(session.sessionStartedAt).toISOString(),
+        recordingPath: session.recordingPath,
+        protocol: "ssh",
+        format: "asciicast",
+        ...outcome,
       });
+      session.recordingId = created.id;
+    } else {
+      await repo.updateEnded(session.recordingId, outcome);
     }
-
-    sshLogger.info("Session log persisted", {
+    session.lastPersistedBytes = bytes;
+    session.lastPersistedFailure = failure;
+    sshLogger.info("Session log metadata persisted", {
       operation: "session_log_persisted",
       sessionId: session.id,
       userId: session.userId,
       hostId: session.hostId,
       duration,
       bytes: session.recordingBytes,
+      recordingFailure: session.recordingFailure,
     });
   }
 
@@ -841,42 +908,11 @@ class TerminalSessionManager {
     type: "i" | "o" | "r",
     data: string,
   ): void {
-    if (!session.sessionLoggingEnabled || !session.recordingPath || !data)
-      return;
+    if (!session.recordingWriter || !data) return;
     const elapsed = (Date.now() - session.sessionStartedAt) / 1000;
-    const line = `${JSON.stringify([elapsed, type, data])}\n`;
-    session.recordingBytes += Buffer.byteLength(line);
-    session.pendingRecordingData += line;
-
-    if (!session.recordingFlushTimer) {
-      session.recordingFlushTimer = setTimeout(() => {
-        session.recordingFlushTimer = null;
-        this.flushRecording(session);
-      }, RECORDING_FLUSH_INTERVAL_MS);
-    }
-  }
-
-  /** Coalesces buffered recording lines into a single disk write. */
-  private flushRecording(session: TerminalSession): void {
-    if (!session.recordingPath || !session.pendingRecordingData) return;
-    const chunk = session.pendingRecordingData;
-    session.pendingRecordingData = "";
-    const firstWrite = session.recordingBytes === Buffer.byteLength(chunk);
-
-    session.recordingWriteChain = session.recordingWriteChain.then(async () => {
-      if (firstWrite) {
-        await fs.promises.mkdir(path.dirname(session.recordingPath!), {
-          recursive: true,
-        });
-        await fs.promises.writeFile(
-          session.recordingPath!,
-          `${session.recordingHeader}${chunk}`,
-          "utf8",
-        );
-        return;
-      }
-      await fs.promises.appendFile(session.recordingPath!, chunk, "utf8");
-    });
+    session.recordingWriter.append(
+      `${JSON.stringify([elapsed, type, data])}\n`,
+    );
   }
 
   flushBuffer(session: TerminalSession): string | null {

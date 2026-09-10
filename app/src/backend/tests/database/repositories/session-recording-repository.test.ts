@@ -37,6 +37,7 @@ describe("SessionRecordingRepository", () => {
       endedAt: "2026-06-27T00:01:00.000Z",
       duration: 60,
       recordingPath: "/tmp/one.log",
+      terminationReason: "recording-stopped:write-failed",
     });
     await repo.create({
       userId: "user-1",
@@ -59,6 +60,7 @@ describe("SessionRecordingRepository", () => {
 
     const rows = await repo.listByUserIdWithHost("user-1");
     expect(rows.map((row) => row.hostName)).toEqual(["two", "one"]);
+    expect(rows[1].terminationReason).toBe("recording-stopped:write-failed");
     expect(rows[0]).toMatchObject({
       hostIp: "10.0.0.2",
       recordingPath: "/tmp/two.log",

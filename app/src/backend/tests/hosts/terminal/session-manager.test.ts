@@ -707,3 +707,121 @@ describe("terminal output capacity and control", () => {
     },
   );
 });
+
+describe("recording failure and automated input", () => {
+  it("revokes automation before a capacity-failing input is handed to SSH, while manual input remains usable", async () => {
+    const id = sessionManager.createSession(
+      "record-owner",
+      1,
+      "fixture",
+      80,
+      24,
+      undefined,
+      true,
+    );
+    const ws = makeFakeWs(),
+      stream = { destroyed: false, write: vi.fn(), end: vi.fn() };
+    const session = sessionManager.getSession(id)!;
+    try {
+      sessionManager.setSSHState(
+        id,
+        { end: vi.fn() } as never,
+        stream as never,
+      );
+      sessionManager.attachWs(id, "record-owner", ws);
+      const lease = session.control.grant(
+        { kind: "automation", ownerType: "agent-task", ownerId: "task" },
+        session.control.snapshot(),
+      );
+      sessionManager.bufferOutput(id, "P".repeat(4 * 1024 * 1024 - 1000));
+      expect(() =>
+        session.control.commitWrite(lease, Buffer.from("x".repeat(2048))),
+      ).toThrow();
+      expect(stream.write).not.toHaveBeenCalled();
+      expect(session.recordingFailure).toBe("capacity");
+      expect(session.control.snapshot().controller.kind).toBe("human");
+      sessionManager.sendHumanInput(id, ws, "manual\r");
+      expect(stream.write).toHaveBeenCalledOnce();
+      expect(stream.write.mock.calls[0][0].toString()).toBe("manual\r");
+      await session.recordingPersistChain;
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          terminationReason: "recording-stopped:capacity",
+        }),
+      );
+    } finally {
+      sessionManager.destroySession(id);
+      await session.recordingPersistChain;
+    }
+  });
+  it("marks a failed write as incomplete and leaves terminal history intact", async () => {
+    mockWriteFile.mockRejectedValueOnce(Error("fixture disk error"));
+    const id = sessionManager.createSession(
+        "record-error",
+        1,
+        "fixture",
+        80,
+        24,
+        undefined,
+        true,
+      ),
+      session = sessionManager.getSession(id)!;
+    try {
+      sessionManager.bufferOutput(id, "live output");
+      await session.recordingWriter!.flush();
+      await session.recordingPersistChain;
+      expect(session.recordingBytes).toBe(0);
+      expect(session.recordingFailure).toBe("write-failed");
+      expect(sessionManager.getOutputSnapshot(session)).toMatchObject({
+        text: "live output",
+        truncated: false,
+        recordingFailure: "write-failed",
+      });
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          terminationReason: "recording-stopped:write-failed",
+        }),
+      );
+    } finally {
+      sessionManager.destroySession(id);
+      await session.recordingPersistChain;
+    }
+  });
+  it("coalesces repeated metadata requests while a database write is pending", async () => {
+    let release!: (value: { id: number }) => void;
+    mockCreate.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const id = sessionManager.createSession(
+        "record-meta",
+        1,
+        "fixture",
+        80,
+        24,
+        undefined,
+        true,
+      ),
+      session = sessionManager.getSession(id)!;
+    try {
+      sessionManager.bufferOutput(id, "first");
+      await session.recordingWriter!.flush();
+      sessionManager.detachWs(id);
+      await vi.waitFor(() => expect(release).toBeDefined());
+      const work = session.recordingPersistChain;
+      sessionManager.bufferOutput(id, "second");
+      await session.recordingWriter!.flush();
+      for (let i = 0; i < 100; i++) sessionManager.detachWs(id);
+      expect(session.recordingPersistChain).toBe(work);
+      release({ id: 55 });
+      await work;
+      expect(session.recordingPersistRunning).toBe(false);
+      expect(session.lastPersistedBytes).toBe(session.recordingBytes);
+    } finally {
+      sessionManager.destroySession(id);
+      await session.recordingPersistChain;
+    }
+  });
+});

@@ -2067,7 +2067,10 @@
     "retry": "Retry",
     "outputGapHistory": "Only recent terminal output is retained. Earlier output has been truncated.",
     "outputGapDelivery": "This window did not receive complete terminal output. Reconnect and check the current state before continuing or authorizing automation again.",
-    "outputGapDismiss": "Dismiss"
+    "outputGapDismiss": "Dismiss",
+    "recordingStopped": "Full terminal recording has stopped and may be incomplete. Manual terminal input remains available. Check the state before authorizing automation again; start a new session to record again.",
+    "recordingIncomplete": "Incomplete recording",
+    "recordingIncompleteDetails": "Recording stopped before the session ended. The saved file may be incomplete or unavailable."
   },
   "fileManager": {
     "noHostSelected": "No host selected",

@@ -22,6 +22,7 @@ export interface SessionRecordingCreateInput {
 }
 
 export interface SessionRecordingListRecord {
+  terminationReason?: string | null;
   id: number;
   hostId: number;
   userId: string;
@@ -118,6 +119,7 @@ export class SessionRecordingRepository {
         recordingPath: sessionRecordings.recordingPath,
         protocol: sessionRecordings.protocol,
         format: sessionRecordings.format,
+        terminationReason: sessionRecordings.terminationReason,
         hostName: hosts.name,
         hostIp: hosts.ip,
       })

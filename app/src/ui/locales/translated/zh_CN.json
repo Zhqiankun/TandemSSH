@@ -2067,7 +2067,10 @@
     "retry": "重试",
     "outputGapHistory": "这里只保留最近的终端输出，较早内容已截断。",
     "outputGapDelivery": "此窗口未能完整接收终端输出。请重新连接并核对状态，再继续操作或重新授权自动执行。",
-    "outputGapDismiss": "已知晓"
+    "outputGapDismiss": "已知晓",
+    "recordingStopped": "完整终端录制已停止，记录可能不完整。手工终端仍可使用；请核对后再授权自动执行。如需重新录制，请新建会话。",
+    "recordingIncomplete": "录制不完整",
+    "recordingIncompleteDetails": "录制提前停止，已保存文件可能不完整或无法读取。"
   },
   "fileManager": {
     "noHostSelected": "未选择主机",

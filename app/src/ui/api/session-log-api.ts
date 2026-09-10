@@ -1,6 +1,7 @@
 import { authApi, handleApiError } from "@/main-axios";
 
 export type SessionLogRecord = {
+  terminationReason?: string | null;
   id: number;
   hostId: number;
   userId: string;

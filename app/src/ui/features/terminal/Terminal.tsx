@@ -182,9 +182,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     ref,
   ) {
     const { t } = useTranslation();
-    const [outputGap, setOutputGap] = useState<"history" | "delivery" | null>(
-      null,
-    );
+    const [outputGap, setOutputGap] = useState<
+      "history" | "delivery" | "recording" | null
+    >(null);
     const { instance: terminal, ref: xtermRef } = useXTerm();
     const commandHistoryContext = useCommandHistory();
     const { confirmWithToast } = useConfirmation();
@@ -1477,7 +1477,11 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           }
           if (msg.type === "context.gap") {
             setOutputGap(
-              msg.reason === "history-truncated" ? "history" : "delivery",
+              msg.reason === "history-truncated"
+                ? "history"
+                : msg.reason === "recording-stopped"
+                  ? "recording"
+                  : "delivery",
             );
           } else if (msg.type === "data") {
             const acknowledge = () => {
@@ -3596,7 +3600,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
               {t(
                 outputGap === "history"
                   ? "terminal.outputGapHistory"
-                  : "terminal.outputGapDelivery",
+                  : outputGap === "recording"
+                    ? "terminal.recordingStopped"
+                    : "terminal.outputGapDelivery",
               )}
             </span>
             <button

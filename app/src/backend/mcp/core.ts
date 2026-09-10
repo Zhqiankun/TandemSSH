@@ -43,6 +43,8 @@ export interface McpCorePorts {
     generation: number;
     firstCursor: number;
     truncated?: boolean;
+    recordingFailure?:
+      import("../../types/terminal-recording.js").RecordingFailure | null;
   };
   open(
     principal: BridgePrincipal,
@@ -406,6 +408,7 @@ export class McpCore {
               : output.truncated === true,
           truncated: output.truncated === true || safe.length > p.maxCharacters,
           text: p.cursor === output.cursor ? "" : safe.slice(-p.maxCharacters),
+          recordingFailure: output.recordingFailure ?? null,
           contentTrust: "untrusted-terminal-output",
         };
       }

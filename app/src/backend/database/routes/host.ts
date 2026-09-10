@@ -186,6 +186,7 @@ router.post(
       pin,
       enableTerminal,
       enableCommandHistory,
+      enableSessionLogging,
       enableTunnel,
       enableFileManager,
       scpLegacy,
@@ -261,6 +262,8 @@ router.post(
       !isNonEmptyString(userId) ||
       !isNonEmptyString(ip) ||
       !isValidPort(port) ||
+      (enableSessionLogging !== undefined &&
+        typeof enableSessionLogging !== "boolean") ||
       !isOptionalBoolean(shareSshAuth)
     ) {
       sshLogger.warn("Invalid SSH data input validation failed", {
@@ -321,6 +324,7 @@ router.post(
       pin: pin ? 1 : 0,
       enableTerminal: enableTerminal ? 1 : 0,
       enableCommandHistory: enableCommandHistory ? 1 : 0,
+      enableSessionLogging: enableSessionLogging === true,
       enableTunnel: enableTunnel ? 1 : 0,
       tunnelConnections: Array.isArray(tunnelConnections)
         ? JSON.stringify(tunnelConnections)
@@ -878,6 +882,7 @@ router.put(
       pin,
       enableTerminal,
       enableCommandHistory,
+      enableSessionLogging,
       enableTunnel,
       enableFileManager,
       scpLegacy,
@@ -953,6 +958,8 @@ router.put(
       !isNonEmptyString(userId) ||
       !isNonEmptyString(ip) ||
       !isValidPort(port) ||
+      (enableSessionLogging !== undefined &&
+        typeof enableSessionLogging !== "boolean") ||
       !isOptionalBoolean(shareSshAuth) ||
       !hostId
     ) {
@@ -1014,6 +1021,7 @@ router.put(
       pin: pin ? 1 : 0,
       enableTerminal: enableTerminal ? 1 : 0,
       enableCommandHistory: enableCommandHistory ? 1 : 0,
+      ...(enableSessionLogging === undefined ? {} : { enableSessionLogging }),
       enableTunnel: enableTunnel ? 1 : 0,
       tunnelConnections: Array.isArray(tunnelConnections)
         ? JSON.stringify(tunnelConnections)
