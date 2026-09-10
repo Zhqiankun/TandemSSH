@@ -115,11 +115,14 @@ it("shows Chinese navigation, properties and a version-bound upload selection", 
   await waitFor(() =>
     expect(screen.getByLabelText("本机目录路径")).toHaveValue("C:\\work\\目录"),
   );
-  expect(f.onTargetChange).toHaveBeenLastCalledWith({
-    rootId: root.id,
-    relativePath: "目录",
-    path: "C:\\work\\目录",
-  });
+  // The path input updates before the asynchronous directory result confirms the target.
+  await waitFor(() =>
+    expect(f.onTargetChange).toHaveBeenLastCalledWith({
+      rootId: root.id,
+      relativePath: "目录",
+      path: "C:\\work\\目录",
+    }),
+  );
   fireEvent.click(screen.getByRole("button", { name: "返回上一个本机目录" }));
   await waitFor(() =>
     expect(screen.getByLabelText("本机目录路径")).toHaveValue(root.path),

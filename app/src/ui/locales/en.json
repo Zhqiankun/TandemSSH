@@ -2064,7 +2064,10 @@
       "addToSplit": "Add to Split",
       "removeFromSplit": "Remove from Split"
     },
-    "retry": "Retry"
+    "retry": "Retry",
+    "outputGapHistory": "Only recent terminal output is retained. Earlier output has been truncated.",
+    "outputGapDelivery": "This window did not receive complete terminal output. Reconnect and check the current state before continuing or authorizing automation again.",
+    "outputGapDismiss": "Dismiss"
   },
   "fileManager": {
     "noHostSelected": "No host selected",

@@ -217,17 +217,7 @@ async function handleShareTokenConnection(
   shareRepo.touchShareUsage(share.id).catch(() => {});
   shareRepo.recordParticipantJoin(share.id, null, "Guest").catch(() => {});
 
-  const buffered = sessionManager.getBuffer(joined);
-  if (buffered) {
-    ws.send(
-      JSON.stringify({
-        type: "data",
-        data: buffered,
-        replay: true,
-        terminalReplies: true,
-      }),
-    );
-  }
+  sessionManager.replayOutput(joined, ws);
   ws.send(
     JSON.stringify({
       type: "sessionAttached",
@@ -290,6 +280,12 @@ async function handleShareTokenConnection(
     }
 
     switch (type) {
+      case "terminal-output-ack":
+        sessionManager.acknowledgeOutput(
+          ws,
+          (data as { deliveryId?: unknown })?.deliveryId,
+        );
+        break;
       case "terminal-reply": {
         if (typeof data === "string")
           sessionManager.sendTerminalReply(currentSessionId, ws, data);
@@ -324,6 +320,10 @@ wss.on("connection", async (ws: WebSocket, req) => {
   });
 
   const urlObj = new URL(req.url || "", "http://localhost");
+  sessionManager.configureOutput(
+    ws,
+    urlObj.searchParams.get("outputAck") === "1",
+  );
   const shareToken = urlObj.searchParams.get("shareToken");
 
   if (shareToken) {
@@ -627,17 +627,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
             sshConn = session.sshConn;
             isConnecting = false;
             isConnected = true;
-            const buffered = sessionManager.getBuffer(session);
-            if (buffered) {
-              ws.send(
-                JSON.stringify({
-                  type: "data",
-                  data: buffered,
-                  replay: true,
-                  terminalReplies: true,
-                }),
-              );
-            }
+            sessionManager.replayOutput(session, ws);
             const attachCols = toTerminalDimension(attachData.cols);
             const attachRows = toTerminalDimension(attachData.rows);
             if (
@@ -812,6 +802,12 @@ wss.on("connection", async (ws: WebSocket, req) => {
           break;
         }
 
+        case "terminal-output-ack":
+          sessionManager.acknowledgeOutput(
+            ws,
+            (data as { deliveryId?: unknown })?.deliveryId,
+          );
+          break;
         case "terminal-reply": {
           if (typeof data === "string" && currentSessionId)
             sessionManager.sendTerminalReply(currentSessionId, ws, data);
@@ -1396,17 +1392,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
               .recordParticipantJoin(share.id, userId, null)
               .catch(() => {});
 
-            const buffered = sessionManager.getBuffer(joinedSession);
-            if (buffered) {
-              ws.send(
-                JSON.stringify({
-                  type: "data",
-                  data: buffered,
-                  replay: true,
-                  terminalReplies: true,
-                }),
-              );
-            }
+            sessionManager.replayOutput(joinedSession, ws);
             ws.send(
               JSON.stringify({
                 type: "sessionAttached",
@@ -2011,17 +1997,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
         isConnected = true;
         sessionManager.attachWs(reusedSessionId, userId, ws, tabInstanceId);
 
-        const buffered = sessionManager.getBuffer(existingSession);
-        if (buffered) {
-          ws.send(
-            JSON.stringify({
-              type: "data",
-              data: buffered,
-              replay: true,
-              terminalReplies: true,
-            }),
-          );
-        }
+        sessionManager.replayOutput(existingSession, ws);
         ws.send(
           JSON.stringify({
             type: "sessionCreated",

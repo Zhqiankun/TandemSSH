@@ -1,4 +1,5 @@
 import { type Client, type ClientChannel } from "ssh2";
+import { terminalOutputDelivery } from "./output-delivery.js";
 import {
   ControlError,
   SessionControl,
@@ -60,6 +61,8 @@ export interface TerminalSession {
   outputBuffer: string[];
   outputBufferBytes: number;
   outputSequence: number;
+  outputTruncated: boolean;
+  outputGap: boolean;
   recordingPath: string | null;
   recordingHeader: string | null;
   recordingBytes: number;
@@ -80,6 +83,7 @@ export interface TerminalSession {
 const NON_OWNER_ALLOWED_MESSAGE_TYPES = new Set([
   "input",
   "terminal-reply",
+  "terminal-output-ack",
   "ping",
   "disconnect",
 ]);
@@ -234,6 +238,8 @@ class TerminalSessionManager {
       outputBuffer: [],
       outputBufferBytes: 0,
       outputSequence: 0,
+      outputTruncated: false,
+      outputGap: false,
       recordingPath,
       recordingHeader,
       recordingBytes: 0,
@@ -495,19 +501,65 @@ class TerminalSessionManager {
     return session;
   }
 
-  /** Fans out a message to every OPEN participant socket; skips closed ones and send failures. */
+  configureOutput(ws: WebSocket, acknowledgements: boolean): void {
+    terminalOutputDelivery.configure(ws, acknowledgements);
+  }
+
+  acknowledgeOutput(ws: WebSocket, deliveryId: unknown): boolean {
+    return terminalOutputDelivery.acknowledge(ws, deliveryId);
+  }
+
+  private sendToParticipant(
+    session: TerminalSession,
+    ws: WebSocket,
+    message: object,
+  ): void {
+    terminalOutputDelivery.send(ws, message, () => {
+      const participant = this.getParticipantForWs(session, ws);
+      if (!participant?.isOwner) return;
+      session.outputGap = true;
+      if (!session.control.snapshot().closed) session.control.takeover();
+      this.broadcast(session.id, {
+        type: "context.gap",
+        reason: "output-backpressure",
+        sessionId: session.id,
+      });
+    });
+  }
+
+  /** A slow guest must not stall or revoke the owner's active session. */
   broadcast(sessionId: string, message: object): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
-    const payload = JSON.stringify(message);
-    for (const participant of session.participants.values()) {
-      if (participant.ws.readyState !== WebSocket.OPEN) continue;
-      try {
-        participant.ws.send(payload);
-      } catch {
-        /* ignore individual send failures, keep broadcasting to the rest */
-      }
-    }
+    for (const participant of session.participants.values())
+      this.sendToParticipant(session, participant.ws, message);
+  }
+
+  replayOutput(session: TerminalSession, ws: WebSocket): void {
+    if (session.outputTruncated || session.outputGap)
+      this.sendToParticipant(session, ws, {
+        type: "context.gap",
+        reason: session.outputGap ? "output-backpressure" : "history-truncated",
+        sessionId: session.id,
+      });
+    const text = this.getBuffer(session);
+    if (text)
+      this.sendToParticipant(session, ws, {
+        type: "data",
+        data: text,
+        replay: true,
+        terminalReplies: true,
+      });
+  }
+
+  getOutputSnapshot(session: TerminalSession) {
+    return {
+      text: this.getBuffer(session) ?? "",
+      cursor: session.outputSequence,
+      firstCursor: session.outputSequence - session.outputBuffer.length,
+      generation: session.control.snapshot().generation,
+      truncated: session.outputTruncated || session.outputGap,
+    };
   }
 
   /** Finds the participant entry (owner or not) for a given socket. */
@@ -756,14 +808,17 @@ class TerminalSessionManager {
     session.control.observeTerminalOutput(data);
     session.outputSequence++;
     session.outputBuffer.push(data);
-    session.outputBufferBytes += data.length;
+    session.outputBufferBytes += Buffer.byteLength(data, "utf8");
 
     while (
-      session.outputBufferBytes > MAX_BUFFER_BYTES &&
+      (session.outputBufferBytes > MAX_BUFFER_BYTES ||
+        session.outputBuffer.length > 4096) &&
       session.outputBuffer.length > 0
     ) {
       const removed = session.outputBuffer.shift();
-      if (removed) session.outputBufferBytes -= removed.length;
+      if (removed)
+        session.outputBufferBytes -= Buffer.byteLength(removed, "utf8");
+      session.outputTruncated = true;
     }
 
     this.recordSessionEvent(session, "o", data);
@@ -827,6 +882,7 @@ class TerminalSessionManager {
   flushBuffer(session: TerminalSession): string | null {
     if (session.outputBuffer.length === 0) return null;
     const data = session.outputBuffer.join("");
+    session.outputTruncated = true;
     session.outputBuffer = [];
     session.outputBufferBytes = 0;
     return data;

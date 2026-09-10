@@ -182,6 +182,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     ref,
   ) {
     const { t } = useTranslation();
+    const [outputGap, setOutputGap] = useState<"history" | "delivery" | null>(
+      null,
+    );
     const { instance: terminal, ref: xtermRef } = useXTerm();
     const commandHistoryContext = useCommandHistory();
     const { confirmWithToast } = useConfirmation();
@@ -1300,7 +1303,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         connectionTimeoutRef.current = null;
       }
 
-      const ws = new WebSocket(baseWsUrl);
+      const outputUrl = new URL(baseWsUrl, window.location.href);
+      outputUrl.searchParams.set("outputAck", "1");
+      const ws = new WebSocket(outputUrl.toString());
       webSocketRef.current = ws;
       wasDisconnectedBySSH.current = false;
       updateConnectionError(null);
@@ -1470,7 +1475,25 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             pongReceivedRef.current = true;
             return;
           }
-          if (msg.type === "data") {
+          if (msg.type === "context.gap") {
+            setOutputGap(
+              msg.reason === "history-truncated" ? "history" : "delivery",
+            );
+          } else if (msg.type === "data") {
+            const acknowledge = () => {
+              if (
+                ws === webSocketRef.current &&
+                ws.readyState === WebSocket.OPEN &&
+                Number.isSafeInteger(msg.deliveryId) &&
+                msg.deliveryId > 0
+              )
+                ws.send(
+                  JSON.stringify({
+                    type: "terminal-output-ack",
+                    data: { deliveryId: msg.deliveryId },
+                  }),
+                );
+            };
             if (typeof msg.data === "string") {
               outputListenersRef.current.forEach((listener) =>
                 listener(msg.data),
@@ -1488,7 +1511,10 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 msg.replay === true
                   ? terminalRepliesRef.current?.beginReplay()
                   : undefined;
-              terminal.write(formatTerminalOutput(output), endReplay);
+              terminal.write(formatTerminalOutput(output), () => {
+                endReplay?.();
+                acknowledge();
+              });
               // Strip ANSI escape codes before testing — newer sudo versions (Ubuntu 26.04+)
               // emit colored prompts with embedded escape sequences that break the regex.
               const strippedData = msg.data.replace(
@@ -1504,7 +1530,10 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 msg.replay === true
                   ? terminalRepliesRef.current?.beginReplay()
                   : undefined;
-              terminal.write(formatTerminalOutput(output), endReplay);
+              terminal.write(formatTerminalOutput(output), () => {
+                endReplay?.();
+                acknowledge();
+              });
             }
           } else if (msg.type === "error") {
             const trustRejected = msg.code === "HOST_TRUST_REJECTED";
@@ -2260,6 +2289,20 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           const cols = terminal?.cols || 80;
           const rows = terminal?.rows || 24;
           connectToHost(cols, rows);
+          return;
+        }
+
+        if (
+          event.code === 1013 &&
+          event.reason === "TERMINAL_OUTPUT_OVERFLOW"
+        ) {
+          setOutputGap("delivery");
+          // Only the output subscriber closed; the backend retained the SSH session.
+          pendingRestoredSessionIdRef.current = sessionIdRef.current;
+          setShowDisconnectedOverlay(true);
+          shouldNotReconnectRef.current = true;
+          updateConnectionError(t("terminal.outputGapDelivery"));
+          setIsConnecting(false);
           return;
         }
 
@@ -3544,6 +3587,27 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           }),
         }}
       >
+        {outputGap && (
+          <div
+            role="status"
+            className="absolute left-2 right-2 top-2 z-[140] flex max-w-lg items-start gap-3 border border-amber-500/50 bg-background px-3 py-2 text-sm text-foreground shadow-md"
+          >
+            <span>
+              {t(
+                outputGap === "history"
+                  ? "terminal.outputGapHistory"
+                  : "terminal.outputGapDelivery",
+              )}
+            </span>
+            <button
+              type="button"
+              className="shrink-0 underline"
+              onClick={() => setOutputGap(null)}
+            >
+              {t("terminal.outputGapDismiss")}
+            </button>
+          </div>
+        )}
         {backgroundImage && (
           <div
             className="absolute inset-0 pointer-events-none"

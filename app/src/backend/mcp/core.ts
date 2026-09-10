@@ -37,7 +37,13 @@ export interface McpCorePorts {
   output(
     principal: BridgePrincipal,
     sessionId: string,
-  ): { text: string; cursor: number; generation: number; firstCursor: number };
+  ): {
+    text: string;
+    cursor: number;
+    generation: number;
+    firstCursor: number;
+    truncated?: boolean;
+  };
   open(
     principal: BridgePrincipal,
     hostId: number,
@@ -394,8 +400,11 @@ export class McpCore {
           cursor: output.cursor,
           replace: true,
           unchanged: p.cursor === output.cursor,
-          contextGap: p.cursor !== undefined && p.cursor < output.firstCursor,
-          truncated: safe.length > p.maxCharacters,
+          contextGap:
+            p.cursor !== undefined
+              ? p.cursor < output.firstCursor
+              : output.truncated === true,
+          truncated: output.truncated === true || safe.length > p.maxCharacters,
           text: p.cursor === output.cursor ? "" : safe.slice(-p.maxCharacters),
           contentTrust: "untrusted-terminal-output",
         };

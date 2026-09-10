@@ -95,12 +95,7 @@ const core = new McpCore({
       !principal.allowedHostIds.includes(session.hostId)
     )
       throw new Error("SESSION_NOT_FOUND");
-    return {
-      text: sessionManager.getBuffer(session) ?? "",
-      cursor: session.outputSequence,
-      firstCursor: session.outputSequence - session.outputBuffer.length,
-      generation: session.control.snapshot().generation,
-    };
+    return sessionManager.getOutputSnapshot(session);
   },
   async open(principal, hostId, requestId) {
     if (

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { EventEmitter } from "node:events";
 
 // Stub all external imports before loading the module under test
 const mockCreate = vi.fn().mockResolvedValue({ id: 1 });
@@ -54,10 +55,13 @@ const { sessionManager, isMessageAllowedForParticipant } =
 
 // Minimal fake WebSocket - only the surface session-manager touches.
 function makeFakeWs(readyState = 1 /* OPEN */) {
-  return {
+  return Object.assign(new EventEmitter(), {
     readyState,
+    bufferedAmount: 0,
     send: vi.fn(),
-  } as unknown as import("ws").WebSocket;
+    close: vi.fn(),
+    terminate: vi.fn(),
+  }) as unknown as import("ws").WebSocket;
 }
 const WS_OPEN = 1;
 const WS_CLOSED = 3;
@@ -346,9 +350,11 @@ describe("TerminalSessionManager - multiplayer participants", () => {
 
     expect(ownerWs.send).toHaveBeenCalledWith(
       JSON.stringify({ type: "data", data: "hello" }),
+      expect.any(Function),
     );
     expect(openGuestWs.send).toHaveBeenCalledWith(
       JSON.stringify({ type: "data", data: "hello" }),
+      expect.any(Function),
     );
     expect(closedGuestWs.send).not.toHaveBeenCalled();
 
@@ -467,6 +473,7 @@ describe("TerminalSessionManager - multiplayer participants", () => {
         type: "sessionTerminatedByOwner",
         reason: "owner ended the session",
       }),
+      expect.any(Function),
     );
     expect(sessionManager.getSession(id)).toBeNull();
   });
@@ -602,4 +609,101 @@ it("allows an existing writable participant to answer when the owner is detached
   } finally {
     sessionManager.destroySession(id);
   }
+});
+
+describe("terminal output capacity and control", () => {
+  it("bounds UTF-8 history bytes and tiny chunk counts with explicit truncation", () => {
+    const id = sessionManager.createSession(
+      "history-owner",
+      1,
+      "fixture",
+      80,
+      24,
+    );
+    try {
+      sessionManager.bufferOutput(id, "界".repeat(100000));
+      sessionManager.bufferOutput(id, "界".repeat(100000));
+      const session = sessionManager.getSession(id)!;
+      expect(session.outputBufferBytes).toBe(300000);
+      expect(sessionManager.getOutputSnapshot(session)).toMatchObject({
+        cursor: 2,
+        firstCursor: 1,
+        truncated: true,
+      });
+      for (let i = 0; i < 5000; i++) sessionManager.bufferOutput(id, "x");
+      expect(session.outputBuffer.length).toBeLessThanOrEqual(4096);
+      expect(
+        Buffer.byteLength(sessionManager.getOutputSnapshot(session).text),
+      ).toBeLessThanOrEqual(512 * 1024);
+    } finally {
+      sessionManager.destroySession(id);
+    }
+  });
+  it.each([true, false])(
+    "isolates an overflowing participant (owner=%s)",
+    (ownerOverflows) => {
+      const id = sessionManager.createSession(
+        "delivery-owner",
+        1,
+        "fixture",
+        80,
+        24,
+      );
+      const owner = makeFakeWs(),
+        guest = makeFakeWs();
+      try {
+        const session = sessionManager.getSession(id)!;
+        session.isConnected = true;
+        session.sshStream = {
+          destroyed: false,
+          write: vi.fn(),
+          end: vi.fn(),
+        } as unknown as import("ssh2").ClientChannel;
+        sessionManager.attachWs(id, "delivery-owner", owner);
+        sessionManager.joinAsParticipant(id, guest, {
+          userId: null,
+          permissionLevel: "read-only",
+        });
+        const lease = session.control.grant(
+          { kind: "automation", ownerType: "agent-task", ownerId: "task" },
+          session.control.snapshot(),
+        );
+        const slow = ownerOverflows ? owner : guest;
+        Object.defineProperty(slow, "bufferedAmount", {
+          value: 4 * 1024 * 1024,
+        });
+        sessionManager.broadcast(id, { type: "data", data: "new output" });
+        expect(slow.close).toHaveBeenCalledWith(
+          1013,
+          "TERMINAL_OUTPUT_OVERFLOW",
+        );
+        if (ownerOverflows) {
+          expect(() =>
+            session.control.commitWrite(lease, Buffer.from("late write")),
+          ).toThrow("STALE_CONTROL");
+          expect(sessionManager.getOutputSnapshot(session).truncated).toBe(
+            true,
+          );
+        } else {
+          expect(() => session.control.assertLease(lease)).not.toThrow();
+          expect(sessionManager.getOutputSnapshot(session).truncated).toBe(
+            false,
+          );
+        }
+        const replay = makeFakeWs();
+        sessionManager.replayOutput(session, replay);
+        if (ownerOverflows)
+          expect(
+            vi
+              .mocked(replay.send)
+              .mock.calls.some(
+                (c) => JSON.parse(c[0] as string).type === "context.gap",
+              ),
+          ).toBe(true);
+        (slow as unknown as EventEmitter).emit("close");
+      } finally {
+        sessionManager.destroySession(id);
+      }
+    },
+  );
 });
