@@ -858,3 +858,56 @@ it("preserves unknown results and keeps a task when archival persistence fails",
   expect(f.runtime.list(human)).toEqual([]);
   f.disconnect();
 });
+
+it("records the task host snapshot and trusted human approval separately from MCP origin", async () => {
+  const audit = {
+    record: vi.fn(async () => {}),
+    append: vi.fn(async () => {}),
+  };
+  const f = fixture({ audit });
+  const task = await f.create("collaborative", [], mcp);
+  await f.authorize(task, { matches: [{ kind: "program", program: "pwd" }] });
+  await f.runtime.submit(
+    mcp,
+    task.id,
+    { program: "pwd", args: [] },
+    "provenance",
+  );
+  await vi.waitFor(() =>
+    expect(f.runtime.get(human, task.id).state).toBe("awaiting-approval"),
+  );
+  expect(audit.append).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "operation.proposed",
+      operation: expect.objectContaining({
+        context: expect.objectContaining({
+          origin: "mcp",
+          hostId: 1,
+          hostName: "user@server:22",
+        }),
+      }),
+    }),
+  );
+  expect(audit.record).toHaveBeenCalledWith(
+    "task.authorization",
+    expect.objectContaining({
+      source: "human",
+      hostId: 1,
+      hostName: "user@server:22",
+    }),
+  );
+  const op = f.runtime.get(human, task.id).operations[0];
+  await f.runtime.approve(human, task.id, op.id, op.digest, 1);
+  expect(audit.record).toHaveBeenCalledWith(
+    "operation.approval",
+    expect.objectContaining({
+      source: "human",
+      hostName: "user@server:22",
+      policyRevision: 1,
+    }),
+  );
+  await vi.waitFor(() =>
+    expect(f.runtime.get(human, task.id).state).toBe("ready"),
+  );
+  await f.runtime.finish(mcp, task.id);
+});

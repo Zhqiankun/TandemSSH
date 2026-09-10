@@ -6033,6 +6033,34 @@
         "HISTORY_EXPORT_INCOMPLETE": "导出中断，未下载不完整文件。",
         "HISTORY_EXPORT_INVALID": "导出校验失败，未下载文件。",
         "HISTORY_EXPORT_FAILED": "导出失败，未生成完整文件。"
+      },
+      "sourceLabel": "来源",
+      "modeLabel": "模式",
+      "hostLabel": "服务器",
+      "sessionLabel": "会话",
+      "policyLabel": "策略版本",
+      "decisionLabel": "策略判断",
+      "exitLabel": "退出码",
+      "directoryLabel": "目录",
+      "notRecorded": "未记录",
+      "previewOnly": "这里只显示输出片段，详情按已保存内容提供。",
+      "origins": {
+        "human": "人工",
+        "agent": "内置 AI",
+        "assistant": "内置 AI",
+        "workflow": "流程",
+        "mcp": "MCP",
+        "command-panel": "快捷命令",
+        "unknown": "未记录"
+      },
+      "modes": {
+        "automatic": "自动",
+        "collaborative": "协作"
+      },
+      "decisions": {
+        "allow": "允许",
+        "confirm": "要求确认",
+        "deny": "拒绝"
       }
     },
     "tunnelTrustRejected": "服务器身份验证未通过。请在主机信任面板核对地址和指纹，再手动连接隧道。",

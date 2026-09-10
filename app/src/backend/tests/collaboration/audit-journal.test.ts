@@ -323,3 +323,48 @@ it("counts invalid UTF-8 as damaged data instead of silently replacing character
     skipped: 1,
   });
 });
+
+it("projects trusted provenance and bounded redacted output without inventing missing metadata", async () => {
+  const f = await fixture();
+  await f.journal.record("operation.completed", {
+    context: {
+      taskId: "task",
+      origin: "mcp",
+      mode: "collaborative",
+      hostId: 7,
+      hostName: "测试服务器",
+      lease: { sessionId: "session" },
+    },
+    action: { program: "pwd", cwd: "/srv" },
+    decision: { revision: 3, outcome: "confirm" },
+    exitCode: 0,
+    output: "API_KEY=hidden-provenance\n" + "界".repeat(511) + "🛶尾",
+  });
+  const page = await f.journal.queryHistory({});
+  expect(page.items[0]).toMatchObject({
+    origin: "mcp",
+    mode: "collaborative",
+    hostId: 7,
+    hostName: "测试服务器",
+    sessionId: "session",
+    policyRevision: 3,
+    policyOutcome: "confirm",
+    cwd: "/srv",
+    exitCode: 0,
+    outputTruncated: true,
+  });
+  expect(page.items[0].outputPreview).not.toContain("hidden-provenance");
+  expect(page.items[0].outputPreview!.length).toBeLessThanOrEqual(512);
+  expect(/[\uD800-\uDBFF]$/.test(page.items[0].outputPreview!)).toBe(false);
+  await f.journal.record("legacy", {
+    source: "invented",
+    context: { mode: "invented" },
+    decision: { revision: -1, outcome: "invented" },
+  });
+  const legacy = (await f.journal.queryHistory({})).items[0];
+  expect(legacy.origin).toBeUndefined();
+  expect(legacy.mode).toBeUndefined();
+  expect(legacy.policyOutcome).toBeUndefined();
+  expect(legacy.policyRevision).toBeUndefined();
+  expect(legacy.hostName).toBeUndefined();
+});

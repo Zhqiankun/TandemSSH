@@ -49,8 +49,24 @@ const object = (v: unknown): Record<string, unknown> =>
   v !== null && typeof v === "object" && !Array.isArray(v)
     ? (v as Record<string, unknown>)
     : {};
-const text = (v: unknown, max = 512) =>
-  typeof v === "string" ? redactString(v).slice(0, max) : undefined;
+const text = (v: unknown, max = 512) => {
+  if (typeof v !== "string") return undefined;
+  const value = redactString(v).slice(0, max);
+  return /[\uD800-\uDBFF]$/.test(value) ? value.slice(0, -1) : value;
+};
+const choice = <T extends string>(
+  value: unknown,
+  values: readonly T[],
+): T | undefined =>
+  typeof value === "string" && values.includes(value as T)
+    ? (value as T)
+    : undefined;
+const integer = (value: unknown) =>
+  typeof value === "number" && Number.isSafeInteger(value) ? value : undefined;
+const nonnegative = (value: unknown) => {
+  const n = integer(value);
+  return n !== undefined && n >= 0 ? n : undefined;
+};
 const encode = (v: unknown) =>
   Buffer.from(JSON.stringify(v)).toString("base64url");
 const decode = (v: string) => {
@@ -150,7 +166,39 @@ export class AuditHistoryReader {
         128,
       ),
       title: text(data.title),
-      hostName: text(data.hostName),
+      hostName: text(data.hostName ?? context.hostName),
+      hostId: nonnegative(data.hostId ?? context.hostId),
+      sessionId: text(data.sessionId ?? object(context.lease).sessionId, 128),
+      origin: choice(context.origin ?? data.source, [
+        "human",
+        "agent",
+        "assistant",
+        "workflow",
+        "mcp",
+        "command-panel",
+      ] as const),
+      mode: choice(context.mode ?? data.mode, [
+        "automatic",
+        "collaborative",
+      ] as const),
+      policyRevision: nonnegative(
+        object(data.decision).revision ??
+          data.policyRevision ??
+          object(data.scope).policyRevision,
+      ),
+      policyOutcome: choice(object(data.decision).outcome, [
+        "allow",
+        "confirm",
+        "deny",
+      ] as const),
+      cwd: text(action.cwd ?? data.resultingCwd, 1024),
+      outputPreview: text(data.output, 512),
+      outputTruncated:
+        typeof data.output === "string"
+          ? data.outputTruncated === true ||
+            redactString(data.output).length > 512
+          : undefined,
+      exitCode: integer(data.exitCode),
       status: text(data.status ?? data.state, 80),
       operationId: record.type.startsWith("operation.")
         ? text(data.id, 128)

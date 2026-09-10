@@ -6033,6 +6033,34 @@
         "HISTORY_EXPORT_INCOMPLETE": "The export was interrupted; no partial file was downloaded.",
         "HISTORY_EXPORT_INVALID": "Export validation failed; no file was downloaded.",
         "HISTORY_EXPORT_FAILED": "Export failed. No completed file was generated."
+      },
+      "sourceLabel": "Source",
+      "modeLabel": "Mode",
+      "hostLabel": "Host",
+      "sessionLabel": "Session",
+      "policyLabel": "Policy",
+      "decisionLabel": "Policy decision",
+      "exitLabel": "Exit code",
+      "directoryLabel": "Directory",
+      "notRecorded": "Not recorded",
+      "previewOnly": "Only an output excerpt is shown. Details contain the saved record.",
+      "origins": {
+        "human": "Human",
+        "agent": "Built-in AI",
+        "assistant": "Built-in AI",
+        "workflow": "Workflow",
+        "mcp": "MCP",
+        "command-panel": "Command panel",
+        "unknown": "Not recorded"
+      },
+      "modes": {
+        "automatic": "Automatic",
+        "collaborative": "Collaborative"
+      },
+      "decisions": {
+        "allow": "Allow",
+        "confirm": "Confirmation required",
+        "deny": "Deny"
       }
     },
     "tunnelTrustRejected": "Server identity verification did not succeed. Review the address and fingerprint in Host Trust, then reconnect the tunnel manually.",

@@ -1,3 +1,4 @@
+import { HistoryRecordSummary } from "./HistoryRecordSummary";
 import { HistoryExport } from "./HistoryExport";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -204,6 +205,7 @@ function HistoryBrowser({ initialTaskId }: { initialTaskId?: string }) {
                   </time>
                 </div>
                 {item.title && <p className="break-all">{item.title}</p>}
+                <HistoryRecordSummary item={item} />
                 {(item.program || item.path) && (
                   <code className="block break-all">
                     {item.program ?? item.path}

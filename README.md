@@ -119,6 +119,7 @@ alpha.1 起支持预览版内置更新：启动检查，运行期间每 20 分�
 | [隧道在途取消](docs/76-c2s-pending-cancellation.md) | 认证等待取消、旧响应隔离、中文控件与三模式回归 |
 | [任务历史导出](docs/77-history-export.md) | 脱敏完整导出、中文取消与真实 MCP 撤销/文件下载验证 |
 | [预览版内部更新](docs/78-preview-auto-updates.md) | latest.yml、主进程每 20 分钟检查、真实桌面与 Actions 发布 |
+| [执行历史来源与目标](docs/79-history-provenance.md) | 中文来源、主机/会话、策略判断、退出码与脱敏输出摘要 |
 
 ## 产品主线
 

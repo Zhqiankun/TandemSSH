@@ -41,6 +41,9 @@ export type OperationStatus =
   | "cancelled-before-send"
   | "unknown";
 export interface OperationContext {
+  /** Display snapshot only; authority is resolved from the session and policy target. */
+  hostId?: number;
+  hostName?: string;
   taskId: string;
   requestId: string;
   mode: "collaborative" | "automatic";

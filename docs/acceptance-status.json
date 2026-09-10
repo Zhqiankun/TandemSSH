@@ -293,9 +293,10 @@
         "66-terminal-output-bounds.md",
         "67-recording-write-bounds.md",
         "69-chat-stream-bounds.md",
-        "77-history-export.md"
+        "77-history-export.md",
+        "79-history-provenance.md"
       ],
-      "remaining": "已补齐任务/全部保留记录的脱敏导出并实际下载；完整来源、目标、审批与策略版本展示仍按本项逐一核对。"
+      "remaining": "已完成脱敏导出、来源/目标/策略/退出码/输出中文摘要及旧记录离线桌面验证；仍需逐一核对人工、内置 AI、MCP 与流程记录入口的字段完整性。"
     },
     {
       "id": "F09",

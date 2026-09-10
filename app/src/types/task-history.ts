@@ -10,6 +10,17 @@ export interface AuditHistoryItem {
   taskId?: string;
   title?: string;
   hostName?: string;
+  hostId?: number;
+  sessionId?: string;
+  origin?:
+    "human" | "agent" | "assistant" | "workflow" | "mcp" | "command-panel";
+  mode?: "automatic" | "collaborative";
+  policyRevision?: number;
+  policyOutcome?: "allow" | "confirm" | "deny";
+  cwd?: string;
+  outputPreview?: string;
+  outputTruncated?: boolean;
+  exitCode?: number;
   status?: string;
   operationId?: string;
   actionType?: string;

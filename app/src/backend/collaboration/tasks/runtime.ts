@@ -876,6 +876,11 @@ export class TaskRuntime {
           : 0),
     );
     await this.ports.audit(actor.userId).record("task.authorization", {
+      source: actor.kind,
+      hostId: task.view.hostId,
+      hostName: task.view.hostName,
+      sessionId: task.view.sessionId,
+      mode: task.view.mode,
       taskId,
       scope,
       reconciliationOperationId: prior?.id,
@@ -1678,6 +1683,8 @@ export class TaskRuntime {
       {
         taskId: task.view.id,
         requestId,
+        hostId: task.view.hostId,
+        hostName: task.view.hostName,
         mode: task.view.mode,
         origin: task.clientId
           ? "mcp"
@@ -1990,6 +1997,11 @@ export class TaskRuntime {
     const approvalVersion = task.generation;
     try {
       await this.ports.audit(actor.userId).record("operation.approval", {
+        source: actor.kind,
+        hostId: task.view.hostId,
+        hostName: task.view.hostName,
+        sessionId: task.view.sessionId,
+        mode: task.view.mode,
         taskId,
         operationId,
         digest,
