@@ -23,7 +23,6 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { asHttpError } from "@/lib/http-error";
 import { cn } from "@/lib/utils.ts";
 import { FileManagerGrid } from "./FileManagerGrid.tsx";
 import { FileManagerSidebar, type SidebarItem } from "./FileManagerSidebar.tsx";
@@ -1397,6 +1396,7 @@ function FileManagerContent({
         const targetFile: FileItem = {
           ...file,
           path: symlinkInfo.target,
+          type: "file",
         };
 
         const createWindowComponent = (windowId: string) => (
@@ -1421,13 +1421,8 @@ function FileManagerContent({
           component: createWindowComponent,
         });
       }
-    } catch (error: unknown) {
-      const httpError = asHttpError(error);
-      toast.error(
-        httpError.response?.data?.error ||
-          httpError.message ||
-          t("fileManager.failedToResolveSymlink"),
-      );
+    } catch {
+      toast.error(t("fileManager.failedToResolveSymlink"));
     }
   };
 

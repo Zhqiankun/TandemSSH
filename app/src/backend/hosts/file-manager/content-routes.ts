@@ -1,3 +1,4 @@
+import { registerSymlinkRoute } from "./symlink-route.js";
 import { uploadBatchRecovery } from "../../files/upload-batch-recovery-production.js";
 import { uploadRecovery } from "../../files/upload-recovery-production.js";
 import { registerUploadRoutes } from "./upload-routes.js";
@@ -52,79 +53,7 @@ export function registerFileContentRoutes(
    *       500:
    *         description: Failed to identify symbolic link.
    */
-  app.get("/ssh/file_manager/ssh/identifySymlink", (req, res) => {
-    const sessionId = req.query.sessionId as string;
-    const sshConn = sshSessions[sessionId];
-    const linkPath = decodeURIComponent(req.query.path as string);
-    const userId = (req as AuthenticatedRequest).userId;
-
-    if (!sessionId) {
-      return res.status(400).json({ error: "Session ID is required" });
-    }
-
-    if (!sshConn?.isConnected) {
-      return res.status(400).json({ error: "SSH connection not established" });
-    }
-
-    if (!verifySessionOwnership(sshConn, userId)) {
-      return res.status(403).json({ error: "Session access denied" });
-    }
-
-    if (!linkPath) {
-      return res.status(400).json({ error: "Link path is required" });
-    }
-
-    sshConn.lastActive = Date.now();
-
-    const escapedPath = linkPath.replace(/'/g, "'\"'\"'");
-    const command = `stat -L -c "%F" '${escapedPath}' && readlink -f '${escapedPath}'`;
-
-    execChannel(sshConn, command, (err, stream) => {
-      if (err) {
-        fileLogger.error("SSH identifySymlink error:", err);
-        return res.status(500).json({ error: err.message });
-      }
-
-      let data = "";
-      let errorData = "";
-
-      stream.on("data", (chunk: Buffer) => {
-        data += chunk.toString();
-      });
-
-      stream.stderr.on("data", (chunk: Buffer) => {
-        errorData += chunk.toString();
-      });
-
-      stream.on("close", (code) => {
-        if (code !== 0) {
-          fileLogger.error(
-            `SSH identifySymlink command failed with code ${code}: ${errorData.replace(/\n/g, " ").trim()}`,
-          );
-          return res
-            .status(500)
-            .json({ error: `Command failed: ${errorData}` });
-        }
-
-        const [fileType, target] = data.trim().split("\n");
-
-        res.json({
-          path: linkPath,
-          target: target,
-          type: fileType.toLowerCase().includes("directory")
-            ? "directory"
-            : "file",
-        });
-      });
-
-      stream.on("error", (streamErr) => {
-        fileLogger.error("SSH identifySymlink stream error:", streamErr);
-        if (!res.headersSent) {
-          res.status(500).json({ error: `Stream error: ${streamErr.message}` });
-        }
-      });
-    });
-  });
+  registerSymlinkRoute(app, { sshSessions, verifySessionOwnership });
 
   /**
    * @openapi
