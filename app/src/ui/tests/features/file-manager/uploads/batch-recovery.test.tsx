@@ -95,6 +95,11 @@ async function open() {
   fireEvent.click(screen.getByRole("button", { name: "查看可恢复批次" }));
   fireEvent.click(await screen.findByRole("button", { name: /应用目录/ }));
   await screen.findByText("原目标清单");
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "重新选择原上传目录" }),
+    ).toBeEnabled(),
+  );
 }
 it("requires a fresh source and explicit review and overwrite confirmation", async () => {
   const f = fixture();
@@ -108,6 +113,13 @@ it("requires a fresh source and explicit review and overwrite confirmation", asy
     ).toHaveBeenCalled(),
   );
   await screen.findByText("E:/source/file.bin");
+  await waitFor(() =>
+    expect(
+      screen.getByLabelText(
+        "我已核对原目标清单，并重新同意本批次原有的目录合并计划。",
+      ),
+    ).toBeEnabled(),
+  );
   expect(restore).toBeDisabled();
   fireEvent.click(
     screen.getByLabelText(
@@ -141,6 +153,13 @@ it("retains review information and closes the capacity reservation when server v
   await open();
   fireEvent.click(screen.getByRole("button", { name: "重新选择原上传目录" }));
   await screen.findByText("E:/source/file.bin");
+  await waitFor(() =>
+    expect(
+      screen.getByLabelText(
+        "我已核对原目标清单，并重新同意本批次原有的目录合并计划。",
+      ),
+    ).toBeEnabled(),
+  );
   fireEvent.click(
     screen.getByLabelText(
       "我已核对原目标清单，并重新同意本批次原有的目录合并计划。",
@@ -150,7 +169,9 @@ it("retains review information and closes the capacity reservation when server v
     screen.getByLabelText("允许覆盖本次核对清单中的已有目标文件。"),
   );
   api.restore.mockRejectedValue(Error("UPLOAD_SOURCE_CHANGED"));
-  fireEvent.click(screen.getByRole("button", { name: "核验并恢复到暂停队列" }));
+  const restore = screen.getByRole("button", { name: "核验并恢复到暂停队列" });
+  await waitFor(() => expect(restore).toBeEnabled());
+  fireEvent.click(restore);
   await screen.findByRole("alert");
   expect(f.batches.restore).not.toHaveBeenCalled();
   expect(f.reservation.close).toHaveBeenCalled();

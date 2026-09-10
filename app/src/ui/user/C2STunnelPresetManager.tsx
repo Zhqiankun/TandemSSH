@@ -47,6 +47,22 @@ type ClientTunnel = TunnelConnection & {
   lastError?: string;
 };
 
+function c2sErrorMessage(
+  error: unknown,
+  t: ReturnType<typeof useTranslation>["t"],
+) {
+  const message = getErrorMessage(error, t("tunnels.manualControlError"));
+  if (/eaddrinuse|already uses|address already in use/i.test(message))
+    return t("tunnels.listenPortOccupied");
+  if (/unable to bind|remote port is not available/i.test(message))
+    return t("tunnels.remoteBindDenied");
+  return message.startsWith("C2S_")
+    ? t("tunnels.c2sErrors." + message, {
+        defaultValue: t("tunnels.manualControlError"),
+      })
+    : message;
+}
+
 function sortPresets(presets: C2STunnelPreset[]) {
   return [...presets].sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -108,17 +124,20 @@ function normalizeClientTunnel(
 ): ClientTunnel {
   const mode = getTunnelMode(tunnel);
   const metadata = tunnel as Partial<ClientTunnel>;
+  const reviewed = tunnel.relayOrigin === "local" && !!tunnel.sourceIdentity;
 
   return {
     ...tunnel,
     scope: "c2s",
+    sourceHostId: reviewed ? tunnel.sourceHostId : undefined,
+    sourceHostName: reviewed ? tunnel.sourceHostName : undefined,
     mode,
     tunnelType: mode === "dynamic" ? "local" : mode,
     bindHost: tunnel.bindHost?.trim() || "",
     sourcePort: Number(tunnel.sourcePort) || 8080,
     endpointPort: Number(tunnel.endpointPort) || 22,
     endpointHost: tunnel.endpointHost || tunnel.sourceHostName || "",
-    maxRetries: Number(tunnel.maxRetries) || 3,
+    maxRetries: tunnel.maxRetries == null ? 3 : Number(tunnel.maxRetries),
     retryInterval: Number(tunnel.retryInterval) || 10,
     autoStart: Boolean(tunnel.autoStart),
     displayName: metadata.displayName?.trim() || "",
@@ -159,7 +178,7 @@ function getStatusTitle(
 ) {
   if (!status) return statusText;
   const details = [];
-  if (status.reason) details.push(status.reason);
+  if (status.reason) details.push(c2sErrorMessage(new Error(status.reason), t));
   if (status.retryCount && status.maxRetries) {
     details.push(
       t("tunnels.attempt", {
@@ -204,7 +223,7 @@ export function C2STunnelPresetManager(): React.ReactElement {
   const sshHosts = React.useMemo(
     () =>
       hosts.filter(
-        (host) => host.id && (host.connectionType || "ssh") === "ssh",
+        (host) => host.id > 0 && (host.connectionType || "ssh") === "ssh",
       ),
     [hosts],
   );
@@ -394,7 +413,9 @@ export function C2STunnelPresetManager(): React.ReactElement {
           Boolean(status.reason) &&
           previous?.reason !== status.reason);
       if (hasFailureDetail) {
-        const message = status.reason || t("tunnels.manualControlError");
+        const message = status.reason
+          ? c2sErrorMessage(new Error(status.reason), t)
+          : t("tunnels.manualControlError");
         toast.error(message, { id: `client-tunnel-error-${tunnelName}` });
       }
     }
@@ -404,6 +425,12 @@ export function C2STunnelPresetManager(): React.ReactElement {
   const validateLocalConfig = (config: ClientTunnel[]) => {
     const autoStartListeners = new Set<string>();
     for (const tunnel of config) {
+      if (
+        tunnel.relayOrigin !== "local" ||
+        !tunnel.sourceIdentity ||
+        !tunnel.sourceHostId
+      )
+        return t("tunnels.c2sReviewRequired");
       const bindHost = getEffectiveBindHost(tunnel.bindHost);
       const mode = getTunnelMode(tunnel);
       if (!isValidIPv4(bindHost)) {
@@ -473,6 +500,13 @@ export function C2STunnelPresetManager(): React.ReactElement {
     if (!host) return;
     updateTunnel(index, {
       sourceHostId: host.id,
+      relayOrigin: "local",
+      sourceIdentity: {
+        ip: host.ip,
+        port: host.port,
+        username: host.username,
+        syncId: host.syncId,
+      },
       sourceHostName: host.name,
       endpointHost: host.name,
       endpointPort: 22,
@@ -527,7 +561,7 @@ export function C2STunnelPresetManager(): React.ReactElement {
       });
       toast.success(t("tunnels.tunnelTestSucceeded"));
     } catch (error) {
-      const message = getErrorMessage(error, t("tunnels.tunnelTestFailed"));
+      const message = c2sErrorMessage(error, t);
       setTunnelMetadata(index, { lastError: message });
       toast.error(message);
     } finally {
@@ -563,10 +597,7 @@ export function C2STunnelPresetManager(): React.ReactElement {
       });
       toast.success(t("tunnels.clientTunnelStarted"));
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : t("tunnels.manualControlError");
+      const message = c2sErrorMessage(error, t);
       setTunnelMetadata(index, { lastError: message });
       toast.error(message);
     } finally {
@@ -688,6 +719,9 @@ export function C2STunnelPresetManager(): React.ReactElement {
         </div>
       </div>
 
+      <p className="mb-3 text-xs text-muted-foreground">
+        {t("tunnels.c2sLocalRelayHint")}
+      </p>
       {/* Tunnel items */}
       <div className="flex flex-col gap-1.5">
         {localConfig.length === 0 ? (
@@ -720,7 +754,10 @@ export function C2STunnelPresetManager(): React.ReactElement {
             const statusError =
               tunnelStatus?.reason ||
               (tunnelStatus?.errorType ? String(tunnelStatus.errorType) : "");
-            const lastError = statusError || tunnel.lastError || "";
+            const rawError = statusError || tunnel.lastError || "";
+            const lastError = rawError
+              ? c2sErrorMessage(new Error(rawError), t)
+              : "";
             const lastStarted = formatDateTime(tunnel.lastStartedAt);
             const lastTested = formatDateTime(tunnel.lastTestedAt);
             const isOpen = openTunnels.has(index);

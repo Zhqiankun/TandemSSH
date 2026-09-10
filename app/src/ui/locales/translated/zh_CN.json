@@ -2547,7 +2547,16 @@
     "noHostSelected": "未选择主机",
     "working": "处理中...",
     "listenPortOccupied": "监听地址或端口已被占用，请选择其他端口或停止占用服务。",
-    "remoteBindDenied": "远程服务器拒绝绑定监听地址或端口，请检查端口占用和 SSH 转发权限。"
+    "remoteBindDenied": "远程服务器拒绝绑定监听地址或端口，请检查端口占用和 SSH 转发权限。",
+    "c2sReviewRequired": "请重新选择本机主机列表中的 SSH 主机，核对旧配置后再启动。",
+    "c2sErrors": {
+      "C2S_REVIEW_REQUIRED": "请重新选择本机主机列表中的 SSH 主机，核对旧配置后再启动。",
+      "C2S_AUTH_REQUIRED": "请先登录本机工作区后再启动客户端隧道。",
+      "C2S_SESSION_CHANGED": "登录状态已改变，旧隧道请求已停止，请重新启动。",
+      "C2S_SOURCE_CHANGED": "主机配置已改变，请重新选择主机并核对目标。",
+      "C2S_TRUSTED_WINDOW_REQUIRED": "请从主窗口操作客户端隧道。"
+    },
+    "c2sLocalRelayHint": "客户端隧道通过本机工作区连接所选 SSH 主机，无需远程同步服务器。旧配置请重新选择并核对主机。"
   },
   "cardGrid": {
     "dragToMove": "拖动以移动",

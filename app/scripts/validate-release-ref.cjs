@@ -1,11 +1,21 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
-function validateReleaseRef(ref, version, resolve) {
+function validateReleaseRef(ref, version, resolve, channel = "stable") {
   if (typeof ref !== "string") throw Error("A release tag is required");
   const tag = ref.replace(/^refs\/tags\//, "");
-  if (!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag))
-    throw Error("Stable vX.Y.Z tag required");
+  if (!["stable", "preview"].includes(channel))
+    throw Error("Unknown release channel");
+  const pattern =
+    channel === "preview"
+      ? /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-alpha\.(0|[1-9]\d*)$/
+      : /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+  if (!pattern.test(tag))
+    throw Error(
+      channel === "preview"
+        ? "Preview vX.Y.Z-alpha.N tag required"
+        : "Stable vX.Y.Z tag required",
+    );
   if (tag !== "v" + version) throw Error("Tag and package version differ");
   if (resolve("HEAD") !== resolve("refs/tags/" + tag + "^{commit}"))
     throw Error("Checkout does not match the release tag commit");
@@ -25,6 +35,7 @@ if (require.main === module) {
           encoding: "utf8",
           stdio: ["ignore", "pipe", "pipe"],
         }).trim(),
+      process.env.RELEASE_CHANNEL || "stable",
     );
     if (process.env.GITHUB_OUTPUT)
       fs.appendFileSync(process.env.GITHUB_OUTPUT, "tag=" + tag + "\n");

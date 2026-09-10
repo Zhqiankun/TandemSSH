@@ -41,7 +41,10 @@ describe("createCompressionMiddleware", () => {
           const candidate = app.listen(
             randomInt(49152, 65536),
             "127.0.0.1",
-            () => resolve(candidate),
+            (error?: Error) => {
+              if (error) reject(error);
+              else resolve(candidate);
+            },
           );
           candidate.once("error", reject);
         });

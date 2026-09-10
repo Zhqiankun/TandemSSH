@@ -364,9 +364,10 @@
       "records": [
         "49-tunnel-trust-and-lifecycle.md",
         "50-tunnel-cancellation.md",
-        "73-tunnel-mode-matrix.md"
+        "73-tunnel-mode-matrix.md",
+        "74-standalone-c2s.md"
       ],
-      "remaining": "单/双主机 S2S 协议矩阵、C2S 后端中继与 Windows 本地端口冲突已有证据；C2S 桌面监听、真实 Linux 全部适用模式、地址范围、权限撤销和完整重连仍需闭环。"
+      "remaining": "独立 Windows C2S 三种模式、真实 Linux 数据、旧配置复核、中文界面启停和登录清除已通过；全套 S2S/Linux 组合、地址范围、权限撤销、认证及完整重连仍需闭环。"
     },
     {
       "id": "F13",
@@ -682,9 +683,10 @@
       "records": [
         "49-tunnel-trust-and-lifecycle.md",
         "50-tunnel-cancellation.md",
-        "73-tunnel-mode-matrix.md"
+        "73-tunnel-mode-matrix.md",
+        "74-standalone-c2s.md"
       ],
-      "remaining": "单/双主机 S2S 协议矩阵、C2S 后端中继与 Windows 本地端口冲突已有证据；C2S 桌面监听、真实 Linux 全部适用模式、地址范围、权限撤销和完整重连仍需闭环。"
+      "remaining": "独立 Windows C2S 三种模式、真实 Linux 数据、旧配置复核、中文界面启停和登录清除已通过；全套 S2S/Linux 组合、地址范围、权限撤销、认证及完整重连仍需闭环。"
     },
     {
       "id": "B14",
@@ -1360,9 +1362,10 @@
       "records": [
         "49-tunnel-trust-and-lifecycle.md",
         "50-tunnel-cancellation.md",
-        "73-tunnel-mode-matrix.md"
+        "73-tunnel-mode-matrix.md",
+        "74-standalone-c2s.md"
       ],
-      "remaining": "单/双主机 S2S 协议矩阵、C2S 后端中继与 Windows 本地端口冲突已有证据；C2S 桌面监听、真实 Linux 全部适用模式、地址范围、权限撤销和完整重连仍需闭环。"
+      "remaining": "独立 Windows C2S 三种模式、真实 Linux 数据、旧配置复核、中文界面启停和登录清除已通过；全套 S2S/Linux 组合、地址范围、权限撤销、认证及完整重连仍需闭环。"
     },
     {
       "id": "A36",

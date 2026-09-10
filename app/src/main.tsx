@@ -229,6 +229,7 @@ function App() {
               // app restart.
               window.electronAPI
                 ?.invoke?.("notify-local-login", token)
+                .then(() => window.electronAPI?.startC2SAutoStartTunnels?.())
                 .catch(() => {});
             }
           } catch {
@@ -284,11 +285,11 @@ function App() {
     setPhase("fading-in");
     timerRef.current = setTimeout(() => setPhase("idle-app"), 450);
     if (isElectron()) {
-      window.electronAPI?.startC2SAutoStartTunnels?.().catch(() => {});
       const localJwt = localStorage.getItem("jwt");
       if (localJwt) {
         window.electronAPI
           ?.invoke?.("notify-local-login", localJwt)
+          .then(() => window.electronAPI?.startC2SAutoStartTunnels?.())
           .catch(() => {});
       }
     }

@@ -29,3 +29,47 @@ describe("release source identity", () => {
     ).toThrow("Checkout does not match");
   });
 });
+
+it("allows an alpha preview only through its explicit channel", () => {
+  expect(
+    validateReleaseRef(
+      "refs/tags/v0.1.0-alpha.0",
+      "0.1.0-alpha.0",
+      () => "same",
+      "preview",
+    ),
+  ).toBe("v0.1.0-alpha.0");
+  for (const ref of [
+    "v0.1.0",
+    "v0.1.0-beta.1",
+    "v0.1.0-alpha.01",
+    "refs/heads/v0.1.0-alpha.0",
+  ])
+    expect(() =>
+      validateReleaseRef(ref, ref.slice(1), () => "same", "preview"),
+    ).toThrow();
+  expect(() =>
+    validateReleaseRef("v0.1.0-alpha.0", "0.1.0-alpha.0", () => "same"),
+  ).toThrow();
+});
+it("keeps version and checkout verification mandatory for previews", () => {
+  expect(() =>
+    validateReleaseRef(
+      "v0.1.0-alpha.1",
+      "0.1.0-alpha.0",
+      () => "same",
+      "preview",
+    ),
+  ).toThrow("Tag and package version differ");
+  expect(() =>
+    validateReleaseRef(
+      "v0.1.0-alpha.0",
+      "0.1.0-alpha.0",
+      (ref: string) => (ref === "HEAD" ? "new" : "tagged"),
+      "preview",
+    ),
+  ).toThrow("Checkout does not match");
+  expect(() =>
+    validateReleaseRef("v0.1.0", "0.1.0", () => "same", "unknown"),
+  ).toThrow("Unknown release channel");
+});

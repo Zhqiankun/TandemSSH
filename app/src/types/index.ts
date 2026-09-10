@@ -474,6 +474,13 @@ export type TunnelScope = "s2s" | "c2s";
 export type TunnelMode = "local" | "remote" | "dynamic";
 
 export interface TunnelConnection {
+  relayOrigin?: "local";
+  sourceIdentity?: {
+    ip: string;
+    port: number;
+    username: string;
+    syncId?: string | null;
+  };
   scope?: TunnelScope;
   mode?: TunnelMode;
   tunnelType?: "local" | "remote";
@@ -497,6 +504,13 @@ export interface TunnelConnection {
 }
 
 export interface TunnelConfig {
+  relayOrigin?: "local";
+  sourceIdentity?: {
+    ip: string;
+    port: number;
+    username: string;
+    syncId?: string | null;
+  };
   name: string;
   scope?: TunnelScope;
   mode?: TunnelMode;

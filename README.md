@@ -106,6 +106,8 @@
 | [网络配置备份](docs/71-network-configuration-backup.md) | 跳板、隧道和 C2S 预设迁移、新主机引用、关闭自动启动与重启验证 |
 | [终端显示设置备份](docs/72-terminal-preferences-backup.md) | 用户默认值、配色库、主机外观及恢复后的可见画面验证 |
 | [隧道模式协议矩阵](docs/73-tunnel-mode-matrix.md) | 实际转发/中继数据、监听冲突、错误分类和零重试验证 |
+| [独立桌面隧道](docs/74-standalone-c2s.md) | 本机中继、真实三模式数据、旧配置复核和中文启停 |
+| [开发预览下载说明](docs/75-preview-release-notes.md) | Windows 安装/免安装包和当前试用边界 |
 
 ## 产品主线
 

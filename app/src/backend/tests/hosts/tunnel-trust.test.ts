@@ -1464,3 +1464,57 @@ it("honors zero retries after a live tunnel loses its SSH connection", async () 
   expect(activeRetryTimers.has(c.name)).toBe(false);
   expect(activeTunnelRuntimes.has(c.name)).toBe(false);
 }, 10000);
+it("rejects a changed C2S source identity before an SSH connection", async () => {
+  const server = await ssh();
+  trust();
+  current.resolvedHost = {
+    id: 7,
+    userId: "requester",
+    ip: "127.0.0.1",
+    port: server.port,
+    username: "fixture",
+    authType: "password",
+    password: "fixture-only",
+  };
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise<void>((r) => wss.once("listening", r));
+  let relay!: WebSocket;
+  const accepted = new Promise<void>((r) =>
+    wss.once("connection", (ws) => {
+      relay = ws;
+      r();
+    }),
+  );
+  const browser = new WebSocket(
+    "ws://127.0.0.1:" + (wss.address() as { port: number }).port,
+  );
+  browser.on("error", () => {});
+  cleanup.push(async () => {
+    browser.terminate();
+    relay.terminate();
+    await new Promise<void>((r) => wss.close(() => r()));
+  });
+  await accepted;
+  await expect(
+    handleC2SRelayOpen(
+      relay,
+      {
+        type: "open",
+        tunnelConfig: {
+          sourceHostId: 7,
+          relayOrigin: "local",
+          sourceIdentity: {
+            ip: "changed.invalid",
+            port: server.port,
+            username: "fixture",
+          },
+          mode: "local",
+          endpointPort: server.echoPort,
+        },
+      },
+      "requester",
+    ),
+  ).rejects.toThrow("C2S_SOURCE_CHANGED");
+  expect(server.clients()).toBe(0);
+  expect(server.auth()).toBe(0);
+});

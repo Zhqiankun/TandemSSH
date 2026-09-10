@@ -48,6 +48,18 @@ async function resolveC2STunnelSource(
     throw new Error("Endpoint SSH host not found");
   }
 
+  if (tunnelConfig.relayOrigin === "local") {
+    const expected = tunnelConfig.sourceIdentity;
+    if (
+      !expected ||
+      expected.ip !== resolvedHost.ip ||
+      expected.port !== resolvedHost.port ||
+      expected.username !== resolvedHost.username ||
+      (expected.syncId !== undefined && expected.syncId !== resolvedHost.syncId)
+    )
+      throw Error("C2S_SOURCE_CHANGED");
+  }
+
   return {
     name: tunnelConfig.name || `c2s:${tunnelConfig.sourceHostId}`,
     scope: "c2s",

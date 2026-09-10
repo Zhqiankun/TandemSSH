@@ -622,6 +622,12 @@ const tempFiles = new Map();
 const externalEditorSessions = new Map();
 
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
+const c2sSession = new (require("./c2s-session.cjs").C2sSession)({
+  getWindow: () => mainWindow,
+  appRoot: app.getAppPath(),
+  isDev,
+  onChange: () => stopAllC2STunnels(),
+});
 const appRoot = isDev ? process.cwd() : path.join(__dirname, "..");
 const windowsAppUserModelId = "app.tandemssh.desktop";
 const electronCacheBuildPath = path.join(
@@ -1365,7 +1371,9 @@ function createWindow() {
     }
   });
 
+  mainWindow.webContents.on("render-process-gone", () => c2sSession.clear());
   mainWindow.on("closed", () => {
+    c2sSession.clear();
     mainWindow = null;
   });
 
@@ -1602,7 +1610,8 @@ ipcMain.handle("remote-sync-now", async () => {
   return (await remoteSync.getRemoteSyncEngine()?.syncNow()) || null;
 });
 
-ipcMain.handle("notify-local-login", (_event, token) => {
+ipcMain.handle("notify-local-login", (event, token) => {
+  c2sSession.set(event, token);
   remoteSync.getRemoteSyncEngine()?.setLocalJwt(token);
   return { success: true };
 });
@@ -1626,8 +1635,9 @@ ipcMain.handle("get-c2s-tunnel-config", () => {
   }
 });
 
-ipcMain.handle("save-c2s-tunnel-config", async (_event, config) => {
+ipcMain.handle("save-c2s-tunnel-config", async (event, config) => {
   try {
+    c2sSession.trusted(event);
     if (!Array.isArray(config)) {
       return { success: false, error: "C2S tunnel config must be an array" };
     }
@@ -1742,34 +1752,12 @@ const C2S_WS_HIGH_WATERMARK = 1024 * 1024;
 const C2S_WS_LOW_WATERMARK = 256 * 1024;
 const C2S_STREAM_WRITE_LIMIT = 8 * 1024 * 1024;
 
-// C2S (client-to-server) tunnels relay through a connected, self-hosted
-// Termix server -- the same "remote server" concept Remote Sync connects
-// to, not the always-local embedded backend. There's no separate C2S
-// server-URL setting in the UI; it has always shared whatever remote
-// server the rest of the app was pointed at. Before the standalone-first
-// rework that was server-config.json; now it's remote-sync-config.json,
-// since that's the only remaining notion of "a connected remote server."
+// Standalone C2S uses only the embedded backend and the authenticated local session.
 function getC2SRelayUrl() {
-  const config = remoteSync.getRemoteSyncConfig();
-  const serverUrl = config?.serverUrl;
-  if (!serverUrl) {
-    throw new Error(
-      "No remote Termix server connected -- enable Remote Sync first",
-    );
-  }
-
-  const base = serverUrl.replace(/\/$/, "");
-  const relayHttpUrl = `${base}/ssh/tunnel/c2s/stream`;
-  return relayHttpUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
+  return c2sSession.url;
 }
-
-async function getC2SRelayHeaders() {
-  const jwt = remoteSync.getRemoteSyncJwt();
-  if (!jwt) return {};
-
-  return {
-    Authorization: `Bearer ${jwt}`,
-  };
+async function getC2SRelayHeaders(tunnel) {
+  return c2sSession.headers(tunnel);
 }
 
 function getC2STunnelName(tunnel, index = 0) {
@@ -1804,7 +1792,14 @@ function getAllC2STunnelStatuses() {
 
 function emitC2STunnelStatuses() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.webContents.send("c2s-tunnel-statuses", getAllC2STunnelStatuses());
+  try {
+    mainWindow.webContents.send(
+      "c2s-tunnel-statuses",
+      getAllC2STunnelStatuses(),
+    );
+  } catch {
+    /* a destroyed renderer cannot receive status */
+  }
 }
 
 function setC2STunnelStatus(tunnelName, status) {
@@ -1868,7 +1863,7 @@ async function openC2SRelay(
 ) {
   const tunnelName = tunnel.name || getC2STunnelName(tunnel);
   const relayUrl = getC2SRelayUrl();
-  const headers = await getC2SRelayHeaders();
+  const headers = await getC2SRelayHeaders(tunnel);
   logToFile(`[c2s] opening relay for ${tunnelName}`, {
     relayUrl,
     targetHost,
@@ -1973,7 +1968,7 @@ async function openC2SRelay(
 
 async function testC2SRelay(tunnel, targetHost, targetPort) {
   const relayUrl = getC2SRelayUrl();
-  const headers = await getC2SRelayHeaders();
+  const headers = await getC2SRelayHeaders(tunnel);
   const ws = new WebSocket(
     relayUrl,
     getWebSocketOptions(relayUrl, { headers }),
@@ -2038,6 +2033,7 @@ async function testC2SRelay(tunnel, targetHost, targetPort) {
 }
 
 async function testC2STunnel(tunnel, index = 0) {
+  tunnel = c2sSession.bind(tunnel);
   const mode = tunnel.mode || tunnel.tunnelType || "local";
   const testTunnel = {
     ...tunnel,
@@ -2235,7 +2231,12 @@ async function startC2SRemoteTunnel(tunnel, index = 0) {
 
   const existing = c2sTunnelRuntimes.get(tunnelName);
   if (existing) {
-    return { success: true, tunnelName };
+    if (
+      existing.status?.status === "ERROR" ||
+      existing.status?.status === "FAILED"
+    )
+      await stopC2STunnel(tunnelName);
+    else return { success: true, tunnelName };
   }
 
   for (const runtime of c2sTunnelRuntimes.values()) {
@@ -2252,7 +2253,7 @@ async function startC2SRemoteTunnel(tunnel, index = 0) {
   }
 
   const relayUrl = getC2SRelayUrl();
-  const headers = await getC2SRelayHeaders();
+  const headers = await getC2SRelayHeaders(tunnel);
   const ws = new WebSocket(
     relayUrl,
     getWebSocketOptions(relayUrl, { headers }),
@@ -2429,6 +2430,7 @@ async function startC2SRemoteTunnel(tunnel, index = 0) {
 }
 
 async function startC2STunnel(tunnel, index = 0) {
+  tunnel = c2sSession.bind(tunnel);
   const mode = tunnel.mode || tunnel.tunnelType || "local";
   const tunnelName = getC2STunnelName(tunnel, index);
   const bindHost = tunnel.bindHost || "127.0.0.1";
@@ -2453,7 +2455,12 @@ async function startC2STunnel(tunnel, index = 0) {
 
   const existing = c2sTunnelRuntimes.get(tunnelName);
   if (existing) {
-    return { success: true, tunnelName };
+    if (
+      existing.status?.status === "ERROR" ||
+      existing.status?.status === "FAILED"
+    )
+      await stopC2STunnel(tunnelName);
+    else return { success: true, tunnelName };
   }
 
   for (const runtime of c2sTunnelRuntimes.values()) {
@@ -2477,6 +2484,7 @@ async function startC2STunnel(tunnel, index = 0) {
     };
   }
 
+  c2sSession.headers(tunnel);
   const sockets = new Set();
   const server = net.createServer((socket) => {
     sockets.add(socket);
@@ -2488,22 +2496,29 @@ async function startC2STunnel(tunnel, index = 0) {
     }
   });
 
-  c2sTunnelRuntimes.set(tunnelName, {
+  const runtime = {
     server,
     sockets,
     bindHost,
     sourcePort,
     status: { connected: false, status: "CONNECTING" },
-  });
+  };
+  c2sTunnelRuntimes.set(tunnelName, runtime);
 
   return new Promise((resolve) => {
     server.once("error", (error) => {
-      c2sTunnelRuntimes.delete(tunnelName);
+      if (c2sTunnelRuntimes.get(tunnelName) === runtime)
+        c2sTunnelRuntimes.delete(tunnelName);
       logToFile(`[c2s] failed to listen for ${tunnelName}:`, error.message);
       emitC2STunnelStatuses();
       resolve({ success: false, error: error.message });
     });
     server.listen({ host: bindHost, port: sourcePort }, () => {
+      if (c2sTunnelRuntimes.get(tunnelName) !== runtime) {
+        server.close();
+        resolve({ success: false, error: "C2S_SESSION_CHANGED" });
+        return;
+      }
       logToFile(
         `[c2s] listening for ${tunnelName} on ${bindHost}:${sourcePort}`,
       );
@@ -2527,13 +2542,15 @@ async function startC2STunnel(tunnel, index = 0) {
             );
 
       verifyTunnel.then((result) => {
-        if (!c2sTunnelRuntimes.has(tunnelName)) return;
+        if (c2sTunnelRuntimes.get(tunnelName) !== runtime) return;
         if (result.success) {
           setC2STunnelStatus(tunnelName, {
             connected: true,
             status: "CONNECTED",
           });
         } else {
+          for (const socket of sockets) socket.destroy();
+          server.close();
           setC2STunnelError(
             tunnelName,
             result.error || "Endpoint SSH connection failed",
@@ -2610,11 +2627,12 @@ async function startC2SAutoStartTunnels() {
   for (let index = 0; index < tunnels.length; index += 1) {
     const tunnel = tunnels[index];
     if (!tunnel?.autoStart) continue;
-    const result = await startC2STunnel(tunnel, index);
-    if (result.success) {
-      started += 1;
-    } else {
-      errors.push(result.error || "Failed to start client tunnel");
+    try {
+      const result = await startC2STunnel(tunnel, index);
+      if (result.success) started += 1;
+      else errors.push(result.error || "Failed to start client tunnel");
+    } catch (error) {
+      errors.push(error.message);
     }
   }
 
@@ -2634,36 +2652,41 @@ ipcMain.handle("check-local-port-available", async (_event, host, port) => {
   return checkLocalPortAvailable(host, sourcePort);
 });
 
-ipcMain.handle("start-c2s-tunnel", async (_event, tunnel, index) => {
+ipcMain.handle("start-c2s-tunnel", async (event, tunnel, index) => {
   try {
+    c2sSession.trusted(event);
     return await startC2STunnel(tunnel, Number(index) || 0);
   } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle("test-c2s-tunnel", async (_event, tunnel, index) => {
+ipcMain.handle("test-c2s-tunnel", async (event, tunnel, index) => {
   try {
+    c2sSession.trusted(event);
     return await testC2STunnel(tunnel, Number(index) || 0);
   } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle("stop-c2s-tunnel", async (_event, tunnelName) => {
+ipcMain.handle("stop-c2s-tunnel", async (event, tunnelName) => {
   try {
+    c2sSession.trusted(event);
     return await stopC2STunnel(tunnelName);
   } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle("get-c2s-tunnel-statuses", () => {
+ipcMain.handle("get-c2s-tunnel-statuses", (event) => {
+  c2sSession.trusted(event);
   return getAllC2STunnelStatuses();
 });
 
-ipcMain.handle("start-c2s-autostart-tunnels", async () => {
+ipcMain.handle("start-c2s-autostart-tunnels", async (event) => {
   try {
+    c2sSession.trusted(event);
     return await startC2SAutoStartTunnels();
   } catch (error) {
     return { success: false, started: 0, errors: [error.message] };
@@ -2814,8 +2837,10 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle("clear-session-cookies", async () => {
+ipcMain.handle("clear-session-cookies", async (event) => {
   try {
+    c2sSession.trusted(event);
+    c2sSession.clear();
     clearPersistedElectronAuthCookies();
     const ses = mainWindow?.webContents?.session;
     if (ses) {

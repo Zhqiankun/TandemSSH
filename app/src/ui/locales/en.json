@@ -2547,7 +2547,16 @@
     "noHostSelected": "No host selected",
     "working": "Working...",
     "listenPortOccupied": "The listen address or port is already in use. Choose another port or stop its current owner.",
-    "remoteBindDenied": "The remote server refused the listener binding. Check port availability and SSH forwarding permissions."
+    "remoteBindDenied": "The remote server refused the listener binding. Check port availability and SSH forwarding permissions.",
+    "c2sReviewRequired": "Select the SSH host from this desktop again and review the existing configuration before starting.",
+    "c2sErrors": {
+      "C2S_REVIEW_REQUIRED": "Select the SSH host from this desktop again and review the existing configuration before starting.",
+      "C2S_AUTH_REQUIRED": "Sign in to the local workspace before starting a client tunnel.",
+      "C2S_SESSION_CHANGED": "The local session changed. Restart the tunnel request.",
+      "C2S_SOURCE_CHANGED": "The host configuration changed. Select and review the host again.",
+      "C2S_TRUSTED_WINDOW_REQUIRED": "Use the main application window to manage client tunnels."
+    },
+    "c2sLocalRelayHint": "Client tunnels use this local workspace to connect to the selected SSH host; no remote sync server is required. Re-select and review the host for older configurations."
   },
   "cardGrid": {
     "dragToMove": "Drag to move",
