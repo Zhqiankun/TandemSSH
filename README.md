@@ -4,13 +4,21 @@
 
 **当前状态：已开始实施，默认简体中文。** 正式源码位于 `app`，已有 Windows 开发验证包、中文协作工作台，以及通过真实桌面 SSH 验证的自动命令流程和 MCP 命令接入。内置 AI 也已接入同一网关并完成本机 HTTP + SSH 验证；中文流程库、参数编辑、导入导出和规则试算已完成本机桌面验证；AI/MCP 文件读写、目录/属性查询和旧快捷命令/顺序宏已接入统一任务入口，手工分块上传队列、校验和恢复已接入文件工作台，首次主机信任、密钥变化拒绝及重启后的信任保存已完成本机桌面验证；手工下载已接入原生分块落盘与队列，整目录/多选下载已支持中文整批预览、明确冲突处理和逐项结果；目录上传已接入中文批次预览、原生来源与共享队列；AI/MCP 已支持已授权单文件上传/下载，保存流程已接入上传 → 命令 → 下载及中文文件绑定；AI/MCP 目录批次已接入中文预览、逐项执行与接管恢复，自动/协作双向目录已通过本机桌面验证；保存流程也已支持目录上传 → 命令 → 目录下载及中文目录槽位；任务操作已支持分页，本机脱敏历史可重启查看，已结束任务可归档释放资源；在线编辑支持显式保存本机加密草稿与重启后审阅恢复；单文件上传/下载已支持显式加密保存进度、重启/中断后核对续传，上传需重新选择原始来源；人工上传/下载批次已支持中文加密保存、重启/中断后核验恢复与继续整批；独立流程和 MCP 任务已支持中文执行进度保存与重启后重新授权恢复；内置 AI 已支持对话、问题和模型预算的加密保存与重启后重新授权恢复；AI/MCP 父任务中的命令流程已支持保留步骤和结果、重启后继续父任务；上传和下载目录均已支持条目边界的任务保存、重启核验与继续；部分传输资源和独立目录协调器恢复继续补齐；实际进度与验证见[实施记录](docs/12-implementation.md)。
 
+## Windows 开发预览下载
+
+[下载安装版 EXE](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.0-alpha.0/TandemSSH-0.1.0-alpha.0-x64.exe) · [下载免安装 ZIP](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.0-alpha.0/TandemSSH-0.1.0-alpha.0-x64.zip) · [发布说明与校验和](https://github.com/Zhqiankun/TandemSSH/releases/tag/v0.1.0-alpha.0)
+
+当前为 Windows x64 的 0.1.0-alpha.0 开发预览，建议先在测试服务器体验。EXE 直接安装；ZIP 完整解压后运行 TandemSSH.exe。GitHub 自动附带的 Source code 是源码包。完整产品验收仍在进行，具体边界见[预览说明](docs/75-preview-release-notes.md)。
+
 ## 仓库与版本更新
 
-源码仓库：[Zhqiankun/TandemSSH](https://github.com/Zhqiankun/TandemSSH)。当前为开发预览，完整功能清单仍在实施。标准 Windows 构建、安装、中文启动及卸载保留数据已通过 CI；Actions 提供 NSIS/ZIP 预览包，跨版本在线升级与正式 Release 仍待完成。
+源码仓库：[Zhqiankun/TandemSSH](https://github.com/Zhqiankun/TandemSSH)。当前为开发预览，完整功能清单仍在实施。标准 Windows 构建、安装、中文启动及卸载保留数据已通过 CI；已公开首个 alpha Release，真实 NSIS 跨版本升级和数据保留已在隔离 CI 环境验证；完整历史迁移和公开稳定更新渠道仍待验收。
 
 桌面仪表盘的版本区域提供“检查更新 / 更新版本”：检查版本、下载进度、取消下载和重启安装。在线安装适用于 Windows 安装版；免安装版可打开发布页下载新版。安装前会要求保存草稿并结束连接。更新源固定为本仓库，不会安装上游 Termix 的发行包。
 
-普通推送/PR 运行 [CI](https://github.com/Zhqiankun/TandemSSH/actions/workflows/ci.yml)；稳定版本标签推送运行 [Release](https://github.com/Zhqiankun/TandemSSH/actions/workflows/release.yml)，生成 NSIS、ZIP、更新清单和校验和。详细发布方式与实际验证见[版本发布文档](docs/25-github-releases.md)。
+预览版不进入稳定自动更新渠道，后续 alpha 请在 Releases 手动下载；稳定版发布后使用应用内更新按钮。
+
+普通推送/PR 运行 [CI](https://github.com/Zhqiankun/TandemSSH/actions/workflows/ci.yml)；稳定与 alpha 版本标签推送运行 [Release](https://github.com/Zhqiankun/TandemSSH/actions/workflows/release.yml)，生成 NSIS、ZIP、更新清单和校验和。详细发布方式与实际验证见[版本发布文档](docs/25-github-releases.md)。
 
 ## 配置备份与恢复
 

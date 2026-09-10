@@ -100,3 +100,11 @@ CI 和 Release 均增加实际安装/启动/卸载门槛，报告与中文窗口
 alpha 先上传到草稿，资源齐备后发布为 prerelease、latest=false；不上传 latest.yml，不修改稳定版自动更新渠道。已公开版本不可覆盖。预览附 EXE、ZIP、blockmap、SHA256SUMS.txt 和中文试用范围；后续 alpha 由 Releases 手动下载，稳定版检查更新仍走现有固定源。此渠道选择保持开发预览的产品定位，不能把未完成整体验收的包标为稳定版。
 
 稳定/预览标签校验共 5 项通过；YAML 和全部 PowerShell 步骤解析通过，修改脚本 lint 通过。当前完整回归 3601 项通过、12 项跳过。实际云端构建和公开资源是否成功，以后续 Release 结果为准。
+
+## 首个公开开发预览发布成功
+
+2026-09-10，源码提交 `92dec32dd3729b5ed457a8ce1f3bb90b429da6ad`，标签 `v0.1.0-alpha.0`。[CI 34491675392](https://github.com/Zhqiankun/TandemSSH/actions/runs/34491675392) 和 [Release 34491751230](https://github.com/Zhqiankun/TandemSSH/actions/runs/34491751230) 均成功。CI 应用测试 3602 项通过、11 项跳过，独立真实 ConPTY 10 项通过；实际安装报告 installed/native/desktop/upgraded/uninstalled/dataPreserved 全部为 true，failures 为空。
+
+[公开发布页](https://github.com/Zhqiankun/TandemSSH/releases/tag/v0.1.0-alpha.0) 为非草稿 prerelease，提供 155347774 字节 EXE、208153577 字节 ZIP、blockmap 和 SHA256SUMS.txt。已下载校验文件，其自身及三个资源摘要与 GitHub asset digest 一致。EXE SHA-256：`437513843af89924586b319f89cd7dc0c7fd90dd11d16e55e974255b305d3620`；ZIP SHA-256：`2158201b2553d2db4d6870c5f02dd8f96a1b90ae306c46635f974c49099d31f1`。未在本机重复下载安装此公开 EXE，不把摘要元数据核对说成公开包的额外本机运行验收。
+
+本预览没有上传 latest.yml，未发布稳定渠道。云端实际升级仍使用隔离更新源；公开稳定更新、完整历史迁移和全部产品矩阵继续跟踪。

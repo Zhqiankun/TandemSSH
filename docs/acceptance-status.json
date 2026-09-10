@@ -16,7 +16,7 @@
         "25-github-releases.md",
         "46-online-update-acceptance.md"
       ],
-      "remaining": "GitHub Release 列表当前为空；已测在线更新为隔离夹具，公开渠道和历史版本迁移未验收，发行依赖/资源许可清单未完成。"
+      "remaining": "已公开 0.1.0-alpha.0 Windows 安装/免安装预览包并通过云端真实安装升级；稳定更新渠道、历史版本迁移及完整发行依赖/资源许可清单仍未完成。"
     },
     {
       "id": "R02",
@@ -30,7 +30,7 @@
         "25-github-releases.md",
         "46-online-update-acceptance.md"
       ],
-      "remaining": "GitHub Release 列表当前为空；已测在线更新为隔离夹具，公开渠道和历史版本迁移未验收，发行依赖/资源许可清单未完成。"
+      "remaining": "已公开 0.1.0-alpha.0 Windows 安装/免安装预览包并通过云端真实安装升级；稳定更新渠道、历史版本迁移及完整发行依赖/资源许可清单仍未完成。"
     },
     {
       "id": "R03",
@@ -178,7 +178,7 @@
         "25-github-releases.md",
         "46-online-update-acceptance.md"
       ],
-      "remaining": "GitHub Release 列表当前为空；已测在线更新为隔离夹具，公开渠道和历史版本迁移未验收，发行依赖/资源许可清单未完成。"
+      "remaining": "已公开 0.1.0-alpha.0 Windows 安装/免安装预览包并通过云端真实安装升级；稳定更新渠道、历史版本迁移及完整发行依赖/资源许可清单仍未完成。"
     },
     {
       "id": "F01",
