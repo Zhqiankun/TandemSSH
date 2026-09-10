@@ -634,9 +634,10 @@
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
         "59-windows-file-attributes.md",
-        "80-unix-permissions.md"
+        "80-unix-permissions.md",
+        "81-symlink-paths.md"
       ],
-      "remaining": "目录与特殊权限位编辑已修复，真实 Alpine/OpenSSH 7 组权限读回通过；待 Windows 实际对话框、GNU 环境、符号链接受控跟随及所有者/组修改完整验收。"
+      "remaining": "Unix 特殊权限与完整链接路径已修复，真实 Alpine/OpenSSH 权限读回及 HTTP/SFTP 链接矩阵通过；待 Windows 实际交互、GNU 权限环境及所有者/组修改完整验收。"
     },
     {
       "id": "B11",
