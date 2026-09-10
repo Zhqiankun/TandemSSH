@@ -88,6 +88,8 @@
 | [隧道身份与生命周期](docs/49-tunnel-trust-and-lifecycle.md) | 源/端点信任、认证前阻断、真实转发与资源释放 |
 | [配置备份与恢复](docs/54-configuration-backup.md) | 中文预览确认、凭据重新配置、流程绑定与实际重启验证 |
 | [应用设置备份](docs/55-application-settings-backup.md) | 外观、界面偏好与快捷键的独立恢复、审阅和重启验证 |
+| [真实 Linux 验收](docs/56-linux-ssh-acceptance.md) | Alpine 实机、Windows/MCP 自动与协作、权限和磁盘失败验证 |
+| [终端回复与接管](docs/57-terminal-protocol-replies.md) | 自动光标回复不再误触发人工接管，保留真实人工输入的控制权 |
 
 ## 产品主线
 

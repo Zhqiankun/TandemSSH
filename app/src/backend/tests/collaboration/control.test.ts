@@ -171,3 +171,34 @@ describe("shared terminal control", () => {
     expect(writes).toEqual([]);
   });
 });
+
+it("answers requested terminal protocol messages without changing the automation lease", () => {
+  const { control, writes, grant } = fixture(),
+    lease = grant(),
+    before = control.snapshot();
+  control.observeTerminalOutput("\x1b[6n");
+  expect(control.terminalReply(bytes("\x1b[24;17R"))).toBe(true);
+  expect(control.snapshot()).toEqual(before);
+  expect(() => control.assertLease(lease)).not.toThrow();
+  expect(writes).toEqual(["\x1b[24;17R"]);
+  expect(control.terminalReply(bytes("\x1b[24;17R"))).toBe(false);
+});
+it("still treats a user-entered cursor-shaped sequence as human input and clears old query replies", () => {
+  const { control, writes, grant } = fixture(),
+    lease = grant();
+  control.observeTerminalOutput("\x1b[6n");
+  control.humanInput(bytes("\x1b[1;2R"));
+  expect(() => control.assertLease(lease)).toThrow("STALE_CONTROL");
+  expect(control.terminalReply(bytes("\x1b[24;17R"))).toBe(false);
+  expect(writes).toEqual(["\x1b[1;2R"]);
+});
+it("does not let old connection replies survive reconnect or close", () => {
+  const { control, writes } = fixture();
+  control.observeTerminalOutput("\x1b[6n");
+  control.connectionChanged();
+  expect(control.terminalReply(bytes("\x1b[2;3R"))).toBe(false);
+  control.observeTerminalOutput("\x1b[6n");
+  control.close();
+  expect(control.terminalReply(bytes("\x1b[2;3R"))).toBe(false);
+  expect(writes).toEqual([]);
+});

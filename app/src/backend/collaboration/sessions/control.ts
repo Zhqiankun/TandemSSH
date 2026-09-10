@@ -1,3 +1,4 @@
+import { TerminalReplyRequests } from "./terminal-replies.js";
 import type {
   AutomationOwner,
   CollaborationErrorCode,
@@ -24,6 +25,7 @@ export interface SessionWritePort {
 /** One instance per live terminal. All write/lease transitions are synchronous
  * in the backend event loop; slow preparation belongs before commitWrite. */
 export class SessionControl {
+  private readonly terminalReplies = new TerminalReplyRequests();
   private generation = 1;
   private epoch = 0;
   private owner: SessionController = { kind: "human" };
@@ -81,6 +83,7 @@ export class SessionControl {
 
   takeover(): ControlSnapshot {
     this.ensureOpen();
+    this.terminalReplies.clear();
     this.epoch++;
     this.owner = { kind: "human" };
     return this.changed("takeover");
@@ -154,8 +157,25 @@ export class SessionControl {
     this.write(data);
   }
 
+  observeTerminalOutput(data: string): void {
+    if (!this.closed) this.terminalReplies.observe(data);
+  }
+
+  terminalReply(data: Uint8Array): boolean {
+    if (
+      this.closed ||
+      !(data instanceof Uint8Array) ||
+      data.byteLength > 64 ||
+      !this.terminalReplies.consume(Buffer.from(data).toString("utf8"))
+    )
+      return false;
+    this.write(data);
+    return true;
+  }
+
   connectionChanged(): void {
     this.ensureOpen();
+    this.terminalReplies.clear();
     this.generation++;
     this.epoch++;
     this.owner = { kind: "human" };
@@ -164,6 +184,7 @@ export class SessionControl {
 
   close(): void {
     if (this.closed) return;
+    this.terminalReplies.clear();
     this.closed = true;
     this.epoch++;
     this.owner = { kind: "human" };

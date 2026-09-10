@@ -79,6 +79,7 @@ export interface TerminalSession {
 /** Message types a non-owner participant may legally send. */
 const NON_OWNER_ALLOWED_MESSAGE_TYPES = new Set([
   "input",
+  "terminal-reply",
   "ping",
   "disconnect",
 ]);
@@ -95,7 +96,10 @@ export function isMessageAllowedForParticipant(
 ): boolean {
   if (!participant || participant.isOwner) return true;
   if (!NON_OWNER_ALLOWED_MESSAGE_TYPES.has(messageType)) return false;
-  if (messageType === "input" && participant.permissionLevel === "read-only") {
+  if (
+    (messageType === "input" || messageType === "terminal-reply") &&
+    participant.permissionLevel === "read-only"
+  ) {
     return false;
   }
   return true;
@@ -273,6 +277,21 @@ class TerminalSessionManager {
       throw new ControlError("CONTROL_BUSY");
     }
     session.control.humanInput(Buffer.from(data, "utf8"));
+  }
+
+  sendTerminalReply(sessionId: string, ws: WebSocket, data: string): boolean {
+    const session = this.sessions.get(sessionId),
+      participant = session ? this.getParticipantForWs(session, ws) : null;
+    if (
+      !session?.isConnected ||
+      !participant ||
+      participant.permissionLevel !== "read-write"
+    )
+      return false;
+    const owner = this.getOwnerParticipant(session);
+    if (owner?.ws.readyState === WebSocket.OPEN && owner.ws !== ws)
+      return false;
+    return session.control.terminalReply(Buffer.from(data, "utf8"));
   }
 
   setSSHState(
@@ -734,6 +753,7 @@ class TerminalSessionManager {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
+    session.control.observeTerminalOutput(data);
     session.outputSequence++;
     session.outputBuffer.push(data);
     session.outputBufferBytes += data.length;

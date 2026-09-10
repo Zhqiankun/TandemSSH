@@ -1,3 +1,4 @@
+import { installTerminalReplies } from "./terminal-replies";
 import { requestLegacyTask } from "@/api/legacy-commands-api";
 import { translateUiText } from "@/i18n/ui-text";
 import { getErrorMessage } from "../../lib/error-message.js";
@@ -212,6 +213,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     const fitAddonRef = useRef<FitAddon | null>(null);
     const webSocketRef = useRef<WebSocket | null>(null);
     const terminalInputDisposableRef = useRef<{ dispose(): void } | null>(null);
+    const terminalRepliesRef = useRef<ReturnType<
+      typeof installTerminalReplies
+    > | null>(null);
     const localEchoRef = useRef<TerminalLocalEcho | null>(null);
     const customKeybindingsRef = useRef<CustomKeybinding[]>([]);
     const cachedSnippetsRef = useRef<{ id: number; content: string }[] | null>(
@@ -1263,6 +1267,8 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         webSocketRef.current.readyState !== WebSocket.CLOSED
       ) {
         terminalInputDisposableRef.current?.dispose();
+        terminalRepliesRef.current?.dispose();
+        terminalRepliesRef.current = null;
         terminalInputDisposableRef.current = null;
         webSocketRef.current.close();
       }
@@ -1292,6 +1298,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       cols: number,
       rows: number,
     ) {
+      let terminalRepliesSupported = false;
       ws.addEventListener("open", () => {
         alternateScreenModeRef.current = false;
         controlStringModeRef.current = false;
@@ -1376,14 +1383,25 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           );
         }
         terminalInputDisposableRef.current?.dispose();
+        terminalRepliesRef.current?.dispose();
+        terminalRepliesRef.current = null;
         localEchoRef.current = new TerminalLocalEcho(
           resolveLocalEchoMode(
             hostConfig.terminalConfig?.localEcho,
             localStorage.getItem("terminalLocalEchoMode"),
           ),
         );
+        terminalRepliesRef.current = installTerminalReplies(terminal);
         terminalInputDisposableRef.current = terminal.onData((data) => {
           if (ws.readyState !== WebSocket.OPEN) return;
+          const reply = terminalRepliesSupported
+            ? terminalRepliesRef.current?.consume(data)
+            : undefined;
+          if (reply) {
+            if (!reply.replay)
+              ws.send(JSON.stringify({ type: "terminal-reply", data }));
+            return;
+          }
           if (data === "\r" || data === "\n") {
             const currentCmd = getCurrentCommand().trim();
             const termixMatch = currentCmd.match(/^termix\s+(.+)$/);
@@ -1427,6 +1445,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       ws.addEventListener("message", (event) => {
         try {
           const msg = JSON.parse(event.data);
+          if (msg.terminalReplies === true) terminalRepliesSupported = true;
           if (msg.type === "pong") {
             pongReceivedRef.current = true;
             return;
@@ -1445,7 +1464,11 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
               const output =
                 localEchoRef.current?.handleOutput(msg.data) ?? msg.data;
-              terminal.write(formatTerminalOutput(output));
+              const endReplay =
+                msg.replay === true
+                  ? terminalRepliesRef.current?.beginReplay()
+                  : undefined;
+              terminal.write(formatTerminalOutput(output), endReplay);
               // Strip ANSI escape codes before testing — newer sudo versions (Ubuntu 26.04+)
               // emit colored prompts with embedded escape sequences that break the regex.
               const strippedData = msg.data.replace(
@@ -1457,7 +1480,11 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
               const stringData = String(msg.data);
               const output =
                 localEchoRef.current?.handleOutput(stringData) ?? stringData;
-              terminal.write(formatTerminalOutput(output));
+              const endReplay =
+                msg.replay === true
+                  ? terminalRepliesRef.current?.beginReplay()
+                  : undefined;
+              terminal.write(formatTerminalOutput(output), endReplay);
             }
           } else if (msg.type === "error") {
             const trustRejected = msg.code === "HOST_TRUST_REJECTED";
@@ -2129,6 +2156,8 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         }
 
         terminalInputDisposableRef.current?.dispose();
+        terminalRepliesRef.current?.dispose();
+        terminalRepliesRef.current = null;
         terminalInputDisposableRef.current = null;
 
         setIsConnected(false);
@@ -2721,6 +2750,8 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     useEffect(
       () => () => {
         terminalInputDisposableRef.current?.dispose();
+        terminalRepliesRef.current?.dispose();
+        terminalRepliesRef.current = null;
         terminalInputDisposableRef.current = null;
       },
       [],

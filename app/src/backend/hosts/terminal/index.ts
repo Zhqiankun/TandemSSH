@@ -218,12 +218,29 @@ async function handleShareTokenConnection(
 
   const buffered = sessionManager.getBuffer(joined);
   if (buffered) {
-    ws.send(JSON.stringify({ type: "data", data: buffered }));
+    ws.send(
+      JSON.stringify({
+        type: "data",
+        data: buffered,
+        replay: true,
+        terminalReplies: true,
+      }),
+    );
   }
   ws.send(
-    JSON.stringify({ type: "sessionAttached", sessionId: share.sessionId }),
+    JSON.stringify({
+      type: "sessionAttached",
+      terminalReplies: true,
+      sessionId: share.sessionId,
+    }),
   );
-  ws.send(JSON.stringify({ type: "connected", message: "Joined session" }));
+  ws.send(
+    JSON.stringify({
+      type: "connected",
+      terminalReplies: true,
+      message: "Joined session",
+    }),
+  );
 
   const currentSessionId: string = share.sessionId;
 
@@ -272,6 +289,11 @@ async function handleShareTokenConnection(
     }
 
     switch (type) {
+      case "terminal-reply": {
+        if (typeof data === "string")
+          sessionManager.sendTerminalReply(currentSessionId, ws, data);
+        break;
+      }
       case "input": {
         if (typeof data !== "string") break;
         forwardHumanInput(currentSessionId, ws, data);
@@ -600,7 +622,14 @@ wss.on("connection", async (ws: WebSocket, req) => {
             isConnected = true;
             const buffered = sessionManager.getBuffer(session);
             if (buffered) {
-              ws.send(JSON.stringify({ type: "data", data: buffered }));
+              ws.send(
+                JSON.stringify({
+                  type: "data",
+                  data: buffered,
+                  replay: true,
+                  terminalReplies: true,
+                }),
+              );
             }
             const attachCols = toTerminalDimension(attachData.cols);
             const attachRows = toTerminalDimension(attachData.rows);
@@ -622,12 +651,14 @@ wss.on("connection", async (ws: WebSocket, req) => {
             ws.send(
               JSON.stringify({
                 type: "sessionAttached",
+                terminalReplies: true,
                 sessionId: attachData.sessionId,
               }),
             );
             ws.send(
               JSON.stringify({
                 type: "connected",
+                terminalReplies: true,
                 message: "Session reattached",
               }),
             );
@@ -774,6 +805,11 @@ wss.on("connection", async (ws: WebSocket, req) => {
           break;
         }
 
+        case "terminal-reply": {
+          if (typeof data === "string" && currentSessionId)
+            sessionManager.sendTerminalReply(currentSessionId, ws, data);
+          break;
+        }
         case "input": {
           if (typeof data !== "string" || !currentSessionId) break;
           forwardHumanInput(currentSessionId, ws, data);
@@ -1324,16 +1360,28 @@ wss.on("connection", async (ws: WebSocket, req) => {
 
             const buffered = sessionManager.getBuffer(joinedSession);
             if (buffered) {
-              ws.send(JSON.stringify({ type: "data", data: buffered }));
+              ws.send(
+                JSON.stringify({
+                  type: "data",
+                  data: buffered,
+                  replay: true,
+                  terminalReplies: true,
+                }),
+              );
             }
             ws.send(
               JSON.stringify({
                 type: "sessionAttached",
+                terminalReplies: true,
                 sessionId: share.sessionId,
               }),
             );
             ws.send(
-              JSON.stringify({ type: "connected", message: "Joined session" }),
+              JSON.stringify({
+                type: "connected",
+                terminalReplies: true,
+                message: "Joined session",
+              }),
             );
           } catch (error) {
             sshLogger.error("Failed to join shared session", error, {
@@ -1924,22 +1972,35 @@ wss.on("connection", async (ws: WebSocket, req) => {
 
         const buffered = sessionManager.getBuffer(existingSession);
         if (buffered) {
-          ws.send(JSON.stringify({ type: "data", data: buffered }));
+          ws.send(
+            JSON.stringify({
+              type: "data",
+              data: buffered,
+              replay: true,
+              terminalReplies: true,
+            }),
+          );
         }
         ws.send(
           JSON.stringify({
             type: "sessionCreated",
+            terminalReplies: true,
             sessionId: reusedSessionId,
           }),
         );
         ws.send(
           JSON.stringify({
             type: "sessionAttached",
+            terminalReplies: true,
             sessionId: reusedSessionId,
           }),
         );
         ws.send(
-          JSON.stringify({ type: "connected", message: "Session reattached" }),
+          JSON.stringify({
+            type: "connected",
+            terminalReplies: true,
+            message: "Session reattached",
+          }),
         );
         return;
       }
@@ -2100,6 +2161,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
             ws.send(
               JSON.stringify({
                 type: "sessionCreated",
+                terminalReplies: true,
                 sessionId: currentSessionId,
               }),
             );
@@ -2308,7 +2370,11 @@ wss.on("connection", async (ws: WebSocket, req) => {
           }
 
           ws.send(
-            JSON.stringify({ type: "connected", message: "SSH connected" }),
+            JSON.stringify({
+              type: "connected",
+              terminalReplies: true,
+              message: "SSH connected",
+            }),
           );
 
           if (id && hostConfig.userId) {

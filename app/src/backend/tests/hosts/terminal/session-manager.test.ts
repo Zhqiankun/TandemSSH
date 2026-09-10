@@ -536,3 +536,70 @@ describe("isMessageAllowedForParticipant", () => {
     }
   });
 });
+
+it("only accepts expected protocol replies from the current writable display owner", () => {
+  const id = sessionManager.createSession("owner", 1, "fixture", 80, 24),
+    owner = makeFakeWs(),
+    reader = makeFakeWs(),
+    writer = makeFakeWs(),
+    stream = { write: vi.fn(), end: vi.fn(), destroyed: false };
+  try {
+    sessionManager.setSSHState(id, { end: vi.fn() } as never, stream as never);
+    sessionManager.attachWs(id, "owner", owner);
+    sessionManager.joinAsParticipant(id, reader, {
+      userId: "reader",
+      permissionLevel: "read-only",
+    });
+    sessionManager.joinAsParticipant(id, writer, {
+      userId: "writer",
+      permissionLevel: "read-write",
+    });
+    const control = sessionManager.getSession(id)!.control,
+      lease = control.grant(
+        { kind: "automation", ownerType: "mcp-client", ownerId: "fixture" },
+        control.snapshot(),
+      );
+    sessionManager.bufferOutput(id, "\x1b[6n");
+    for (const ws of [reader, writer, makeFakeWs()])
+      expect(sessionManager.sendTerminalReply(id, ws, "\x1b[1;1R")).toBe(false);
+    expect(sessionManager.sendTerminalReply(id, owner, "touch file\r")).toBe(
+      false,
+    );
+    expect(stream.write).not.toHaveBeenCalled();
+    expect(sessionManager.sendTerminalReply(id, owner, "\x1b[1;1R")).toBe(true);
+    expect(() => control.assertLease(lease)).not.toThrow();
+    expect(stream.write).toHaveBeenCalledOnce();
+  } finally {
+    sessionManager.destroySession(id);
+  }
+});
+it("allows an existing writable participant to answer when the owner is detached, but never a read-only participant", () => {
+  const id = sessionManager.createSession("owner", 1, "fixture", 80, 24),
+    writer = makeFakeWs(),
+    stream = { write: vi.fn(), end: vi.fn(), destroyed: false };
+  try {
+    sessionManager.setSSHState(id, { end: vi.fn() } as never, stream as never);
+    sessionManager.joinAsParticipant(id, writer, {
+      userId: "writer",
+      permissionLevel: "read-write",
+    });
+    sessionManager.bufferOutput(id, "\x1b[6n");
+    expect(sessionManager.sendTerminalReply(id, writer, "\x1b[1;1R")).toBe(
+      true,
+    );
+    expect(
+      isMessageAllowedForParticipant(
+        { isOwner: false, permissionLevel: "read-only" },
+        "terminal-reply",
+      ),
+    ).toBe(false);
+    expect(
+      isMessageAllowedForParticipant(
+        { isOwner: false, permissionLevel: "read-write" },
+        "terminal-reply",
+      ),
+    ).toBe(true);
+  } finally {
+    sessionManager.destroySession(id);
+  }
+});
