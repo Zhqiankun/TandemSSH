@@ -66,3 +66,46 @@ it("an old host cleanup cannot release the newer host", async () => {
   expect(api.stop).not.toHaveBeenCalledWith(8, next);
   hook.unmount();
 });
+it("aborts a pending HTTP handshake on release and leaves a newer lease intact", async () => {
+  let firstSignal!: AbortSignal;
+  api.start.mockImplementation((_host, id, signal: AbortSignal) => {
+    if (!firstSignal) {
+      firstSignal = signal;
+      return new Promise((_resolve, reject) =>
+        signal.addEventListener(
+          "abort",
+          () => reject(Error("cancelled HTTP")),
+          { once: true },
+        ),
+      );
+    }
+    return Promise.resolve({ success: true, viewerSessionId: id });
+  });
+  const hook = renderHook(() => useMetricsViewer());
+  let first!: Promise<unknown>;
+  act(() => {
+    first = hook.result.current.start(7);
+  });
+  const rejected = expect(first).rejects.toThrow("MONITORING_CANCELLED");
+  await act(() => hook.result.current.start(8));
+  await rejected;
+  expect(firstSignal.aborted).toBe(true);
+  expect(hook.result.current.current.current?.hostId).toBe(8);
+  expect(hook.result.current.current.current?.stop.signal.aborted).toBe(false);
+  hook.unmount();
+});
+it("reuses an authenticated viewer while the first sample is still unavailable", async () => {
+  api.start.mockImplementation(async (_host, id) => ({
+    success: true,
+    viewerSessionId: id,
+  }));
+  const hook = renderHook(() => useMetricsViewer());
+  await act(() => hook.result.current.start(7));
+  const lease = hook.result.current.current.current;
+  await act(() => hook.result.current.start(7));
+  expect(hook.result.current.current.current).toBe(lease);
+  expect(api.start).toHaveBeenCalledOnce();
+  expect(api.stop).not.toHaveBeenCalled();
+  expect(lease?.stop.signal.aborted).toBe(false);
+  hook.unmount();
+});

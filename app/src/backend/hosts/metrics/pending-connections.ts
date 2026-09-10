@@ -1,7 +1,7 @@
 export interface PendingMonitoringConnection {
   readonly signal: AbortSignal;
   own(close: () => void): void;
-  waitForAuthentication(): void;
+  waitForAuthentication(timeoutMs?: number): void;
   complete(): void;
   cancel(reason?: Error): void;
 }
@@ -50,12 +50,18 @@ export class PendingMonitoringConnections {
         if (finished) throw Error("MONITORING_CONNECTION_FINISHED");
         resources.add(close);
       },
-      waitForAuthentication: () => {
+      waitForAuthentication: (timeoutMs = 180000) => {
+        if (
+          !Number.isSafeInteger(timeoutMs) ||
+          timeoutMs < 1 ||
+          timeoutMs > 300000
+        )
+          throw Error("MONITORING_TIMEOUT_INVALID");
         if (finished) return;
         clearTimeout(timer);
         timer = setTimeout(
           () => connection.cancel(Error("MONITORING_TIMEOUT")),
-          180000,
+          timeoutMs,
         );
       },
       complete: () => {

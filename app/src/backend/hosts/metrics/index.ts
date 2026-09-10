@@ -1,3 +1,4 @@
+import { attachInteractiveAuth } from "../interactive-auth/production.js";
 import { applyAgentAuth } from "../terminal-auth-helpers.js";
 import { randomUUID } from "node:crypto";
 import {
@@ -472,7 +473,11 @@ class PollingManager {
     const statusOnly = options?.statusOnly ?? false;
     const viewerUserId = options?.viewerUserId;
 
-    const canCollectMetrics = supportsMetrics(host);
+    const canCollectMetrics = supportsMetrics(
+      host,
+      !!metricsSessions[getSessionKey(host.id, viewerUserId || host.userId)]
+        ?.isConnected,
+    );
 
     const enabledCollectors: string[] = [];
     if (isTcpPingEnabled(statsConfig)) {
@@ -561,7 +566,15 @@ class PollingManager {
         if (
           latestConfig &&
           latestConfig.statsConfig.metricsEnabled &&
-          supportsMetrics(latestConfig.host)
+          supportsMetrics(
+            latestConfig.host,
+            !!metricsSessions[
+              getSessionKey(
+                latestConfig.host.id,
+                latestConfig.viewerUserId || latestConfig.host.userId,
+              )
+            ]?.isConnected,
+          )
         ) {
           this.scheduleMetricsPoll(
             latestConfig.host,
@@ -680,7 +693,12 @@ class PollingManager {
       return;
     }
 
-    if (!supportsMetrics(refreshedHost)) {
+    if (
+      !supportsMetrics(
+        refreshedHost,
+        !!metricsSessions[getSessionKey(refreshedHost.id, userId)]?.isConnected,
+      )
+    ) {
       statsLogger.debug("Skipping metrics collection for non-SSH host", {
         operation: "poll_host_metrics_skipped",
         hostId: refreshedHost.id,
@@ -1873,7 +1891,12 @@ async function collectMetrics(
     os: string | null;
   };
 }> {
-  if (!supportsMetrics(host)) {
+  if (
+    !supportsMetrics(
+      host,
+      !!metricsSessions[getSessionKey(host.id, requestingUserId)]?.isConnected,
+    )
+  ) {
     throw new Error("Metrics collection only supported for SSH hosts");
   }
 
@@ -2514,6 +2537,10 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
     return res.status(400).json({ code: "MONITORING_IDENTITY_INVALID" });
   let pending: PendingMonitoringConnection | undefined;
   let keepPending = false;
+  const modern = req.body?.keyboardInteractiveVersion === 1;
+  res.once("close", () => {
+    if (modern) pending?.cancel();
+  });
 
   const connectionLogs: Array<Omit<LogEntry, "id" | "timestamp">> = [];
 
@@ -2532,6 +2559,7 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
     if (!pollingManager.canRegisterViewer(id, viewerSessionId, userId))
       return res.status(409).json({ code: "MONITORING_VIEWER_CONFLICT" });
     pending = pendingMonitoringConnections.begin(id, userId, viewerSessionId);
+    if (modern) pending.waitForAuthentication(300000);
     const host = await fetchHostById(id, userId);
     pending.signal.throwIfAborted();
     if (!host) {
@@ -2607,6 +2635,7 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
     client.on("error", () => {});
     pending.own(() => client.destroy());
     const config = await buildSshConfig({ ...host, userId }, client);
+    if (modern) config.readyTimeout = 310000;
     pending.signal.throwIfAborted();
 
     if (host.authType === "opkssh" && host.userId) {
@@ -2665,18 +2694,61 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
         pending!.cancel();
       });
 
-      const timeout = setTimeout(() => {
-        if (!isResolved) {
-          isResolved = true;
-          pending!.cancel(Error("MONITORING_TIMEOUT"));
-          reject(Error("MONITORING_TIMEOUT"));
-        }
-      }, 60000);
+      const timeout = setTimeout(
+        () => {
+          if (!isResolved) {
+            isResolved = true;
+            pending!.cancel(Error("MONITORING_TIMEOUT"));
+            reject(Error("MONITORING_TIMEOUT"));
+          }
+        },
+        modern ? 300000 : 60000,
+      );
+
+      const interactive = modern
+        ? attachInteractiveAuth(
+            client,
+            {
+              userId,
+              connectionId: viewerSessionId,
+              channel: "monitoring",
+              hostId: host.id,
+              address: host.ip,
+              port: host.port,
+              username: host.username,
+            },
+            {
+              signal: pending!.signal,
+              authorize: async () => {
+                await authorizeMonitoring(host.id, userId);
+                if (monitoringCollections.isPaused(host.id, userId))
+                  throw Error("MONITORING_PAUSED");
+                const current = await fetchHostById(host.id, userId);
+                if (
+                  !pollingManager.parseStatsConfig(current.statsConfig)
+                    .metricsEnabled
+                )
+                  throw Error("MONITORING_PAUSED");
+              },
+              failure: (code) => pending!.cancel(Error(code)),
+            },
+          )
+        : undefined;
 
       client.on(
         "keyboard-interactive",
         (name, instructions, instructionsLang, prompts, finish) => {
           if (pending!.signal.aborted) return;
+          if (interactive) {
+            interactive.handle(
+              name,
+              instructions,
+              prompts.map((p) => ({ prompt: p.prompt, echo: p.echo === true })),
+              finish,
+              host.authType !== "none" ? host.password : undefined,
+            );
+            return;
+          }
           const totpPromptIndex = prompts.findIndex((p) =>
             /verification code|verification_code|token|otp|2fa|authenticator|google.*auth/i.test(
               p.prompt,
@@ -2743,6 +2815,7 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
 
       client.on("ready", () => {
         clearTimeout(timeout);
+        authFailureTracker.reset(host.id);
         if (pending!.signal.aborted) {
           client.destroy();
           return;
@@ -2886,7 +2959,12 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
             "Connecting via jump host chain",
           ),
         );
-        createJumpHostChain(host.jumpHosts!, userId, pending!.signal)
+        createJumpHostChain(
+          host.jumpHosts!,
+          userId,
+          pending!.signal,
+          modern ? { keyboardInteractiveVersion: 1 } : undefined,
+        )
           .then((jumpClient) => {
             if (!jumpClient) throw Error("MONITORING_JUMP_UNAVAILABLE");
             if (pending!.signal.aborted) {
@@ -3001,6 +3079,25 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
     keepPending = result.requires_totp === true;
     res.json({ ...result, connectionLogs });
   } catch (error) {
+    if (
+      modern &&
+      error instanceof Error &&
+      ["MONITORING_TIMEOUT", "MONITORING_CANCELLED"].includes(error.message)
+    ) {
+      const code =
+        error.message === "MONITORING_TIMEOUT"
+          ? "SSH_AUTH_TIMEOUT"
+          : "SSH_AUTH_CANCELLED";
+      return res.status(409).json({ error: code, code, connectionLogs });
+    }
+    if (
+      modern &&
+      error instanceof Error &&
+      /^SSH_AUTH_[A-Z_]+$/.test(error.message)
+    )
+      return res
+        .status(409)
+        .json({ error: error.message, code: error.message, connectionLogs });
     if (error instanceof Error && /^MONITORING_/.test(error.message))
       return res.status(409).json({ code: error.message, connectionLogs });
     statsLogger.error("Failed to start metrics collection", {

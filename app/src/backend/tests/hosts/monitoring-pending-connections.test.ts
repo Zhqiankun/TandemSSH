@@ -69,3 +69,18 @@ it("preserves the existing three-minute user authentication window", () => {
   vi.advanceTimersByTime(1);
   expect(pending.signal.aborted).toBe(true);
 });
+it("bounds the negotiated five-minute interactive wait and releases its timer on success", () => {
+  vi.useFakeTimers();
+  const registry = new PendingMonitoringConnections(25);
+  const pending = registry.begin(7, "alice", "interactive");
+  expect(() => pending.waitForAuthentication(300001)).toThrow(
+    "MONITORING_TIMEOUT_INVALID",
+  );
+  pending.waitForAuthentication(300000);
+  vi.advanceTimersByTime(299999);
+  expect(pending.signal.aborted).toBe(false);
+  pending.complete();
+  vi.advanceTimersByTime(1);
+  expect(pending.signal.aborted).toBe(false);
+  expect(registry.owns(7, "alice", "interactive")).toBe(false);
+});

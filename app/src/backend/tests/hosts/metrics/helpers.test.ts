@@ -134,3 +134,11 @@ describe("tcpPingThroughJumpHost", () => {
     vi.useRealTimers();
   });
 });
+it("allows credential-free monitoring only with an authenticated session", () => {
+  expect(supportsMetrics({ authType: "none" })).toBe(false);
+  expect(supportsMetrics({ authType: "none" }, true)).toBe(true);
+  expect(
+    supportsMetrics({ connectionType: "rdp", authType: "none" }, true),
+  ).toBe(false);
+  expect(supportsMetrics({ authType: "opkssh" }, true)).toBe(false);
+});

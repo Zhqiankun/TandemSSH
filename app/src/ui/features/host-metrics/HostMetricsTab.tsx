@@ -365,11 +365,6 @@ function HostMetricsInner({
 
   const fetchMetrics = React.useCallback(async (): Promise<void> => {
     if (!currentHostConfig?.id) return;
-    if (currentHostConfig.authType === "none") {
-      toast.error(t("hostMetrics.noneAuthNotSupported"));
-      if (currentTab !== null) removeTab(currentTab);
-      throw new Error(t("hostMetrics.noneAuthNotSupported"));
-    }
 
     if (!totpVerified) {
       addLog({
@@ -448,6 +443,22 @@ function HostMetricsInner({
         await fetchMetrics();
         if (!totpRequired) metricsRetry.markConnected();
       } catch (error: unknown) {
+        if (error instanceof Error && error.message === "MONITORING_CANCELLED")
+          return;
+        if (
+          error instanceof Error &&
+          /^SSH_AUTH_[A-Z_]+$/.test(error.message)
+        ) {
+          addLog({
+            type: "error",
+            stage: "auth",
+            message: t("sshInteractive.errors." + error.message, {
+              defaultValue: t("sshInteractive.failed"),
+            }),
+          });
+          metricsRetry.markFailed({ retry: false });
+          return;
+        }
         const logError = error as ConnectionLogError;
         if (logError.connectionLogs) {
           logError.connectionLogs.forEach((log) => addLog(log));
@@ -656,6 +667,7 @@ function HostMetricsInner({
   const showOffline =
     metricsEnabled &&
     metricsRetry.status !== "connecting" &&
+    metricsRetry.status !== "disconnected" &&
     !metrics &&
     serverStatus === "offline";
 

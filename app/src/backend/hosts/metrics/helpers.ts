@@ -10,10 +10,14 @@ export type TcpPingStatsConfig = {
   disableTcpPing?: boolean;
 };
 
-export function supportsMetrics(host: StatsCapableHost): boolean {
+export function supportsMetrics(
+  host: StatsCapableHost,
+  authenticatedSession = false,
+): boolean {
   const connectionType = host.connectionType || "ssh";
   if (connectionType !== "ssh") return false;
-  if (host.authType === "none" || host.authType === "opkssh") return false;
+  if (host.authType === "opkssh") return false;
+  if (host.authType === "none" && !authenticatedSession) return false;
   return true;
 }
 
