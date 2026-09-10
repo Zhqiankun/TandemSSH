@@ -100,6 +100,24 @@ function registerUploadSourceIpc({
   });
   return {
     sources,
+    selectForBrowser: async (event, paths, authorize) => {
+      const id = owner(event),
+        epoch = sources.epochs.get(id) ?? 0;
+      const check = () => {
+        owner(event);
+        authorize();
+        if ((sources.epochs.get(id) ?? 0) !== epoch)
+          throw Error("UPLOAD_CANCELLED");
+      };
+      const selected = await sources.select(id, paths, check);
+      try {
+        check();
+        return selected;
+      } catch (error) {
+        sources.forget(id, selected.id);
+        throw error;
+      }
+    },
     dispose: () => {
       for (const owner of owners) void resetOwner(owner);
       batchSources?.dispose();

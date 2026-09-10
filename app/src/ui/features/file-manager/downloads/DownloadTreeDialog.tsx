@@ -19,7 +19,9 @@ import type {
   LocalDownloadTreeAction,
 } from "@/types/download-tree";
 import { downloadBatches } from "./download-batches";
+import type { LocalBrowserTarget } from "@/types/local-file-browser";
 export interface DirectoryDownloadRequest {
+  localTarget?: LocalBrowserTarget;
   sessionId: string;
   paths: string[];
   hostLabel: string;
@@ -51,9 +53,13 @@ export function DownloadTreeDialog({
   }>({ handed: false, live: true });
   const native = window.electronAPI?.downloadDirectories;
   const message = (code: string) =>
-    t("tandem.download.errors." + code, {
-      defaultValue: t("tandem.download.failed"),
-    });
+    code.startsWith("LOCAL_")
+      ? t("tandem.localBrowser.errors." + code, {
+          defaultValue: t("tandem.localBrowser.failed"),
+        })
+      : t("tandem.download.errors." + code, {
+          defaultValue: t("tandem.download.failed"),
+        });
   const release = async () => {
     const owned = refs.current;
     if (owned.handed) return;
@@ -90,7 +96,22 @@ export function DownloadTreeDialog({
         }
         setSource(result);
         setNames(Object.fromEntries(result.entries.map((e) => [e.id, e.name])));
-        setBusy("");
+        if (request.localTarget) {
+          setBusy("checking");
+          const root = value(
+            await window.electronAPI!.localBrowser!.download(
+              request.localTarget.rootId,
+              request.localTarget.relativePath,
+            ),
+          );
+          owned.target = root;
+          if (!owned.live) {
+            await release();
+            return;
+          }
+          await preview(root, result, {});
+        }
+        if (owned.live) setBusy("");
       })
       .catch((e) => {
         if (owned.live && !stop.signal.aborted) {
@@ -121,19 +142,23 @@ export function DownloadTreeDialog({
     !dirty &&
     !busy &&
     target.entries.every((e) => !!selected(e.id));
-  const preview = async (root: LocalDownloadTreePreview) => {
-    if (!source || !native) throw Error("DOWNLOAD_DESKTOP_REQUIRED");
+  const preview = async (
+    root: LocalDownloadTreePreview,
+    sourceSnapshot = source,
+    renames = names,
+  ) => {
+    if (!sourceSnapshot || !native) throw Error("DOWNLOAD_DESKTOP_REQUIRED");
     const result = value(
       await native.preview(
         root.id,
-        source.entries
+        sourceSnapshot.entries
           .filter(
             (e) => !e.error && (e.kind === "file" || e.kind === "directory"),
           )
           .map((e) => ({
             id: e.id,
             parentId: e.parentId,
-            name: names[e.id] ?? e.name,
+            name: renames[e.id] ?? e.name,
             kind: e.kind as "file" | "directory",
             size: e.kind === "directory" ? 0 : e.size,
           })),

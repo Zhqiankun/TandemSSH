@@ -71,6 +71,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("external-editor-saved", listener);
   },
 
+  localBrowser: {
+    choose: () => ipcRenderer.invoke("tandem-local-browser", "choose"),
+    list: (id, relativePath, options) =>
+      ipcRenderer.invoke(
+        "tandem-local-browser",
+        "list",
+        id,
+        relativePath,
+        options,
+      ),
+    upload: (id, entries) =>
+      ipcRenderer.invoke("tandem-local-browser", "upload", id, entries),
+    download: (id, relativePath) =>
+      ipcRenderer.invoke("tandem-local-browser", "download", id, relativePath),
+    release: (id) => ipcRenderer.invoke("tandem-local-browser", "release", id),
+  },
   downloadDirectories: {
     recovery: (operation, ticketId, args) =>
       ipcRenderer.invoke(

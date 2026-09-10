@@ -1,3 +1,4 @@
+import type { DesktopLocalBrowserApi } from "./local-file-browser";
 import type { DesktopLocalFilesApi } from "./local-file-grants";
 import type { DesktopUpdateApi } from "./app-update";
 import type { DesktopUploadSourceApi } from "./upload-source";
@@ -36,6 +37,7 @@ export interface ElectronAPI {
   downloads?: DesktopDownloadApi;
   uploadSources?: DesktopUploadSourceApi;
   localFiles?: DesktopLocalFilesApi;
+  localBrowser?: DesktopLocalBrowserApi;
   downloadDirectories?: DesktopDownloadDirectoryApi;
   getAppVersion: () => Promise<string>;
   getPlatform: () => Promise<string>;

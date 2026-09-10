@@ -71,7 +71,7 @@ const source: DownloadTreePreview = {
     },
   ],
 };
-async function fixture() {
+async function fixture(fromPanel = false) {
   const i18n = createInstance();
   await i18n.init({
     lng: "zh_CN",
@@ -116,9 +116,12 @@ async function fixture() {
     })),
     forget: vi.fn(async () => ({ ok: true as const, value: null })),
   };
+  const localBrowser = {
+    download: vi.fn(async () => ({ ok: true, value: root })),
+  };
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
-    value: { downloadDirectories: native },
+    value: { downloadDirectories: native, localBrowser },
   });
   vi.mocked(downloadTreeApi.scan).mockResolvedValue(structuredClone(source));
   const onClose = vi.fn(),
@@ -128,6 +131,13 @@ async function fixture() {
           request={{
             sessionId: "session",
             paths: ["/tree"],
+            localTarget: fromPanel
+              ? {
+                  rootId: "browser-root",
+                  relativePath: "artifacts",
+                  path: "C:/selected",
+                }
+              : undefined,
             hostLabel: "测试服务器",
           }}
           onClose={onClose}
@@ -139,9 +149,10 @@ async function fixture() {
       screen.getByRole("button", { name: "选择目标文件夹" }),
     ).not.toBeDisabled(),
   );
-  fireEvent.click(screen.getByRole("button", { name: "选择目标文件夹" }));
+  if (!fromPanel)
+    fireEvent.click(screen.getByRole("button", { name: "选择目标文件夹" }));
   await screen.findByRole("button", { name: "本批合并已有目录" });
-  return { native, onClose, ...rendered };
+  return { native, localBrowser, onClose, ...rendered };
 }
 describe("Chinese batch download preview", () => {
   it("requires explicit merge/overwrite and hands one immutable reviewed batch to the queue", async () => {
@@ -198,4 +209,21 @@ describe("Chinese batch download preview", () => {
     expect(f.native.cancel).toHaveBeenCalledWith("native");
     expect(downloadTreeApi.forget).toHaveBeenCalledWith("session", "source");
   });
+});
+
+it("uses the local-panel destination snapshot and still requires explicit conflict approval", async () => {
+  const f = await fixture(true);
+  expect(f.localBrowser.download).toHaveBeenCalledWith(
+    "browser-root",
+    "artifacts",
+  );
+  expect(f.native.choose).not.toHaveBeenCalled();
+  expect(f.native.preview).toHaveBeenCalledWith(
+    "native",
+    expect.arrayContaining([expect.objectContaining({ name: "tree" })]),
+  );
+  expect(screen.getByRole("button", { name: "确认并开始下载" })).toBeDisabled();
+  expect(downloadBatches.start).not.toHaveBeenCalled();
+  f.unmount();
+  await waitFor(() => expect(f.native.cancel).toHaveBeenCalledWith("native"));
 });

@@ -90,6 +90,7 @@
 | [应用设置备份](docs/55-application-settings-backup.md) | 外观、界面偏好与快捷键的独立恢复、审阅和重启验证 |
 | [真实 Linux 验收](docs/56-linux-ssh-acceptance.md) | Alpine 实机、Windows/MCP 自动与协作、权限和磁盘失败验证 |
 | [终端回复与接管](docs/57-terminal-protocol-replies.md) | 自动光标回复不再误触发人工接管，保留真实人工输入的控制权 |
+| [本地/远端双面板](docs/58-local-remote-file-panels.md) | 中文本机浏览、双向传输预览、覆盖审批和真实桌面文件验证 |
 
 ## 产品主线
 

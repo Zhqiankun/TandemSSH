@@ -2,6 +2,9 @@ import {
   UploadTreeDialog,
   type DirectoryUploadRequest,
 } from "./uploads/UploadTreeDialog";
+import { LocalFilePanel } from "./local/LocalFilePanel";
+import type { LocalBrowserTarget } from "@/types/local-file-browser";
+import { Button } from "@/components/button";
 import { downloadQueue } from "./downloads/queue";
 import {
   DownloadTreeDialog,
@@ -151,6 +154,12 @@ function FileManagerContent({
   ]);
   const [navIndex, setNavIndex] = useState(0);
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [localPanelOpen, setLocalPanelOpen] = useState(
+    !!window.electronAPI?.localBrowser,
+  );
+  const [localTarget, setLocalTarget] = useState<LocalBrowserTarget | null>(
+    null,
+  );
   const [directoryUpload, setDirectoryUpload] =
     useState<DirectoryUploadRequest | null>(null);
   const [directoryDownload, setDirectoryDownload] =
@@ -3050,6 +3059,25 @@ function FileManagerContent({
           handleCreateNewFile={handleCreateNewFile}
         />
 
+        {window.electronAPI?.localBrowser && (
+          <div className="flex items-center justify-between gap-2 px-3 pt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              aria-pressed={localPanelOpen}
+              onClick={() => {
+                setLocalPanelOpen((open) => !open);
+                setLocalTarget(null);
+              }}
+            >
+              {t("tandem.localBrowser.toggle")}
+            </Button>
+            <span className="min-w-0 truncate text-xs text-muted-foreground">
+              {t("tandem.localBrowser.remote")} ·{" "}
+              {currentHost?.name ?? currentHost?.ip} · {currentPath}
+            </span>
+          </div>
+        )}
         <div
           className="flex-1 flex px-3 pb-3 pt-2 gap-3 min-h-0 relative"
           {...dragHandlers}
@@ -3066,6 +3094,7 @@ function FileManagerContent({
           <div
             className={cn(
               "w-56 flex-shrink-0 h-full flex flex-col",
+              localPanelOpen && "!hidden",
               "md:flex",
               mobileSidebarOpen
                 ? "fixed left-0 top-0 bottom-0 w-64 z-30 flex"
@@ -3087,7 +3116,59 @@ function FileManagerContent({
             </div>
           </div>
 
-          <div className="flex-1 relative overflow-hidden min-h-0 flex flex-col border border-border bg-card">
+          {localPanelOpen && window.electronAPI?.localBrowser && (
+            <div className="flex w-[42%] min-w-64 max-w-xl shrink-0 min-h-0 [&>section]:w-full">
+              <LocalFilePanel
+                onTargetChange={setLocalTarget}
+                canUpload={!!sshSessionId}
+                targetLabel={
+                  (currentHost?.name ?? currentHost?.ip ?? "SSH") +
+                  " · " +
+                  currentPath
+                }
+                onUpload={(localSelection) => {
+                  if (sshSessionId)
+                    setDirectoryUpload({
+                      sessionId: sshSessionId,
+                      path: currentPath,
+                      hostId: currentHost?.id,
+                      hostLabel: currentHost?.name ?? currentHost?.ip ?? "SSH",
+                      localSelection,
+                    });
+                }}
+              />
+            </div>
+          )}
+          <div className="flex-1 min-w-0 relative overflow-hidden min-h-0 flex flex-col border border-border bg-card">
+            {localPanelOpen && (
+              <div className="flex min-h-10 items-center justify-between gap-2 border-b border-border px-3">
+                <span className="truncate text-xs font-semibold">
+                  {t("tandem.localBrowser.remote")} ·{" "}
+                  {currentHost?.name ?? currentHost?.ip}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={
+                    !sshSessionId || !localTarget || !selectedFiles.length
+                  }
+                  title={localTarget?.path}
+                  onClick={() => {
+                    if (sshSessionId && localTarget)
+                      setDirectoryDownload({
+                        sessionId: sshSessionId,
+                        paths: selectedFiles.map((file) => file.path),
+                        hostId: currentHost?.id,
+                        hostLabel:
+                          currentHost?.name ?? currentHost?.ip ?? "SSH",
+                        localTarget: { ...localTarget },
+                      });
+                  }}
+                >
+                  {t("tandem.localBrowser.download")}
+                </Button>
+              </div>
+            )}
             <div className="flex-1 relative min-h-0 h-full">
               <FileManagerGrid
                 files={filteredFiles}

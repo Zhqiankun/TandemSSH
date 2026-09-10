@@ -2954,6 +2954,17 @@ const downloadIpc = require("./download-ipc.cjs").registerDownloadIpc({
   isDev,
 });
 
+const localFileBrowserIpc =
+  require("./local-file-browser-ipc.cjs").registerLocalFileBrowserIpc({
+    ipcMain,
+    dialog,
+    getWindow: () => mainWindow,
+    appRoot,
+    isDev,
+    uploads: uploadSourceIpc,
+    downloads: downloadIpc,
+  });
+
 ipcMain.handle("show-save-dialog", async (_event, options) => {
   return dialog.showSaveDialog(mainWindow, options || {});
 });
@@ -3274,6 +3285,7 @@ app.on("before-quit", () => {
 
 app.on("will-quit", () => {
   taskLocalFilesIpc.dispose();
+  localFileBrowserIpc.dispose();
   uploadSourceIpc.dispose();
   void downloadIpc.dispose();
   console.log("App will quit...");

@@ -236,6 +236,30 @@ function registerDownloadIpc({
   return {
     sink,
     directories,
+    selectForBrowser: async (event, target, authorize) => {
+      const scoped = owner(event),
+        epoch = scoped.life.epoch;
+      const check = () => {
+        owner(event);
+        authorize();
+        if (scoped.life.epoch !== epoch) throw Error("DOWNLOAD_CANCELLED");
+      };
+      const selected = await directories.choose(
+        scoped.id,
+        async () => target,
+        check,
+      );
+      try {
+        check();
+        return selected;
+      } catch (error) {
+        if (selected) {
+          await directories.cancel(scoped.id, selected.id);
+          directories.forget(scoped.id, selected.id);
+        }
+        throw error;
+      }
+    },
     cancelActive: async () => {
       for (const owner of lifetimes.keys()) await resetOwner(owner);
     },

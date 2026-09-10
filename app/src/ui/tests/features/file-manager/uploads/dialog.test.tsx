@@ -75,7 +75,7 @@ const source: NativeUploadSelection = {
     },
   ],
 };
-async function fixture(files?: File[]) {
+async function fixture(files?: File[], fromPanel = false) {
   const i18n = createInstance();
   await i18n.init({
     lng: "zh_CN",
@@ -93,9 +93,12 @@ async function fixture(files?: File[]) {
     })),
     forget: vi.fn(async () => ({ ok: true as const, value: null })),
   };
+  const localBrowser = {
+    upload: vi.fn(async () => ({ ok: true, value: structuredClone(source) })),
+  };
   Object.defineProperty(window, "electronAPI", {
     configurable: true,
-    value: { uploadSources: native },
+    value: { uploadSources: native, localBrowser },
   });
   let revision = 0;
   vi.mocked(uploadTreeApi.preview).mockImplementation(async (input) => ({
@@ -127,13 +130,19 @@ async function fixture(files?: File[]) {
             path: "/dest",
             hostLabel: "测试服务器",
             files,
+            localSelection: fromPanel
+              ? {
+                  rootId: "browser-root",
+                  entries: [{ relativePath: "tree", version: "tree-v1" }],
+                }
+              : undefined,
           }}
           onClose={onClose}
         />
       </I18nextProvider>,
     );
   await screen.findByRole("button", { name: "本批合并已有目录" });
-  return { ...view, native, onClose };
+  return { ...view, native, localBrowser, onClose };
 }
 it("requires explicit merge and overwrite, defaults to no takeover, and transfers preview ownership", async () => {
   const f = await fixture();
@@ -198,4 +207,19 @@ it("releases local and remote previews when dismissed before approval", async ()
   await waitFor(() => expect(f.native.forget).toHaveBeenCalledWith("source"));
   expect(uploadTreeApi.forget).toHaveBeenCalledWith("session", "target1");
   expect(uploadBatches.start).not.toHaveBeenCalled();
+});
+
+it("previews a local-panel selection without reopening a picker or auto-starting upload", async () => {
+  const f = await fixture(undefined, true);
+  expect(f.localBrowser.upload).toHaveBeenCalledWith("browser-root", [
+    { relativePath: "tree", version: "tree-v1" },
+  ]);
+  expect(f.native.chooseDirectory).not.toHaveBeenCalled();
+  expect(f.native.fromFiles).not.toHaveBeenCalled();
+  expect(uploadTreeApi.preview).toHaveBeenCalledWith(
+    expect.objectContaining({ sessionId: "session", path: "/dest" }),
+  );
+  expect(uploadBatches.start).not.toHaveBeenCalled();
+  f.unmount();
+  await waitFor(() => expect(f.native.forget).toHaveBeenCalledWith("source"));
 });

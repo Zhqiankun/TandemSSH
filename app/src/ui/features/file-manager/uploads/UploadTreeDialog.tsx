@@ -13,7 +13,9 @@ import { uploadErrorCode } from "@/api/file-upload-api";
 import type { NativeUploadSelection } from "@/types/upload-source";
 import type { UploadTreePreview, UploadTreeAction } from "@/types/upload-tree";
 import { uploadBatches, uploadSourceValue as value } from "./upload-batches";
+import type { LocalBrowserSelection } from "@/types/local-file-browser";
 export interface DirectoryUploadRequest {
+  localSelection?: LocalBrowserSelection;
   sessionId: string;
   path: string;
   hostLabel: string;
@@ -48,11 +50,15 @@ export function UploadTreeDialog({
   const refs = useRef<Owned>({ handed: false, live: true });
   const native = window.electronAPI?.uploadSources;
   const message = (code: string) =>
-    t("tandem.upload.errors." + code, {
-      defaultValue: t("tandem.collaboration.errors." + code, {
-        defaultValue: t("tandem.upload.failed"),
-      }),
-    });
+    code.startsWith("LOCAL_")
+      ? t("tandem.localBrowser.errors." + code, {
+          defaultValue: t("tandem.localBrowser.failed"),
+        })
+      : t("tandem.upload.errors." + code, {
+          defaultValue: t("tandem.collaboration.errors." + code, {
+            defaultValue: t("tandem.upload.failed"),
+          }),
+        });
   const release = async (owned: Owned) => {
     if (owned.handed) return;
     if (owned.target)
@@ -103,9 +109,14 @@ export function UploadTreeDialog({
     void (async () => {
       if (!native) throw Error("UPLOAD_DESKTOP_REQUIRED");
       const selected = value(
-        await (request.files
-          ? native.fromFiles(request.files)
-          : native.chooseDirectory()),
+        await (request.localSelection
+          ? window.electronAPI!.localBrowser!.upload(
+              request.localSelection.rootId,
+              request.localSelection.entries,
+            )
+          : request.files
+            ? native.fromFiles(request.files)
+            : native.chooseDirectory()),
       );
       if (!selected) {
         if (owned.live) onClose();
