@@ -15,3 +15,11 @@
 2 文件 / 18 项专项通过：目录及特殊位解析、中文保存/取消 sticky、未知权限禁止保存、后端完整模式传递、非法模式拒绝及会话越权拒绝。日志 `.cache/unix-permissions-tests.log`。修改文件 ESLint 通过。路由测试使用模拟 SSH 通道，不能代替真实 Linux 文件 mode 读回；真实 GNU/BusyBox 与实际 Windows 界面验收仍需继续，当前未发布安装包。
 
 完整 TypeScript 项目检查通过，日志 `.cache/unix-permissions-types.log`。
+
+## 真实 Linux / OpenSSH 验证通过
+
+本轮启动专属 Alpine 3.24.1 虚拟机（UID 1000），测试调用产品 registerFileActionRoutes/execChannel，通过真实 OpenSSH 执行 chmod，并通过独立 SFTP stat 读回。目录依次 1777、2755、0755、0700，文件依次 4755、2750、0644，共 7 次全部一致；其中 2755 → 0755 确認 setgid 已清除。中文、引号和 shell 字符路径保持字面值，测试目录及远端用户主目录均未出现注入标记。888 被接口拒绝且文件仍为 0644，不存在的文件返回 500。
+
+可复用测试：app/src/backend/tests/linux/permissions-acceptance.test.ts。运行时设置 TANDEM_LINUX_MANIFEST 为项目脚本创建的隔离 connection.json，再运行该 Vitest 文件；未配置时显式跳过，不声称普通 CI 已运行 Linux VM。证据 .cache/unix-permissions-linux-results.json，1 个真实集成场景通过（含上述子断言），873 毫秒；类型检查和新增测试 ESLint 通过。虚拟机 4129213a-350d-48dc-b8c5-ba1257e278f7 正常退出，vmExited.code=0，日志 .cache/unix-permissions-linux-lab.log。
+
+该结果证明 Alpine/BusyBox 和 OpenSSH 上的实际权限行为，尚不代替 GNU 工具环境、Windows 实际对话框及所有者/组修改和链接跟随的完整 B10 验收。

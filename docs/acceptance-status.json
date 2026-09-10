@@ -636,7 +636,7 @@
         "59-windows-file-attributes.md",
         "80-unix-permissions.md"
       ],
-      "remaining": "已修复目录权限解析、特殊位显示/保存与非法八进制拒绝；待真实 Linux 权限读回、符号链接受控跟随及所有者/组修改完整验收。"
+      "remaining": "目录与特殊权限位编辑已修复，真实 Alpine/OpenSSH 7 组权限读回通过；待 Windows 实际对话框、GNU 环境、符号链接受控跟随及所有者/组修改完整验收。"
     },
     {
       "id": "B11",
