@@ -620,7 +620,7 @@
       "id": "B10",
       "requirement": "权限与链接",
       "acceptance": "属性、Unix mode 查看/修改、符号链接识别与受控跟随；所有者/组修改须具备权限",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -644,7 +644,9 @@
         "84-file-ownership.md",
         "85-editor-window-bounds.md"
       ],
-      "remaining": "权限/所有权和 Windows 主动链接数据链已通过实机验证；截图发现浮动编辑器越界，已修复并通过组件测试，待实际可见控件复测。"
+      "remaining": "",
+      "verifiedAt": "2026-09-11",
+      "verification": "当前开发代码：Windows/Alpine 属性与 mode 读回、合法组变更、无权 UID/GID 拒绝、链接自身修改、完整路径与主动跟随/错误提示通过；窗口边界及真实鼠标关闭亦通过。记录 80/81/84/85，窗口修复未包含于 alpha.3。"
     },
     {
       "id": "B11",
