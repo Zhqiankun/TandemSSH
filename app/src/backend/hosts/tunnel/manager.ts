@@ -189,6 +189,12 @@ export function broadcastTunnelStatus(
       : "Max retries exhausted";
   }
 
+  if (nextStatus.status === CONNECTION_STATES.FAILED && !nextStatus.errorType) {
+    nextStatus.errorType =
+      lastTunnelErrorTypes.get(tunnelName) ??
+      (nextStatus.reason ? classifyTunnelError(nextStatus.reason) : undefined);
+  }
+
   if (nextStatus.status === CONNECTION_STATES.FAILED && nextStatus.reason) {
     lastTunnelErrors.set(tunnelName, nextStatus.reason);
     if (nextStatus.errorType) {
@@ -490,7 +496,7 @@ export async function handleDisconnect(
   }
 
   if (shouldRetry && tunnelConfig) {
-    const maxRetries = tunnelConfig.maxRetries || 3;
+    const maxRetries = tunnelConfig.maxRetries ?? 3;
     const retryInterval = tunnelConfig.retryInterval || 5000;
 
     let retryCount = retryCounters.get(tunnelName) || 0;

@@ -39,6 +39,9 @@ export function classifyTunnelError(errorMessage: string): ErrorType {
   }
 
   if (
+    message.includes("eaddrinuse") ||
+    message.includes("address already in use") ||
+    message.includes("unable to bind") ||
     message.includes("bind: address already in use") ||
     message.includes("failed for listen port") ||
     message.includes("port forwarding failed")

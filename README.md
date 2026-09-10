@@ -105,6 +105,7 @@
 | [总体验收基线](docs/70-acceptance-baseline.md) | 79 项原始要求索引、已核实交付缺口与后续顺序 |
 | [网络配置备份](docs/71-network-configuration-backup.md) | 跳板、隧道和 C2S 预设迁移、新主机引用、关闭自动启动与重启验证 |
 | [终端显示设置备份](docs/72-terminal-preferences-backup.md) | 用户默认值、配色库、主机外观及恢复后的可见画面验证 |
+| [隧道模式协议矩阵](docs/73-tunnel-mode-matrix.md) | 实际转发/中继数据、监听冲突、错误分类和零重试验证 |
 
 ## 产品主线
 

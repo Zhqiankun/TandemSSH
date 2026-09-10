@@ -2545,7 +2545,9 @@
     "host": "Host",
     "mode": "Mode",
     "noHostSelected": "No host selected",
-    "working": "Working..."
+    "working": "Working...",
+    "listenPortOccupied": "The listen address or port is already in use. Choose another port or stop its current owner.",
+    "remoteBindDenied": "The remote server refused the listener binding. Check port availability and SSH forwarding permissions."
   },
   "cardGrid": {
     "dragToMove": "Drag to move",

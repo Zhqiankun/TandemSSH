@@ -152,7 +152,11 @@ function TunnelCard({
             <span>
               {/host denied|host_trust_|tunnel_trust_/i.test(status.reason)
                 ? t("tandem.tunnelTrustRejected")
-                : status.reason}
+                : /eaddrinuse|address already in use/i.test(status.reason)
+                  ? t("tunnels.listenPortOccupied")
+                  : /unable to bind/i.test(status.reason)
+                    ? t("tunnels.remoteBindDenied")
+                    : status.reason}
             </span>
           </div>
         )}

@@ -2545,7 +2545,9 @@
     "host": "主机",
     "mode": "模式",
     "noHostSelected": "未选择主机",
-    "working": "处理中..."
+    "working": "处理中...",
+    "listenPortOccupied": "监听地址或端口已被占用，请选择其他端口或停止占用服务。",
+    "remoteBindDenied": "远程服务器拒绝绑定监听地址或端口，请检查端口占用和 SSH 转发权限。"
   },
   "cardGrid": {
     "dragToMove": "拖动以移动",

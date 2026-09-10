@@ -363,9 +363,10 @@
       "implementation": "app/src/backend/hosts/tunnel",
       "records": [
         "49-tunnel-trust-and-lifecycle.md",
-        "50-tunnel-cancellation.md"
+        "50-tunnel-cancellation.md",
+        "73-tunnel-mode-matrix.md"
       ],
-      "remaining": "本地转发与取消/信任有实测；local/remote/dynamic × C2S/S2S 的适用组合、范围、冲突、重连及认证尚未完整验收。"
+      "remaining": "单/双主机 S2S 协议矩阵、C2S 后端中继与 Windows 本地端口冲突已有证据；C2S 桌面监听、真实 Linux 全部适用模式、地址范围、权限撤销和完整重连仍需闭环。"
     },
     {
       "id": "F13",
@@ -680,9 +681,10 @@
       "implementation": "app/src/backend/hosts/tunnel",
       "records": [
         "49-tunnel-trust-and-lifecycle.md",
-        "50-tunnel-cancellation.md"
+        "50-tunnel-cancellation.md",
+        "73-tunnel-mode-matrix.md"
       ],
-      "remaining": "本地转发与取消/信任有实测；local/remote/dynamic × C2S/S2S 的适用组合、范围、冲突、重连及认证尚未完整验收。"
+      "remaining": "单/双主机 S2S 协议矩阵、C2S 后端中继与 Windows 本地端口冲突已有证据；C2S 桌面监听、真实 Linux 全部适用模式、地址范围、权限撤销和完整重连仍需闭环。"
     },
     {
       "id": "B14",
@@ -1357,9 +1359,10 @@
       "implementation": "app/src/backend/hosts/tunnel",
       "records": [
         "49-tunnel-trust-and-lifecycle.md",
-        "50-tunnel-cancellation.md"
+        "50-tunnel-cancellation.md",
+        "73-tunnel-mode-matrix.md"
       ],
-      "remaining": "本地转发与取消/信任有实测；local/remote/dynamic × C2S/S2S 的适用组合、范围、冲突、重连及认证尚未完整验收。"
+      "remaining": "单/双主机 S2S 协议矩阵、C2S 后端中继与 Windows 本地端口冲突已有证据；C2S 桌面监听、真实 Linux 全部适用模式、地址范围、权限撤销和完整重连仍需闭环。"
     },
     {
       "id": "A36",
@@ -1394,6 +1397,7 @@
   ],
   "postBaselineRecords": [
     "71-network-configuration-backup.md",
-    "72-terminal-preferences-backup.md"
+    "72-terminal-preferences-backup.md",
+    "73-tunnel-mode-matrix.md"
   ]
 }

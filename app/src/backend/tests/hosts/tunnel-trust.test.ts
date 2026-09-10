@@ -105,6 +105,9 @@ vi.mock("../../hosts/metrics/automation-bridge.js", () => ({
   notifyAutomationInternalEvent: vi.fn(),
 }));
 import {
+  establishDirectTunnel,
+  establishManagedS2STunnel,
+  activeTunnelRuntimes,
   connectSSHTunnel,
   cleanupTunnelResources,
   tunnelConfigs,
@@ -927,4 +930,537 @@ it("settles asynchronous agent setup failures in a jump chain", async () => {
   } finally {
     agent.mockRestore();
   }
+}, 10000);
+
+/** Owns real SSH and TCP listeners; destination allowlists contain fixture ports only. */
+async function matrixSsh() {
+  const sockets = new Set<Socket>();
+  const ownSocket = (socket: Socket) => {
+    sockets.add(socket);
+    socket.on("error", () => {});
+    socket.once("close", () => sockets.delete(socket));
+    return socket;
+  };
+  const echo = createServer((socket) => {
+    ownSocket(socket);
+    socket.pipe(socket);
+  });
+  await new Promise<void>((resolve) => echo.listen(0, "127.0.0.1", resolve));
+  const echoPort = (echo.address() as { port: number }).port,
+    allowed = new Set([echoPort]),
+    bindAllowed = new Set<number>();
+  const peers = new Set<import("ssh2").Connection>(),
+    listeners = new Set<import("node:net").Server>();
+  let forwards = 0,
+    binds = 0,
+    execs = 0,
+    denied = 0;
+  const key = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+  }).privateKey.export({ type: "pkcs1", format: "pem" });
+  const server = new Server({ hostKeys: [key] }, (peer) => {
+    peers.add(peer);
+    peer.on("error", () => {});
+    const bound = new Map<number, import("node:net").Server>();
+    peer.once("close", () => {
+      peers.delete(peer);
+      for (const listener of bound.values()) listener.close();
+    });
+    peer.on("authentication", (ctx) =>
+      ctx.method === "password" && ctx.password === "fixture-only"
+        ? ctx.accept()
+        : ctx.reject(),
+    );
+    peer.on("session", (accept) => {
+      const session = accept();
+      session.on("exec", (_accept, reject) => {
+        execs++;
+        reject();
+      });
+    });
+    peer.on("tcpip", (accept, reject, info) => {
+      if (info.destIP !== "127.0.0.1" || !allowed.has(info.destPort)) {
+        denied++;
+        reject();
+        return;
+      }
+      forwards++;
+      const socket = ownSocket(connectTcp(info.destPort, "127.0.0.1"));
+      socket.once("error", reject);
+      socket.once("connect", () => {
+        const channel = accept();
+        channel.on("error", () => socket.destroy());
+        channel.once("close", () => socket.destroy());
+        socket.pipe(channel).pipe(socket);
+      });
+    });
+    peer.on("request", (accept, reject, name, info) => {
+      if (info.bindAddr !== "127.0.0.1" || !bindAllowed.has(info.bindPort)) {
+        denied++;
+        reject?.();
+        return;
+      }
+      if (name === "cancel-tcpip-forward") {
+        const listener = bound.get(info.bindPort);
+        bound.delete(info.bindPort);
+        listener?.close();
+        accept?.();
+        return;
+      }
+      if (bound.has(info.bindPort)) {
+        reject?.();
+        return;
+      }
+      const listener = createServer((socket) => {
+        ownSocket(socket);
+        peer.forwardOut(
+          info.bindAddr,
+          info.bindPort,
+          socket.remoteAddress ?? "127.0.0.1",
+          socket.remotePort ?? 0,
+          (error, channel) => {
+            if (error || socket.destroyed) {
+              channel?.destroy();
+              socket.destroy();
+              return;
+            }
+            channel.on("error", () => socket.destroy());
+            channel.once("close", () => socket.destroy());
+            socket.pipe(channel).pipe(socket);
+          },
+        );
+      });
+      listeners.add(listener);
+      listener.once("close", () => listeners.delete(listener));
+      listener.once("error", () => reject?.());
+      listener.listen(info.bindPort, "127.0.0.1", () => {
+        binds++;
+        bound.set(info.bindPort, listener);
+        accept?.(info.bindPort);
+      });
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  cleanup.push(async () => {
+    for (const peer of peers) peer.end();
+    for (const socket of sockets) socket.destroy();
+    await Promise.all(
+      [...listeners].map((l) => new Promise<void>((r) => l.close(() => r()))),
+    );
+    await Promise.all([
+      new Promise<void>((r) => echo.close(() => r())),
+      new Promise<void>((r) => server.close(() => r())),
+    ]);
+  });
+  return {
+    port: (server.address() as { port: number }).port,
+    echoPort,
+    allowed,
+    bindAllowed,
+    stats: () => ({ forwards, binds, execs, denied }),
+    clients: () => peers.size,
+    disconnectClients: () => {
+      for (const peer of peers) peer.end();
+    },
+  };
+}
+async function matrixPort() {
+  const server = createServer();
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as { port: number }).port;
+  await new Promise<void>((r) => server.close(() => r()));
+  return port;
+}
+async function matrixRead(socket: Socket, bytes: number) {
+  return new Promise<Buffer>((resolve, reject) => {
+    let result = Buffer.alloc(0);
+    const timer = setTimeout(() => finish(Error("matrix-read-timeout")), 3000);
+    const data = (chunk: Buffer) => {
+      result = Buffer.concat([result, chunk]);
+      if (result.length >= bytes) finish();
+    };
+    const finish = (error?: Error) => {
+      clearTimeout(timer);
+      socket.off("data", data);
+      socket.off("error", finish);
+      if (error) reject(error);
+      else resolve(result);
+    };
+    socket.on("data", data);
+    socket.once("error", finish);
+  });
+}
+it.each([
+  ["single-host", "local"],
+  ["single-host", "remote"],
+  ["single-host", "dynamic"],
+  ["two-host", "local"],
+  ["two-host", "remote"],
+  ["two-host", "dynamic"],
+] as const)(
+  "transfers real binary data and releases the %s %s tunnel",
+  async (scope, mode) => {
+    const service = trust(),
+      endpoint = await matrixSsh(),
+      source = await matrixSsh(),
+      port = await matrixPort();
+    source.allowed.add(endpoint.port);
+    source.bindAllowed.add(port);
+    endpoint.bindAllowed.add(port);
+    const pendingSource = open(source.port, "source");
+    await decide(service);
+    const sourceClient = await pendingSource;
+    const targetPort =
+      scope === "single-host"
+        ? source.echoPort
+        : mode === "remote"
+          ? source.echoPort
+          : endpoint.echoPort;
+    const c: TunnelConfig = {
+      ...config(source.port),
+      name: `matrix-${scope}-${mode}-${port}`,
+      scope: "s2s",
+      mode,
+      sourcePassword: "fixture-only",
+      endpointPassword: "fixture-only",
+      endpointHost: scope === "single-host" ? "127.0.0.1" : "endpoint",
+      endpointSSHPort: endpoint.port,
+      sourcePort: scope === "two-host" && mode === "remote" ? targetPort : port,
+      endpointPort:
+        scope === "two-host" && mode === "remote" ? port : targetPort,
+      bindHost: "127.0.0.1",
+      targetHost: "127.0.0.1",
+      maxRetries: 0,
+      autoStart: false,
+    };
+    tunnelConfigs.set(c.name, c);
+    cleanup.push(async () => {
+      manualDisconnects.add(c.name);
+      await cleanupTunnelResources(c.name, true);
+      tunnelConfigs.delete(c.name);
+      connectionStatus.delete(c.name);
+    });
+    if (scope === "single-host") await establishDirectTunnel(sourceClient, c);
+    else {
+      const pending = establishManagedS2STunnel(sourceClient, c, {
+        password: "fixture-only",
+        authMethod: "password",
+      });
+      void pending.catch(() => {});
+      await decide(service);
+      await pending;
+    }
+    expect(activeTunnelRuntimes.get(c.name)?.bindPort).toBe(port);
+    const socket = connectTcp(port, "127.0.0.1");
+    socket.on("error", () => {});
+    cleanup.push(() => socket.destroy());
+    await new Promise<void>((r, j) => {
+      socket.once("connect", r);
+      socket.once("error", j);
+    });
+    if (mode === "dynamic") {
+      let reply = matrixRead(socket, 2);
+      socket.write(Buffer.from([5, 1, 0]));
+      expect(await reply).toEqual(Buffer.from([5, 0]));
+      reply = matrixRead(socket, 10);
+      socket.write(
+        Buffer.from([
+          5,
+          1,
+          0,
+          1,
+          127,
+          0,
+          0,
+          1,
+          targetPort >> 8,
+          targetPort & 255,
+        ]),
+      );
+      expect((await reply)[1]).toBe(0);
+    }
+    const payload = Buffer.concat([
+      Buffer.from("中文\0binary\r\n"),
+      Buffer.from(Array.from({ length: 4096 }, (_, i) => i % 256)),
+    ]);
+    const received = matrixRead(socket, payload.length);
+    socket.write(payload);
+    expect(await received).toEqual(payload);
+    expect(source.stats().execs + endpoint.stats().execs).toBe(0);
+    expect(source.stats().denied + endpoint.stats().denied).toBe(0);
+    if (scope === "two-host") {
+      expect(source.stats().binds).toBe(mode === "remote" ? 0 : 1);
+      expect(endpoint.stats().binds).toBe(mode === "remote" ? 1 : 0);
+    }
+    manualDisconnects.add(c.name);
+    await cleanupTunnelResources(c.name, true);
+    await vi.waitFor(() => expect(socket.destroyed).toBe(true));
+    expect(activeTunnelRuntimes.has(c.name)).toBe(false);
+    expect(activeRetryTimers.has(c.name)).toBe(false);
+    const reused = createServer();
+    await new Promise<void>((r, j) => {
+      reused.once("error", j);
+      reused.listen(port, "127.0.0.1", r);
+    });
+    await new Promise<void>((r) => reused.close(() => r()));
+  },
+  15000,
+);
+it.each([
+  ["single-host", "local"],
+  ["single-host", "remote"],
+  ["single-host", "dynamic"],
+  ["two-host", "local"],
+  ["two-host", "remote"],
+  ["two-host", "dynamic"],
+] as const)(
+  "reports an occupied %s %s listener without disturbing its owner",
+  async (scope, mode) => {
+    const service = trust(),
+      source = await matrixSsh(),
+      endpoint = await matrixSsh();
+    source.allowed.add(endpoint.port);
+    current.dns.mockResolvedValue(undefined);
+    current.resolvedHost = {};
+    const ownerSockets = new Set<Socket>(),
+      occupied = createServer((socket) => {
+        ownerSockets.add(socket);
+        socket.on("error", () => {});
+        socket.once("close", () => ownerSockets.delete(socket));
+        socket.pipe(socket);
+      });
+    await new Promise<void>((r) => occupied.listen(0, "127.0.0.1", r));
+    const port = (occupied.address() as { port: number }).port;
+    source.bindAllowed.add(port);
+    endpoint.bindAllowed.add(port);
+    cleanup.push(async () => {
+      for (const socket of ownerSockets) socket.destroy();
+      await new Promise<void>((r) => occupied.close(() => r()));
+    });
+    const c: TunnelConfig = {
+      ...config(source.port),
+      name: `conflict-${mode}-${port}`,
+      scope: "s2s",
+      mode,
+      sourcePort:
+        scope === "two-host" && mode === "remote" ? source.echoPort : port,
+      endpointPort:
+        scope === "two-host" && mode === "remote"
+          ? port
+          : scope === "two-host"
+            ? endpoint.echoPort
+            : source.echoPort,
+      endpointSSHPort: endpoint.port,
+      endpointPassword: "fixture-only",
+      sourcePassword: "fixture-only",
+      endpointHost: scope === "two-host" ? "endpoint" : "127.0.0.1",
+      bindHost: "127.0.0.1",
+      targetHost: "127.0.0.1",
+      maxRetries: 0,
+      autoStart: false,
+    };
+    tunnelConfigs.set(c.name, c);
+    cleanup.push(async () => {
+      manualDisconnects.add(c.name);
+      await cleanupTunnelResources(c.name, true);
+      tunnelConfigs.delete(c.name);
+      connectionStatus.delete(c.name);
+    });
+    await connectSSHTunnel(c);
+    await decide(service);
+    if (scope === "two-host") await decide(service);
+    await vi.waitFor(
+      () =>
+        expect(connectionStatus.get(c.name)?.status).toBe(
+          CONNECTION_STATES.FAILED,
+        ),
+      { timeout: 4000 },
+    );
+    expect(connectionStatus.get(c.name)?.connected).toBe(false);
+    expect(connectionStatus.get(c.name)).toMatchObject({
+      errorType: "CONNECTION_FAILED",
+    });
+    expect(connectionStatus.get(c.name)?.reason).toBeTruthy();
+    expect(activeTunnelRuntimes.has(c.name)).toBe(false);
+    expect(activeRetryTimers.has(c.name)).toBe(false);
+    await vi.waitFor(() => {
+      expect(source.clients()).toBe(0);
+      expect(endpoint.clients()).toBe(0);
+    });
+    const socket = connectTcp(port, "127.0.0.1");
+    socket.on("error", () => {});
+    cleanup.push(() => socket.destroy());
+    const received = matrixRead(socket, 5);
+    socket.once("connect", () => socket.write("owner"));
+    expect((await received).toString()).toBe("owner");
+  },
+  15000,
+);
+it.each(["local", "remote", "dynamic"] as const)(
+  "relays real %s C2S data through its actual WebSocket handler",
+  async (mode) => {
+    const service = trust(),
+      source = await matrixSsh(),
+      port = await matrixPort();
+    source.bindAllowed.add(port);
+    current.resolvedHost = {
+      id: 7,
+      userId: "requester",
+      name: "relay-fixture",
+      ip: "127.0.0.1",
+      port: source.port,
+      username: "fixture",
+      authType: "password",
+      password: "fixture-only",
+    };
+    const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    await new Promise<void>((r) => wss.once("listening", r));
+    let relay!: WebSocket;
+    const connected = new Promise<void>((r) =>
+      wss.once("connection", (ws) => {
+        relay = ws;
+        r();
+      }),
+    );
+    const browser = new WebSocket(
+      "ws://127.0.0.1:" + (wss.address() as { port: number }).port,
+    );
+    browser.on("error", () => {});
+    const locals = new Map<string, Socket>();
+    cleanup.push(async () => {
+      browser.terminate();
+      relay?.terminate();
+      for (const socket of locals.values()) socket.destroy();
+      await new Promise<void>((r) => wss.close(() => r()));
+    });
+    await connected;
+    const ready = new Promise<void>((resolve, reject) =>
+      browser.on("message", (data, binary) => {
+        if (!binary) {
+          const m = JSON.parse(data.toString());
+          if (m.type === "ready") resolve();
+          if (m.type === "error") reject(Error(m.error));
+        }
+      }),
+    );
+    if (mode === "remote")
+      browser.on("message", (data, binary) => {
+        if (binary) return;
+        const m = JSON.parse(data.toString());
+        if (m.type === "connection") {
+          const socket = connectTcp(source.echoPort, "127.0.0.1");
+          locals.set(m.streamId, socket);
+          socket.on("error", () => {});
+          socket.on("data", (bytes) => {
+            if (browser.readyState === 1)
+              browser.send(
+                JSON.stringify({
+                  type: "data",
+                  streamId: m.streamId,
+                  data: bytes.toString("base64"),
+                }),
+              );
+          });
+        } else if (m.type === "data") {
+          locals.get(m.streamId)?.write(Buffer.from(m.data, "base64"));
+        } else if (m.type === "close") {
+          locals.get(m.streamId)?.destroy();
+          locals.delete(m.streamId);
+        }
+      });
+    const opening = handleC2SRelayOpen(
+      relay,
+      {
+        type: "open",
+        targetHost: "127.0.0.1",
+        targetPort: source.echoPort,
+        tunnelConfig: {
+          sourceHostId: 7,
+          mode,
+          sourcePort: port,
+          endpointPort: source.echoPort,
+          targetHost: "127.0.0.1",
+        },
+      },
+      "requester",
+    );
+    void opening.catch(() => {});
+    await decide(service);
+    await opening;
+    await ready;
+    const payload = Buffer.concat([
+      Buffer.from("C2S中文\0"),
+      Buffer.from(Array.from({ length: 2048 }, (_, i) => i % 256)),
+    ]);
+    if (mode === "remote") {
+      const socket = connectTcp(port, "127.0.0.1");
+      socket.on("error", () => {});
+      cleanup.push(() => socket.destroy());
+      const result = matrixRead(socket, payload.length);
+      socket.once("connect", () => socket.write(payload));
+      expect(await result).toEqual(payload);
+    } else {
+      const received = new Promise<Buffer>((resolve) => {
+        let bytes = Buffer.alloc(0);
+        browser.on("message", (data, binary) => {
+          if (binary) {
+            bytes = Buffer.concat([bytes, Buffer.from(data as Buffer)]);
+            if (bytes.length >= payload.length) resolve(bytes);
+          }
+        });
+      });
+      browser.send(payload);
+      expect(await received).toEqual(payload);
+    }
+    browser.close();
+    await vi.waitFor(() => expect(source.clients()).toBe(0));
+    expect(source.stats().execs).toBe(0);
+    if (mode === "remote") {
+      const reused = createServer();
+      await new Promise<void>((r, j) => {
+        reused.once("error", j);
+        reused.listen(port, "127.0.0.1", r);
+      });
+      await new Promise<void>((r) => reused.close(() => r()));
+    }
+  },
+  15000,
+);
+it("honors zero retries after a live tunnel loses its SSH connection", async () => {
+  const service = trust(),
+    source = await matrixSsh(),
+    port = await matrixPort();
+  current.dns.mockResolvedValue(undefined);
+  current.resolvedHost = {};
+  const c: TunnelConfig = {
+    ...config(source.port),
+    name: "drop-" + port,
+    scope: "s2s",
+    mode: "local",
+    sourcePort: port,
+    endpointPort: source.echoPort,
+    endpointHost: "127.0.0.1",
+    targetHost: "127.0.0.1",
+    sourcePassword: "fixture-only",
+    maxRetries: 0,
+    retryInterval: 100,
+  };
+  tunnelConfigs.set(c.name, c);
+  cleanup.push(async () => {
+    manualDisconnects.add(c.name);
+    await cleanupTunnelResources(c.name, true);
+    tunnelConfigs.delete(c.name);
+    connectionStatus.delete(c.name);
+  });
+  await connectSSHTunnel(c);
+  await decide(service);
+  await vi.waitFor(() =>
+    expect(connectionStatus.get(c.name)?.connected).toBe(true),
+  );
+  source.disconnectClients();
+  await vi.waitFor(() =>
+    expect(connectionStatus.get(c.name)?.status).toBe(CONNECTION_STATES.FAILED),
+  );
+  expect(activeRetryTimers.has(c.name)).toBe(false);
+  expect(activeTunnelRuntimes.has(c.name)).toBe(false);
 }, 10000);
