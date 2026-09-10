@@ -1,3 +1,4 @@
+import { fetchBoundedResponse } from "./response-budget.js";
 import { fetchWithProxy } from "../../utils/proxy-agent.js";
 import { safeOutboundFetch } from "../../utils/safe-outbound-fetch.js";
 import { evaluateEgress, readPrivateAllowlist } from "../egress.js";
@@ -25,10 +26,15 @@ export async function providerFetch(
 
   if (decision.isPrivate) {
     // Dispatcher and fetch must come from the same Undici version.
-    return fetchWithProxy(url, init);
+    return fetchBoundedResponse(fetchWithProxy, url, init);
   }
 
-  return safeOutboundFetch(url, init) as unknown as Promise<Response>;
+  return fetchBoundedResponse(
+    (target, options) =>
+      safeOutboundFetch(target, options) as unknown as Promise<Response>,
+    url,
+    init,
+  );
 }
 
 export function joinUrl(base: string, path: string): string {
@@ -66,6 +72,7 @@ export async function* readSseLines(
       }
     }
   } finally {
+    void reader.cancel?.().catch(() => {});
     reader.releaseLock();
   }
 }
@@ -103,6 +110,7 @@ export async function* readJsonLines(
       }
     }
   } finally {
+    void reader.cancel?.().catch(() => {});
     reader.releaseLock();
   }
 }
@@ -143,7 +151,8 @@ export async function assertOk(
   let body = "";
   try {
     body = await response.text();
-  } catch {
+  } catch (error) {
+    if (error instanceof AiProviderError) throw error;
     body = "";
   }
 

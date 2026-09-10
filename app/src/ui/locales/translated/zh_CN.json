@@ -4935,7 +4935,7 @@
         "AI_DISABLED": "AI 已关闭，任务不会继续执行。",
         "MODEL_NO_ACTION": "模型只返回了说明，没有执行远端命令。请检查模型工具能力或调整目标。",
         "MODEL_BUDGET_EXCEEDED": "模型调用达到上限。增加预算后，需要重新确认任务授权。",
-        "MODEL_RESPONSE_TOO_LARGE": "模型响应过长，已中止本次请求。",
+        "MODEL_RESPONSE_TOO_LARGE": "模型响应超过容量上限，已停止本次请求。请缩小任务范围后重试；人工终端仍可使用。",
         "MODEL_SENSITIVE_OUTPUT": "模型响应包含受保护的凭据内容，已阻止继续执行。",
         "MODEL_CONTEXT_LIMIT": "上下文已达到安全保留上限，请核对已有结果后新建任务。",
         "STALE_PLAN": "计划已变更，请核对新的流程后重新授权。",
@@ -5062,7 +5062,8 @@
         "UPLOAD_RESULT_UNVERIFIED": "已完成的远端文件与原校验收据不一致，已停止恢复。",
         "DOWNLOAD_RESULT_UNVERIFIED": "已完成的本地文件与保存的校验收据不一致，已停止恢复。",
         "DOWNLOAD_SOURCE_CHANGED": "远端来源与保存的目录清单不一致，已停止恢复。",
-        "DOWNLOAD_TARGET_CHANGED": "本地下载目录或文件身份已变化，已停止恢复。"
+        "DOWNLOAD_TARGET_CHANGED": "本地下载目录或文件身份已变化，已停止恢复。",
+        "MODEL_RESPONSE_TIMEOUT": "模型响应等待超时，已停止本次请求。请检查模型服务后重试；人工终端仍可使用。"
       },
       "allowedPrograms": "本次允许的程序（每行一个）",
       "operationProgress": "已完成 {{done}} / {{total}} 条命令",
@@ -5144,7 +5145,7 @@
         "AI_DISABLED": "AI 已关闭，任务不会继续执行。",
         "MODEL_NO_ACTION": "模型只返回了说明，没有执行远端命令。请检查模型工具能力或调整目标。",
         "MODEL_BUDGET_EXCEEDED": "模型调用达到上限。增加预算后，需要重新确认任务授权。",
-        "MODEL_RESPONSE_TOO_LARGE": "模型响应过长，已中止本次请求。",
+        "MODEL_RESPONSE_TOO_LARGE": "模型响应超过容量上限，已停止本次请求。请缩小任务范围后重试；人工终端仍可使用。",
         "MODEL_SENSITIVE_OUTPUT": "模型响应包含受保护的凭据内容，已阻止继续执行。",
         "MODEL_CONTEXT_LIMIT": "上下文已达到安全保留上限，请核对已有结果后新建任务。",
         "FILE_CONTEXT_LIMIT": "文件上下文缓存已达到上限，请稍后重试或结束不再使用的任务。",
@@ -5167,7 +5168,8 @@
         "TASK_RECOVERY_ENCRYPTION_UNAVAILABLE": "无法加密保存进度，已暂停新的模型请求。",
         "TASK_RECOVERY_LIMIT": "执行进度达到存储上限，请清理旧记录。",
         "MODEL_CONFIGURATION_CHANGED": "原模型的地址、类型或名称已改变，请先核对模型配置。",
-        "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "无法核验模型配置，未保存 AI 恢复记录。"
+        "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "无法核验模型配置，未保存 AI 恢复记录。",
+        "MODEL_RESPONSE_TIMEOUT": "模型响应等待超时，已停止本次请求。请检查模型服务后重试；人工终端仍可使用。"
       },
       "budget": "模型调用预算（含规划）"
     },

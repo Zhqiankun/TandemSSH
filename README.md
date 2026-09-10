@@ -100,6 +100,7 @@
 | [终端压力测量](docs/65-terminal-pressure.md) | 持续输出下的真实接管延迟、正则热点修复与参考机数据 |
 | [终端输出容量](docs/66-terminal-output-bounds.md) | 渲染确认、慢窗口保护、中文缺口、MCP 标记与原会话恢复 |
 | [终端录制写入边界](docs/67-recording-write-bounds.md) | 有界录制队列、存储故障暂停、人工接管与中文不完整提示 |
+| [模型响应边界](docs/68-provider-response-bounds.md) | 网络容量/超时、SDK 取消、中文错误与真实双模式暂停验收 |
 
 ## 产品主线
 

@@ -4935,7 +4935,7 @@
         "AI_DISABLED": "AI is disabled; execution is stopped.",
         "MODEL_NO_ACTION": "The model returned text without executing a command. Check tool support or refine the goal.",
         "MODEL_BUDGET_EXCEEDED": "The model call limit was reached. Increase it, then authorize again.",
-        "MODEL_RESPONSE_TOO_LARGE": "The model response was too large; the request was stopped.",
+        "MODEL_RESPONSE_TOO_LARGE": "Model response exceeded the size limit. The request was stopped. Reduce the task scope before retrying; the manual terminal remains available.",
         "MODEL_SENSITIVE_OUTPUT": "The model response contained protected credential material; execution was blocked.",
         "MODEL_CONTEXT_LIMIT": "Context retention limit reached. Review existing results before starting a new task.",
         "STALE_PLAN": "The plan changed. Review the new workflow and authorize again.",
@@ -5062,7 +5062,8 @@
         "UPLOAD_RESULT_UNVERIFIED": "A completed remote file does not match its saved verification receipt. Recovery stopped.",
         "DOWNLOAD_RESULT_UNVERIFIED": "A completed local file does not match its saved verification receipt. Recovery stopped.",
         "DOWNLOAD_SOURCE_CHANGED": "The remote source no longer matches the saved directory manifest. Recovery stopped.",
-        "DOWNLOAD_TARGET_CHANGED": "The local download directory or file identity changed. Recovery stopped."
+        "DOWNLOAD_TARGET_CHANGED": "The local download directory or file identity changed. Recovery stopped.",
+        "MODEL_RESPONSE_TIMEOUT": "Model response timed out. The request was stopped. Check the provider before retrying; the manual terminal remains available."
       },
       "allowedPrograms": "Programs allowed for this task (one per line)",
       "operationProgress": "{{done}} / {{total}} commands completed",
@@ -5144,7 +5145,7 @@
         "AI_DISABLED": "AI is disabled; execution is stopped.",
         "MODEL_NO_ACTION": "The model returned text without executing a command. Check tool support or refine the goal.",
         "MODEL_BUDGET_EXCEEDED": "The model call limit was reached. Increase it, then authorize again.",
-        "MODEL_RESPONSE_TOO_LARGE": "The model response was too large; the request was stopped.",
+        "MODEL_RESPONSE_TOO_LARGE": "Model response exceeded the size limit. The request was stopped. Reduce the task scope before retrying; the manual terminal remains available.",
         "MODEL_SENSITIVE_OUTPUT": "The model response contained protected credential material; execution was blocked.",
         "MODEL_CONTEXT_LIMIT": "Context retention limit reached. Review existing results before starting a new task.",
         "FILE_CONTEXT_LIMIT": "The file context cache is full. Retry later or finish unused tasks.",
@@ -5167,7 +5168,8 @@
         "TASK_RECOVERY_ENCRYPTION_UNAVAILABLE": "Unable to encrypt progress. New model calls have paused.",
         "TASK_RECOVERY_LIMIT": "Progress storage reached its limit. Remove old records.",
         "MODEL_CONFIGURATION_CHANGED": "The original model endpoint, type, or name changed. Review its configuration first.",
-        "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "The model configuration cannot be verified. AI recovery was not saved."
+        "AI_RECOVERY_MODEL_IDENTITY_REQUIRED": "The model configuration cannot be verified. AI recovery was not saved.",
+        "MODEL_RESPONSE_TIMEOUT": "Model response timed out. The request was stopped. Check the provider before retrying; the manual terminal remains available."
       },
       "budget": "Model call budget (including planning)"
     },

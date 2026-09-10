@@ -378,3 +378,28 @@ describe("shared-session AI orchestration", () => {
     );
   });
 });
+
+it.each(["automatic", "collaborative"] as const)(
+  "keeps manual control and rejects pending model tools after response overflow in %s mode",
+  async (mode) => {
+    const f = fixture(async function* (_request, index) {
+      if (index === 1) {
+        yield { type: "text", text: "计划" };
+        return;
+      }
+      yield call("run_command", { program: "printf", args: ["must-not-run"] });
+      throw Error("MODEL_RESPONSE_TOO_LARGE");
+    });
+    const created = await f.start(mode);
+    await f.authorize(created.task.id);
+    await vi.waitFor(() =>
+      expect(f.coordinator.get("owner", created.run.id).error).toBe(
+        "MODEL_RESPONSE_TOO_LARGE",
+      ),
+    );
+    expect(f.runtime.state(user, created.task.id).state).toBe("paused-error");
+    expect(f.writes.some((text) => text.includes("must-not-run"))).toBe(false);
+    f.control.humanInput(Buffer.from("manual"));
+    expect(f.writes.at(-1)).toBe("manual");
+  },
+);
