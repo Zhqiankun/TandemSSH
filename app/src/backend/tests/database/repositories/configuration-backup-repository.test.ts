@@ -297,3 +297,102 @@ it("rolls back hosts and preferences if shortcut import exceeds the target limit
     )[0].theme,
   ).toBe("dark");
 });
+it("restores network references and inactive C2S presets atomically and idempotently", async () => {
+  const f = await fixture(),
+    source = f.request.payload.hosts[0];
+  const target = { ...source, ref: randomUUID(), name: "target" };
+  f.request.payload.hosts.push(target);
+  source.network = {
+    jumpHostRefs: [target.ref],
+    tunnels: [
+      {
+        scope: "s2s",
+        mode: "remote",
+        sourceHostRef: source.ref,
+        endpointHostRef: target.ref,
+        bindHost: "127.0.0.1",
+        sourcePort: 9000,
+        endpointPort: 22,
+        maxRetries: 2,
+        retryInterval: 5000,
+      },
+    ],
+  };
+  f.request.payload.tunnelPresets = [
+    {
+      ref: randomUUID(),
+      name: "client",
+      tunnels: [
+        {
+          scope: "c2s",
+          mode: "dynamic",
+          sourceHostRef: source.ref,
+          bindHost: "127.0.0.1",
+          sourcePort: 1080,
+          endpointPort: 0,
+          maxRetries: 0,
+          retryInterval: 5000,
+        },
+      ],
+    },
+  ];
+  const result = await f.repo.apply("owner", f.request),
+    again = await f.repo.apply("owner", f.request);
+  expect(again).toEqual(result);
+  expect(result.tunnelPresetIds).toHaveLength(1);
+  const rows = await adapter.query<{
+    id: number;
+    jump_hosts: string;
+    tunnel_connections: string;
+    enable_tunnel: number;
+  }>(
+    sql`SELECT id,jump_hosts,tunnel_connections,enable_tunnel FROM ssh_data WHERE user_id='owner' ORDER BY id`,
+  );
+  expect(rows).toHaveLength(2);
+  expect(JSON.parse(rows[0].jump_hosts)).toEqual([
+    { hostId: result.hostIds[1] },
+  ]);
+  expect(JSON.parse(rows[0].tunnel_connections)[0]).toMatchObject({
+    endpointHost: String(result.hostIds[1]),
+    autoStart: false,
+  });
+  expect(rows[0].enable_tunnel).toBe(0);
+  const presets = await adapter.query<{
+    config: string;
+    platform: string | null;
+    computer_name: string | null;
+  }>(
+    sql`SELECT config,platform,computer_name FROM c2s_tunnel_presets WHERE user_id='owner'`,
+  );
+  expect(presets).toHaveLength(1);
+  expect(JSON.parse(presets[0].config)[0]).toMatchObject({
+    sourceHostId: result.hostIds[0],
+    autoStart: false,
+  });
+  expect(presets[0].platform).toBeNull();
+  expect(presets[0].computer_name).toBeNull();
+  expect((await f.repo.snapshot("other")).tunnelPresets).toHaveLength(0);
+});
+it("invalidates a preview after C2S configuration changes", async () => {
+  const f = await fixture();
+  await adapter.exec(
+    "INSERT INTO c2s_tunnel_presets (user_id,name,config) VALUES ('owner','changed','[]')",
+  );
+  await expect(f.repo.apply("owner", f.request)).rejects.toThrow(
+    "BACKUP_CONFIGURATION_CHANGED",
+  );
+  expect(await adapter.query(sql`SELECT id FROM ssh_data`)).toHaveLength(0);
+});
+it("rolls back hosts when preset restoration fails", async () => {
+  const f = await fixture();
+  f.request.payload.tunnelPresets = [
+    { ref: randomUUID(), name: "fail-preset", tunnels: [] },
+  ];
+  await adapter.exec(
+    "CREATE TRIGGER fail_preset BEFORE INSERT ON c2s_tunnel_presets BEGIN SELECT RAISE(ABORT, 'preset-failed'); END;",
+  );
+  await expect(f.repo.apply("owner", f.request)).rejects.toThrow(
+    "preset-failed",
+  );
+  expect(await adapter.query(sql`SELECT id FROM ssh_data`)).toHaveLength(0);
+});

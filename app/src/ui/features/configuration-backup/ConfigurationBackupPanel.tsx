@@ -175,6 +175,19 @@ export function ConfigurationBackupPanel() {
               size: Math.ceil(preview.bytes / 1024),
             })}
           </p>
+          {!!(
+            preview.jumpHostCount ||
+            preview.tunnelCount ||
+            preview.tunnelPresetCount
+          ) && (
+            <p className="text-xs">
+              {t("configBackup.networkSummary", {
+                jumps: preview.jumpHostCount ?? 0,
+                tunnels: preview.tunnelCount ?? 0,
+                presets: preview.tunnelPresetCount ?? 0,
+              })}
+            </p>
+          )}
           {!!preview.keybindingsCount && (
             <p className="text-xs">
               {t("configBackup.keybindingsCount", {

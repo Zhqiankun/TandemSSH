@@ -389,9 +389,10 @@
       "implementation": "app/src/backend/database/repositories/configuration-backup-repository.ts",
       "records": [
         "54-configuration-backup.md",
-        "55-application-settings-backup.md"
+        "55-application-settings-backup.md",
+        "71-network-configuration-backup.md"
       ],
-      "remaining": "已确认功能缺失：导出不含跳板/隧道，导入写入空数组；C2S 预设、连接默认值/自定义主题库尚未纳入。"
+      "remaining": "跳板、主机隧道与 C2S 保存预设已补齐并完成导入/重启专项；连接默认值、自定义终端主题库、本机活动 C2S 配置及其余设置仍需闭环。"
     },
     {
       "id": "F15",
@@ -707,9 +708,10 @@
       "implementation": "app/src/backend/database/repositories/configuration-backup-repository.ts",
       "records": [
         "54-configuration-backup.md",
-        "55-application-settings-backup.md"
+        "55-application-settings-backup.md",
+        "71-network-configuration-backup.md"
       ],
-      "remaining": "已确认功能缺失：导出不含跳板/隧道，导入写入空数组；C2S 预设、连接默认值/自定义主题库尚未纳入。"
+      "remaining": "跳板、主机隧道与 C2S 保存预设已补齐并完成导入/重启专项；连接默认值、自定义终端主题库、本机活动 C2S 配置及其余设置仍需闭环。"
     },
     {
       "id": "B16",
@@ -1381,9 +1383,13 @@
       "implementation": "app/src/backend/database/repositories/configuration-backup-repository.ts",
       "records": [
         "54-configuration-backup.md",
-        "55-application-settings-backup.md"
+        "55-application-settings-backup.md",
+        "71-network-configuration-backup.md"
       ],
-      "remaining": "已确认功能缺失：导出不含跳板/隧道，导入写入空数组；C2S 预设、连接默认值/自定义主题库尚未纳入。"
+      "remaining": "跳板、主机隧道与 C2S 保存预设已补齐并完成导入/重启专项；连接默认值、自定义终端主题库、本机活动 C2S 配置及其余设置仍需闭环。"
     }
+  ],
+  "postBaselineRecords": [
+    "71-network-configuration-backup.md"
   ]
 }

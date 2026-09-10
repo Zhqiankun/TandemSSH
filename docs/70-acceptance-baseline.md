@@ -127,3 +127,5 @@
 实际 Windows 包现包含 resources/notices/LICENSE、NOTICE、app/LICENSE 和 app/UPSTREAM.md，逐字节匹配仓库原文，并记录 SHA-256。校验脚本 verify-distribution-notices.cjs 已纳入现有原生打包门禁，所以 CI 和 Release 的包必须同时通过此检查。它只验证这四份项目/底座声明；不能替代全部第三方依赖、字体/图标或捆绑二进制的分发清单。
 
 声明与安装保护专项 3 文件/7 项通过，修改文件 lint 通过；真实 Windows 目录包构建通过，四份声明校验及 13 项原生依赖探测通过。本轮未更改产品运行代码，不重复把上一轮的 3554 项回归计作本轮新测结果；CI 仍运行完整门禁。证据：.cache/distribution-notices-tests.log、distribution-notices-package.log、distribution-notices-package-check.json、distribution-notices-native-probe.log。
+
+后续进展：文档 71 已补齐本基线确认缺失的跳板、主机隧道和 C2S 保存预设备份，完成新引用映射、关闭自动启动与实际 Windows 导入/重启验证。机器索引对应项已更新；B15/F14/A37 的其他设置范围仍未全部完成，原基线代码事实保留为时点记录。

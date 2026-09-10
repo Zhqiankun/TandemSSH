@@ -6481,7 +6481,7 @@
   },
   "configBackup": {
     "title": "Configuration backup and restore",
-    "description": "Back up basic SSH host details, workflows, appearance, interface preferences and custom shortcuts. SSH passwords, private keys, API keys, trust decisions and task authorizations are excluded. Review the content before continuing.",
+    "description": "Back up SSH hosts, jump and tunnel configuration, C2S presets, workflows, appearance, interface preferences and custom shortcuts. Passwords, private keys, API keys, trust decisions and task authorizations are excluded. Review the content before continuing.",
     "previewExport": "Preview export",
     "selectImport": "Select backup file",
     "working": "Preparing configuration…",
@@ -6521,10 +6521,13 @@
       "WORKFLOW_HOST_BINDING_REQUIRED": "Imported workflows require explicit target host selection.",
       "NO_AUTOMATIC_EXECUTION": "Import only adds configuration. It does not run commands or start connections.",
       "UNSUPPORTED_CONNECTION_TYPE": "Only SSH hosts are supported in this backup format.",
-      "SECRETS_AND_STARTUP_EXCLUDED": "Credentials, startup commands, proxies, jump hosts and tunnels are excluded.",
+      "SECRETS_AND_STARTUP_EXCLUDED": "Credentials, startup commands and SOCKS proxy configuration are excluded. Restoration does not connect or start tunnels automatically.",
       "PREFERENCE_SECRET_REDACTED": "Recognized secrets in interface preferences were redacted.",
       "KEYBINDING_SECRET_EXCLUDED": "Shortcuts containing recognized secrets were excluded.",
-      "KEYBINDINGS_REVIEW_REQUIRED": "Imported shortcuts stay disabled. Snippet shortcuts require selecting a snippet again."
+      "KEYBINDINGS_REVIEW_REQUIRED": "Imported shortcuts stay disabled. Snippet shortcuts require selecting a snippet again.",
+      "NETWORK_REVIEW_REQUIRED": "Network references map to imported hosts and autostart remains off. Conflicting preset names receive a numbered suffix. Reconfigure credentials and review listener scopes before enabling.",
+      "NETWORK_REFERENCE_EXCLUDED": "Some network references are outside this backup and were excluded. Review the source configuration.",
+      "NETWORK_CONFIG_EXCLUDED": "Unsupported network configurations were excluded. Review the source configuration."
     },
     "errors": {
       "BACKUP_FAILED": "The operation failed. Retry or create a new preview.",
@@ -6547,7 +6550,13 @@
       "BACKUP_LOCAL_RESTORE_FAILED": "Local display settings could not be written. Retry applying them.",
       "BACKUP_LOCAL_CONFIGURATION_CHANGED": "Local display settings changed after the preview. Create a new preview.",
       "BACKUP_KEYBINDING_LIMIT": "Import would exceed the limit of 200 shortcuts.",
-      "BACKUP_KEYBINDING_STORE_INVALID": "The existing shortcut settings could not be read."
+      "BACKUP_KEYBINDING_STORE_INVALID": "The existing shortcut settings could not be read.",
+      "BACKUP_HOST_REFERENCE": "Network configuration references a host missing from the backup.",
+      "BACKUP_JUMP_CYCLE": "The jump chain contains a cycle.",
+      "BACKUP_JUMP_DEPTH": "The jump chain exceeds the supported depth.",
+      "BACKUP_NETWORK_SECRET": "Network configuration contains a recognized secret.",
+      "BACKUP_TUNNEL_PRESET_LIMIT": "Restored C2S presets exceed the limit.",
+      "BACKUP_AMBIGUOUS_ENDPOINT": "A tunnel endpoint matches multiple hosts. Use an explicit host ID before backing up."
     },
     "steps": "{{count}} steps",
     "restoreKeybindings": "Restore custom shortcuts (disabled until reviewed and saved)",
@@ -6556,7 +6565,8 @@
     "keybindingNeedsReview": "Restored from backup; disabled until reviewed and saved",
     "localRestorePending": "Database configuration was restored, but local display settings could not be written. Retrying will not import again.",
     "retryLocalRestore": "Retry applying display settings",
-    "editShortcut": "Edit shortcut {{combo}}"
+    "editShortcut": "Edit shortcut {{combo}}",
+    "networkSummary": "{{jumps}} jump references · {{tunnels}} tunnels · {{presets}} C2S presets"
   },
   "sshInteractive": {
     "title": "SSH interactive authentication",

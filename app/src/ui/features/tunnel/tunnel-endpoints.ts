@@ -11,6 +11,8 @@ export function findHostByTunnelEndpoint<T extends EndpointHostLike>(
 ): T | undefined {
   const value = endpointHost?.trim();
   if (!value) return undefined;
+  const byId = hosts.find((host) => String(host.id) === value);
+  if (byId) return byId;
 
   return hosts.find((host) => {
     const id = String(host.id);

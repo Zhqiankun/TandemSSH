@@ -18,6 +18,7 @@ export interface BackupSnapshot {
   preferences?: unknown;
   appearance?: unknown;
   keybindings?: unknown;
+  tunnelPresets?: Array<Record<string, unknown>>;
 }
 interface PreviewRecord {
   owner: string;
@@ -88,6 +89,17 @@ export class ConfigurationBackupService {
       })),
       hasPreferences: !!payload.preferences || !!payload.appearance,
       keybindingsCount: payload.keybindings?.length ?? 0,
+      jumpHostCount: payload.hosts.reduce(
+        (n, h) => n + (h.network?.jumpHostRefs.length ?? 0),
+        0,
+      ),
+      tunnelCount:
+        payload.hosts.reduce(
+          (n, h) => n + (h.network?.tunnels.length ?? 0),
+          0,
+        ) +
+        (payload.tunnelPresets ?? []).reduce((n, p) => n + p.tunnels.length, 0),
+      tunnelPresetCount: payload.tunnelPresets?.length ?? 0,
       warnings,
     };
     this.previews.set(preview.id, { owner, preview, payload, fingerprint });
@@ -104,6 +116,7 @@ export class ConfigurationBackupService {
         desktop?.preferences ?? snapshot.preferences,
         desktop?.appearance ?? snapshot.appearance,
         snapshot.keybindings,
+        snapshot.tunnelPresets,
       );
     return this.add(
       userId,

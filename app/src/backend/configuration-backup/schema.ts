@@ -1,3 +1,9 @@
+import {
+  backupNetworkSchema,
+  backupPresetSchema,
+  projectNetwork,
+  validateNetworkReferences,
+} from "./network.js";
 import { z } from "zod";
 import { desktopAppearanceSchema } from "../../types/desktop-preferences.js";
 import { backupKeybindingSchema, projectKeybindings } from "./keyboard.js";
@@ -16,6 +22,7 @@ const text = (max: number) =>
     .max(max)
     .refine((value) => !/[\u0000]/.test(value));
 const hostSchema = z.object({
+  network: backupNetworkSchema.optional(),
   ref: z.string().uuid(),
   name: text(512),
   ip: text(2048)
@@ -34,7 +41,8 @@ const hostSchema = z.object({
 });
 const fileSchema = z.object({
   format: z.literal("tandemssh-configuration"),
-  version: z.union([z.literal(1), z.literal(2)]),
+  version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  tunnelPresets: z.array(backupPresetSchema).max(128).optional(),
   createdAt: z.string().datetime(),
   hosts: z.array(hostSchema).max(500),
   workflows: z
@@ -104,8 +112,30 @@ export function parseConfigurationBackup(input: unknown): {
   payload: ConfigurationBackup;
   warnings: BackupWarning[];
 } {
-  const parsed = fileSchema.parse(input),
-    warnings: BackupWarning[] = [];
+  const warnings: BackupWarning[] = [];
+  let parseInput = input;
+  if (input && typeof input === "object" && !Array.isArray(input)) {
+    const raw = input as Record<string, unknown>;
+    if (raw.version === 1 || raw.version === 2) {
+      const legacyHosts = Array.isArray(raw.hosts)
+        ? raw.hosts.map((row, index) => {
+            if (!row || typeof row !== "object" || Array.isArray(row))
+              return row;
+            const { network, ...host } = row as Record<string, unknown>;
+            if (network !== undefined)
+              warnings.push({
+                code: "IGNORED_FIELD",
+                path: `backup.hosts[${index}].network`,
+              });
+            return host;
+          })
+        : raw.hosts;
+      if (raw.tunnelPresets !== undefined)
+        warnings.push({ code: "IGNORED_FIELD", path: "backup.tunnelPresets" });
+      parseInput = { ...raw, hosts: legacyHosts, tunnelPresets: undefined };
+    }
+  }
+  const parsed = fileSchema.parse(parseInput);
   const hostRefs = new Set(parsed.hosts.map((host) => host.ref)),
     workflowRefs = new Set(parsed.workflows.map((flow) => flow.ref));
   if (
@@ -115,18 +145,27 @@ export function parseConfigurationBackup(input: unknown): {
     throw Error("BACKUP_DUPLICATE_REFERENCE");
   const payload: ConfigurationBackup = {
     ...parsed,
-    version: 2,
+    version: 3,
     keybindings: undefined,
     hosts: [],
     workflows: [],
     preferences: undefined,
   };
   for (let index = 0; index < parsed.hosts.length; index++) {
-    const host = parsed.hosts[index],
+    const original = parsed.hosts[index];
+    const host =
+        parsed.version === 3 ? original : { ...original, network: undefined },
       safe = redact(host) as typeof host;
     if (safe.ip !== host.ip || safe.username !== host.username) {
       warnings.push({ code: "HOST_SECRET_EXCLUDED", path: `hosts[${index}]` });
       continue;
+    }
+    if (JSON.stringify(safe.network) !== JSON.stringify(host.network)) {
+      safe.network = undefined;
+      warnings.push({
+        code: "NETWORK_CONFIG_EXCLUDED",
+        path: `hosts[${index}].network`,
+      });
     }
     payload.hosts.push(hostSchema.parse(safe));
   }
@@ -172,6 +211,27 @@ export function parseConfigurationBackup(input: unknown): {
         path: "keybindings",
       });
   }
+  payload.tunnelPresets =
+    parsed.version === 3 ? (parsed.tunnelPresets ?? []) : [];
+  for (const preset of payload.tunnelPresets) {
+    if (JSON.stringify(redact(preset)) !== JSON.stringify(preset))
+      throw Error("BACKUP_NETWORK_SECRET");
+    if (preset.tunnels.some((t) => t.scope !== "c2s"))
+      throw Error("BACKUP_INVALID");
+  }
+  if (
+    new Set(payload.tunnelPresets.map((p) => p.ref)).size !==
+    payload.tunnelPresets.length
+  )
+    throw Error("BACKUP_DUPLICATE_REFERENCE");
+  validateNetworkReferences(payload.hosts, payload.tunnelPresets);
+  if (
+    payload.hosts.some(
+      (h) => h.network?.jumpHostRefs.length || h.network?.tunnels.length,
+    ) ||
+    payload.tunnelPresets.length
+  )
+    warnings.push({ code: "NETWORK_REVIEW_REQUIRED", path: "network" });
   ignored(input, payload, "backup", warnings);
   if (JSON.stringify(parsed.hosts) !== JSON.stringify(payload.hosts))
     warnings.push({ code: "RECOGNIZED_SECRET_REDACTED", path: "hosts" });
@@ -191,9 +251,14 @@ export function projectConfigurationBackup(
   preferences?: unknown,
   appearance?: unknown,
   keybindings?: unknown,
+  tunnelPresets: Array<Record<string, unknown>> = [],
 ) {
   const warnings: BackupWarning[] = [],
     entries: unknown[] = [];
+  const eligible = hosts.filter(
+    (h) => !h.connectionType || h.connectionType === "ssh",
+  );
+  const refs = new Map(eligible.map((h) => [h, randomUUID()]));
   for (let index = 0; index < hosts.length; index++) {
     const host = hosts[index];
     if (host.connectionType && host.connectionType !== "ssh") {
@@ -210,7 +275,14 @@ export function projectConfigurationBackup(
       tags = [];
     }
     entries.push({
-      ref: randomUUID(),
+      ref: refs.get(host),
+      network: projectNetwork(
+        host,
+        eligible,
+        refs,
+        warnings,
+        `hosts[${index}]`,
+      ),
       name: String(host.name ?? ""),
       ip: host.ip,
       port: host.port,
@@ -228,9 +300,23 @@ export function projectConfigurationBackup(
     warnings.push({ code: "KEYBINDING_SECRET_EXCLUDED", path: "keybindings" });
   const result = parseConfigurationBackup({
     format: "tandemssh-configuration",
-    version: 2,
+    version: 3,
     createdAt: new Date().toISOString(),
     hosts: entries,
+    tunnelPresets: tunnelPresets.map((p, index) => ({
+      ref: randomUUID(),
+      name: String(p.name ?? ""),
+      tunnels: projectNetwork(
+        {
+          tunnelConnections: p.config,
+        },
+        eligible,
+        refs,
+        warnings,
+        `tunnelPresets[${index}]`,
+        true,
+      ).tunnels,
+    })),
     workflows: workflows.map((row) => ({
       ref: randomUUID(),
       definition: row.definition,

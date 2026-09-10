@@ -3,10 +3,15 @@ import { and, eq, gte, lt } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import {
   hosts,
+  c2sTunnelPresets,
   settings,
   uiPreferences,
   userPreferences,
 } from "../db/schema.js";
+import {
+  restoreTunnel,
+  validateNetworkReferences,
+} from "../../configuration-backup/network.js";
 import { restoreKeybindings } from "../../configuration-backup/keyboard.js";
 import type { DesktopConfiguration } from "../../../types/desktop-preferences.js";
 import type { DatabaseContext } from "./database-context.js";
@@ -37,6 +42,11 @@ export class ConfigurationBackupRepository {
     userId: string,
   ) {
     const rows = db.select().from(hosts).where(eq(hosts.userId, userId)).all();
+    const tunnelPresets = db
+      .select()
+      .from(c2sTunnelPresets)
+      .where(eq(c2sTunnelPresets.userId, userId))
+      .all();
     const rawWorkflows =
       db
         .select()
@@ -74,18 +84,28 @@ export class ConfigurationBackupRepository {
       notes: row.notes,
       authType: row.authType,
       credentialId: row.credentialId,
+      jumpHosts: row.jumpHosts,
+      tunnelConnections: row.tunnelConnections,
     }));
     const fingerprint = createHash("sha256")
       .update(
         JSON.stringify({
           configuration,
+          tunnelPresets,
           rawWorkflows,
           rawPreferences,
           applicationConfiguration,
         }),
       )
       .digest("hex");
-    return { rows, rawWorkflows, rawPreferences, fingerprint, application };
+    return {
+      rows,
+      rawWorkflows,
+      rawPreferences,
+      fingerprint,
+      application,
+      tunnelPresets,
+    };
   }
   async snapshot(userId: string) {
     this.assertDesktopStorage();
@@ -96,6 +116,9 @@ export class ConfigurationBackupRepository {
       throw Error("WORKFLOW_STORE_INVALID");
     return {
       fingerprint: state.fingerprint,
+      tunnelPresets: state.tunnelPresets as unknown as Array<
+        Record<string, unknown>
+      >,
       appearance: state.application
         ? Object.fromEntries(
             ["theme", "fontSize", "accentColor", "language"]
@@ -138,6 +161,10 @@ export class ConfigurationBackupRepository {
     },
   ): Promise<BackupImportResult> {
     this.assertDesktopStorage();
+    validateNetworkReferences(
+      request.payload.hosts,
+      request.payload.tunnelPresets ?? [],
+    );
     const dataKey = DataCrypto.validateUserAccess(userId),
       receiptKey = receiptPrefix(userId) + request.id;
     const applied = this.context.drizzle.transaction((tx) => {
@@ -235,6 +262,53 @@ export class ConfigurationBackupRepository {
           .get();
         hostIds.push(created.id);
       }
+      const hostMap = new Map(
+        request.payload.hosts.map((h, i) => [h.ref, hostIds[i]]),
+      );
+      for (const host of request.payload.hosts) {
+        if (!host.network) continue;
+        tx.update(hosts)
+          .set({
+            jumpHosts: JSON.stringify(
+              host.network.jumpHostRefs.map((ref) => ({
+                hostId: hostMap.get(ref)!,
+              })),
+            ),
+            tunnelConnections: JSON.stringify(
+              host.network.tunnels.map((t) => restoreTunnel(t, hostMap)),
+            ),
+          })
+          .where(
+            and(eq(hosts.userId, userId), eq(hosts.id, hostMap.get(host.ref)!)),
+          )
+          .run();
+      }
+      const presets = request.payload.tunnelPresets ?? [];
+      if (before.tunnelPresets.length + presets.length > 128)
+        throw Error("BACKUP_TUNNEL_PRESET_LIMIT");
+      const presetNames = new Set(before.tunnelPresets.map((p) => p.name));
+      const tunnelPresetIds: number[] = [];
+      for (const preset of presets) {
+        let name = preset.name,
+          suffix = 2;
+        while (presetNames.has(name))
+          name = preset.name.slice(0, 480) + " (" + suffix++ + ")";
+        presetNames.add(name);
+        const created = tx
+          .insert(c2sTunnelPresets)
+          .values({
+            userId,
+            name,
+            config: JSON.stringify(
+              preset.tunnels.map((t) => restoreTunnel(t, hostMap)),
+            ),
+            platform: null,
+            computerName: null,
+          })
+          .returning({ id: c2sTunnelPresets.id })
+          .get();
+        tunnelPresetIds.push(created.id);
+      }
       const imported: SavedWorkflow[] = request.payload.workflows.map(
         (row) => ({
           id: randomUUID(),
@@ -317,6 +391,7 @@ export class ConfigurationBackupRepository {
         workflowIds: imported.map((row) => row.id),
         preferencesRestored,
         keybindingsImported: importedKeys.length,
+        tunnelPresetIds,
         desktopConfiguration,
       };
       tx.insert(settings)

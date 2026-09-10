@@ -211,8 +211,8 @@ it("redacts recognized secrets from supported preference string fields", () => {
   );
 });
 
-it("accepts version 1 backups and exports current local appearance in version 2", async () => {
-  expect(parseConfigurationBackup(input()).payload.version).toBe(2);
+it("accepts version 1 backups and exports current local appearance in version 3", async () => {
+  expect(parseConfigurationBackup(input()).payload.version).toBe(3);
   const f = fixture(),
     p = await f.service.previewExport("owner", {
       appearance: {
@@ -223,7 +223,7 @@ it("accepts version 1 backups and exports current local appearance in version 2"
       },
     });
   const data = JSON.parse(p.content);
-  expect(data.version).toBe(2);
+  expect(data.version).toBe(3);
   expect(data.appearance).toMatchObject({ theme: "nord", fontSize: "lg" });
   expect(() =>
     parseConfigurationBackup({

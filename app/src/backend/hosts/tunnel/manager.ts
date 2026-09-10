@@ -152,6 +152,8 @@ export function findHostByTunnelEndpoint(
 ): SSHHost | undefined {
   const value = endpointHost?.trim();
   if (!value) return undefined;
+  const byId = hosts.find((host) => String(host.id) === value);
+  if (byId) return byId;
 
   return hosts.find((host) => {
     const userAtIp = `${host.username}@${host.ip}`;
