@@ -2,6 +2,15 @@
 
 同舟 SSH 是 Windows 优先的人机协作 SSH 工作台，基于 Termix 改造。模型使用你自己的接口地址和 API Key；核心 SSH、协同和 MCP 功能不要求本软件会员。
 
+## alpha.2 本次更新
+
+- 执行历史支持导出当前任务或全部保留的脱敏记录，提供导出进度与取消；不完整的响应不会生成成功文件。
+- 中文历史显示来源、主机或会话、模式、策略判断、退出码和输出片段，补齐任务完成、取消与恢复记录的来源。旧记录缺失的字段显示“未记录”。
+- 修复目录 Unix 权限解析及特殊权限位丢失，支持 setuid/setgid/sticky；未知权限禁止误保存。真实 Alpine/OpenSSH 已验证 7 组权限读回。
+- 保留启动与每 20 分钟更新检测。alpha.1 安装版可在软件内检查、下载并安装 alpha.2；alpha.0 需手动安装此版本。
+
+上述改动的来源与验证记录见 docs/77-history-export.md、docs/79-history-provenance.md、docs/80-unix-permissions.md。Windows 权限对话框及权限/链接全范围验收仍在继续。
+
 ## 下载与启动
 
 - `TandemSSH-版本号-x64.exe`：Windows x64 安装程序，推荐使用。
