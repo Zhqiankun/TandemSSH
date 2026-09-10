@@ -6000,7 +6000,7 @@
       "path": "Local folder path",
       "refresh": "Refresh local folder",
       "search": "Filter by name",
-      "hidden": "Show dotfiles",
+      "hidden": "Show hidden/system",
       "truncated": "This folder exceeds 10,000 entries. Only the scanned portion is shown; open a more specific folder.",
       "selectPage": "Select transferable items on this page",
       "name": "Name",
@@ -6036,7 +6036,12 @@
         "LOCAL_CANCELLED": "The local folder operation was cancelled.",
         "LOCAL_TRUSTED_WINDOW_REQUIRED": "Use the desktop application main window for local files.",
         "LOCAL_IO_FAILED": "The local file operation failed. Check the folder and permissions."
-      }
+      },
+      "attributeWarning": "Some Windows file attributes could not be read. Hidden or system items may appear in this list.",
+      "hiddenAttribute": "Hidden",
+      "systemAttribute": "System",
+      "readOnlyAttribute": "Read-only attribute",
+      "unknownAttributes": "Attributes unavailable"
     }
   },
   "fileDocument": {

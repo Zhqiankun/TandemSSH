@@ -12,6 +12,9 @@ export interface LocalBrowserEntry {
   size: number;
   modifiedAt: number;
   hidden: boolean;
+  system?: boolean;
+  readOnly?: boolean;
+  attributesKnown?: boolean;
   version: string;
   error?: string;
 }
@@ -31,6 +34,7 @@ export interface LocalBrowserPage {
   offset: number;
   nextOffset: number | null;
   truncated: boolean;
+  attributeWarning?: boolean;
 }
 export interface LocalBrowserTarget {
   rootId: string;

@@ -6000,7 +6000,7 @@
       "path": "本机目录路径",
       "refresh": "刷新本机目录",
       "search": "按名称筛选",
-      "hidden": "显示点文件",
+      "hidden": "显示隐藏/系统项",
       "truncated": "此目录超过 10,000 项，当前只显示已读取的部分；请进入更具体的目录。",
       "selectPage": "选择本页可传输项",
       "name": "名称",
@@ -6036,7 +6036,12 @@
         "LOCAL_CANCELLED": "本机目录操作已取消。",
         "LOCAL_TRUSTED_WINDOW_REQUIRED": "请在桌面客户端的主窗口操作本机文件。",
         "LOCAL_IO_FAILED": "本机文件操作失败，请检查目录和权限。"
-      }
+      },
+      "attributeWarning": "部分 Windows 文件属性无法读取，当前列表可能包含隐藏或系统项。",
+      "hiddenAttribute": "隐藏",
+      "systemAttribute": "系统",
+      "readOnlyAttribute": "只读属性",
+      "unknownAttributes": "属性信息不可用"
     }
   },
   "fileDocument": {

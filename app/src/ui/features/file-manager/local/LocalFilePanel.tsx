@@ -314,6 +314,14 @@ export function LocalFilePanel({
               })}
             </p>
           )}
+          {page?.attributeWarning && (
+            <p
+              role="status"
+              className="border-b border-border px-3 py-2 text-xs text-amber-600 dark:text-amber-400"
+            >
+              {text("attributeWarning")}
+            </p>
+          )}
           {page?.truncated && (
             <p
               role="status"
@@ -495,6 +503,12 @@ export function LocalFilePanel({
               </dd>
               <dd className="text-muted-foreground">
                 {text(single.kind)} · {bytes(single.size)}
+                {single.hidden ? " · " + text("hiddenAttribute") : ""}
+                {single.system ? " · " + text("systemAttribute") : ""}
+                {single.readOnly ? " · " + text("readOnlyAttribute") : ""}
+                {single.attributesKnown === false
+                  ? " · " + text("unknownAttributes")
+                  : ""}
               </dd>
             </dl>
           )}

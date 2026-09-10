@@ -190,3 +190,43 @@ it("releases a picker result arriving after unmount instead of retaining a file 
   expect(f.api.release).toHaveBeenCalledWith(root.id);
   expect(f.api.list).not.toHaveBeenCalled();
 });
+
+it("shows Windows attribute limitations and selected hidden/system/read-only flags in Chinese", async () => {
+  const flagged = {
+    ...page,
+    attributeWarning: true,
+    entries: [
+      {
+        ...page.entries[1],
+        hidden: true,
+        system: true,
+        readOnly: true,
+        attributesKnown: true,
+      },
+    ],
+    total: 1,
+  };
+  const f = await fixture({
+    list: vi.fn(async () => ({ ok: true as const, value: flagged })),
+  });
+  fireEvent.click(screen.getAllByRole("button", { name: "选择目录" })[0]);
+  await screen.findByRole("checkbox", { name: "显示隐藏/系统项" });
+  expect(
+    await screen.findByText(
+      "部分 Windows 文件属性无法读取，当前列表可能包含隐藏或系统项。",
+    ),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", { name: "显示隐藏/系统项" }));
+  await waitFor(() =>
+    expect(f.api.list).toHaveBeenLastCalledWith(
+      root.id,
+      "",
+      expect.objectContaining({ showHidden: true }),
+    ),
+  );
+  await screen.findByRole("checkbox", { name: "选择 配置.txt" });
+  fireEvent.click(screen.getByRole("checkbox", { name: "选择 配置.txt" }));
+  expect(screen.getByLabelText("选中项属性")).toHaveTextContent(
+    "隐藏 · 系统 · 只读属性",
+  );
+});

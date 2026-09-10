@@ -1,6 +1,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
+const { readWindowsAttributes } = require("./windows-file-attributes.cjs");
 const identity = (s) => [s.dev, s.ino, s.birthtimeMs].join(":");
 const version = (s) =>
   [identity(s), s.size, s.mtimeMs, s.ctimeMs, s.mode].join(":");
@@ -30,7 +31,8 @@ function segments(relative) {
   return result;
 }
 class LocalFileBrowser {
-  constructor() {
+  constructor({ readAttributes = readWindowsAttributes } = {}) {
+    this.readAttributes = readAttributes;
     this.roots = new Map();
     this.pending = 0;
     this.reading = 0;
@@ -75,6 +77,7 @@ class LocalFileBrowser {
         epoch,
         path: actual,
         identity: identity(stat),
+        abort: new AbortController(),
         busy: false,
       };
       this.roots.set(r.id, r);
@@ -189,6 +192,33 @@ class LocalFileBrowser {
         );
         rows.push(...batch);
       }
+      let attributes = null;
+      try {
+        attributes = await this.readAttributes(
+          directory.path,
+          rows.map((row) => row.name),
+          r.abort.signal,
+        );
+      } catch {
+        this.guard(r);
+        attributes = rows.map(() => null);
+      }
+      this.guard(r);
+      let attributeWarning = false;
+      if (attributes !== null) {
+        if (!Array.isArray(attributes) || attributes.length !== rows.length)
+          attributes = rows.map(() => null);
+        rows.forEach((row, index) => {
+          const bits = attributes[index],
+            known = Number.isInteger(bits) && bits >= 0 && bits <= 0x7fffffff;
+          row.attributesKnown = known;
+          if (known) {
+            row.hidden = row.hidden || !!(bits & 2);
+            row.system = !!(bits & 4);
+            row.readOnly = !!(bits & 1);
+          } else attributeWarning = true;
+        });
+      }
       const after = await this.resolve(r, relative);
       if (
         identity(directory.stat) !== identity(after.stat) ||
@@ -200,7 +230,7 @@ class LocalFileBrowser {
         sign = options.order === "desc" ? -1 : 1;
       const selected = rows.filter(
         (e) =>
-          (options.showHidden || !e.hidden) &&
+          (options.showHidden || (!e.hidden && !e.system)) &&
           e.name.toLocaleLowerCase().includes(search),
       );
       selected.sort(
@@ -226,6 +256,7 @@ class LocalFileBrowser {
         nextOffset:
           offset + PAGE_SIZE < selected.length ? offset + PAGE_SIZE : null,
         truncated,
+        ...(attributeWarning ? { attributeWarning: true } : {}),
       };
     } finally {
       r.busy = false;
@@ -273,11 +304,15 @@ class LocalFileBrowser {
   release(owner, id) {
     const r = this.owned(owner, id);
     this.roots.delete(r.id);
+    r.abort.abort();
   }
   reset(owner) {
     this.epochs.set(owner, (this.epochs.get(owner) ?? 0) + 1);
     for (const r of this.roots.values())
-      if (r.owner === owner) this.roots.delete(r.id);
+      if (r.owner === owner) {
+        this.roots.delete(r.id);
+        r.abort.abort();
+      }
   }
 }
 module.exports = { LocalFileBrowser, errorCode };
