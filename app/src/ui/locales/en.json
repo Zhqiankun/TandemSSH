@@ -2493,7 +2493,8 @@
     "cleanupDestFilesError": "Cleanup failed",
     "retryTransfer": "Retry",
     "retryTransferError": "Retry failed",
-    "transferFailedRetryHint": "Partial data was kept on the destination. Retry will resume when the connection is back."
+    "transferFailedRetryHint": "Partial data was kept on the destination. Retry will resume when the connection is back.",
+    "sourceDeleteFailed": "The destination was copied, but source cleanup failed. Some source items may remain. Check both locations before continuing; do not repeat the move blindly."
   },
   "tunnels": {
     "noSshTunnels": "No SSH Tunnels",

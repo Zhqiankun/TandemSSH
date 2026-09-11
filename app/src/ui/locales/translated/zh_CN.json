@@ -2493,7 +2493,8 @@
     "cleanupDestFilesError": "清理失败",
     "retryTransfer": "重试",
     "retryTransferError": "重试失败",
-    "transferFailedRetryHint": "部分数据已保留在目标位置。连接恢复后重试将继续。"
+    "transferFailedRetryHint": "部分数据已保留在目标位置。连接恢复后重试将继续。",
+    "sourceDeleteFailed": "目标复制已完成，但源文件清理失败，部分源项目可能仍存在。请核对两端后再操作，不要直接重复移动。"
   },
   "tunnels": {
     "noSshTunnels": "无 SSH 隧道",

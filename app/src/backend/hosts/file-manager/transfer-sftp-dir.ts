@@ -53,9 +53,15 @@ export async function deletePathSftp(
 ): Promise<void> {
   let stats: import("ssh2").Stats;
   try {
-    stats = await promisifySftpStat(sftp, path);
-  } catch {
-    return;
+    stats = await new Promise((resolve, reject) =>
+      sftp.lstat(path, (error, value) =>
+        error ? reject(error) : resolve(value),
+      ),
+    );
+  } catch (error) {
+    const code = (error as { code?: number | string }).code;
+    if (code === 2 || code === "ENOENT") return;
+    throw error;
   }
 
   if (stats.isDirectory()) {
@@ -68,7 +74,5 @@ export async function deletePathSftp(
     return;
   }
 
-  if (stats.isFile()) {
-    await promisifySftpUnlink(sftp, path);
-  }
+  await promisifySftpUnlink(sftp, path);
 }

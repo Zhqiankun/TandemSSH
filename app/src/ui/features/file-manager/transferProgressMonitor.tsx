@@ -159,7 +159,11 @@ function showFailedTransferToast(
 
   const descriptionParts: string[] = [];
   if (finalStatus.message) {
-    descriptionParts.push(finalStatus.message);
+    descriptionParts.push(
+      finalStatus.message === "SOURCE_DELETE_FAILED"
+        ? t("transfer.sourceDeleteFailed")
+        : finalStatus.message,
+    );
   }
   if (finalStatus.retryable && hasPartial) {
     descriptionParts.push(t("transfer.transferFailedRetryHint"));

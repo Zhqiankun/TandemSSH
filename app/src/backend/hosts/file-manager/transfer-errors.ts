@@ -50,3 +50,17 @@ export function isRecoverableTransferError(err: unknown): boolean {
     isRecoverableTransferConnectionError(err)
   );
 }
+
+export class SourceDeletionError extends Error {
+  constructor(cause: unknown) {
+    super("SOURCE_DELETE_FAILED", { cause });
+    this.name = "SourceDeletionError";
+  }
+}
+
+export function canFinalizeFromDestination(progress: {
+  moveRequested?: boolean;
+  sourceDeleted?: boolean;
+}): boolean {
+  return !progress.moveRequested || progress.sourceDeleted === true;
+}

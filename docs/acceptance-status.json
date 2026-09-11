@@ -634,7 +634,8 @@
         "94-trash-link-retention.md",
         "119-file-delete-partial-results.md",
         "121-rename-no-overwrite.md",
-        "123-move-target-conflicts.md"
+        "123-move-target-conflicts.md",
+        "124-move-source-cleanup.md"
       ],
       "remaining": "重命名已有真实 OpenSSH 冲突验证；移动改为标准 SFTP 拒绝覆盖，但跨文件系统兼容性待补齐，不能作为完整交付。复制/新建及完整批量桌面撤销链仍需验收。"
     },

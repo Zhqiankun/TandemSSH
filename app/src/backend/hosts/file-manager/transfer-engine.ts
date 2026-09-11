@@ -47,6 +47,8 @@ import {
 } from "./transfer-stats.js";
 import {
   TransferCancelledError,
+  SourceDeletionError,
+  canFinalizeFromDestination,
   TransferStalledError,
   isRecoverableTransferError,
 } from "./transfer-errors.js";
@@ -400,6 +402,7 @@ async function finalizeStreamTransferIfDestAtSize(
   extra: Partial<TransferProgress> = {},
   verify?: () => Promise<void>,
 ): Promise<boolean> {
+  if (!canFinalizeFromDestination(extra)) return false;
   try {
     const destSize = await probeDestResumeOffset(
       destSftp,
@@ -881,7 +884,10 @@ function failedProgressPatch(
   return {
     ...patch,
     partialDestRemaining: hasPartial,
-    retryable: hasPartial && !!current?.requestSnapshot,
+    retryable:
+      merged.message !== "SOURCE_DELETE_FAILED" &&
+      hasPartial &&
+      !!current?.requestSnapshot,
   };
 }
 
@@ -972,7 +978,11 @@ async function deleteSourcePathsAfterSuccess(
   sourcePaths: string[],
 ): Promise<number> {
   const deleteStart = Date.now();
-  await deleteSourcePaths(deps, sourceSession, sourcePaths);
+  try {
+    await deleteSourcePaths(deps, sourceSession, sourcePaths);
+  } catch (error) {
+    throw new SourceDeletionError(error);
+  }
   const sourceDeleteMs = elapsedMs(deleteStart);
   updateTransfer(transferId, {
     sourceDeleted: true,
@@ -2408,7 +2418,11 @@ async function tryAdaptiveDirectTransfer(
       },
     });
   } catch (error) {
-    if (error instanceof TransferCancelledError) throw error;
+    if (
+      error instanceof TransferCancelledError ||
+      error instanceof SourceDeletionError
+    )
+      throw error;
     fileLogger.warn("Direct transfer failed; falling back to relay", {
       operation: "host_transfer_direct_fallback",
       transferId,
@@ -2569,11 +2583,7 @@ async function deleteSourcePaths(
 ): Promise<void> {
   const sourceSftp = await deps.getSessionSftp(sourceSession);
   for (const path of sourcePaths) {
-    try {
-      await deletePathSftp(sourceSftp, path);
-    } catch {
-      /* best effort */
-    }
+    await deletePathSftp(sourceSftp, path);
   }
 }
 
@@ -3133,6 +3143,7 @@ async function runTransfer(
     const message = getErrorMessage(err, "Transfer failed");
 
     if (
+      !(err instanceof SourceDeletionError) &&
       sourcePaths.length === 1 &&
       current?.method === "stream" &&
       current.destPath &&
@@ -3301,6 +3312,7 @@ export function retryHostTransfer(
     progress.userId !== userId ||
     progress.status !== "error" ||
     !progress.retryable ||
+    progress.message === "SOURCE_DELETE_FAILED" ||
     !progress.requestSnapshot
   ) {
     return false;
