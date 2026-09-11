@@ -98,3 +98,49 @@ it("replaces matches and retains undo and redo in the real editor", async () => 
   fireEvent.keyDown(content, { key: "y", code: "KeyY", ctrlKey: true });
   await waitFor(() => expect(changed.mock.calls.at(-1)?.[0]).toBe("同舟 同舟"));
 });
+it("updates an open search panel when the application language changes", async () => {
+  await i18n.changeLanguage("zh-CN");
+  const ref = createRef<CodeEditorHandle>();
+  render(
+    <CodeEditor
+      ref={ref}
+      fileName="notes.txt"
+      value="hello hello"
+      placeholder=""
+      onChange={vi.fn()}
+      onFocus={vi.fn()}
+      onBlur={vi.fn()}
+    />,
+  );
+  act(() => ref.current!.openSearchPanel());
+  fireEvent.change(screen.getByRole("textbox", { name: "查找" }), {
+    target: { value: "hello" },
+  });
+  await act(async () => {
+    await i18n.changeLanguage("en");
+  });
+  await screen.findByRole("textbox", { name: "Find" });
+  expect(
+    (screen.getByRole("textbox", { name: "Find" }) as HTMLInputElement).value,
+  ).toBe("hello");
+});
+it("opens the replace controls with Ctrl+H", async () => {
+  await i18n.changeLanguage("zh-CN");
+  const { container } = render(
+    <CodeEditor
+      fileName="notes.txt"
+      value="hello"
+      placeholder=""
+      onChange={vi.fn()}
+      onFocus={vi.fn()}
+      onBlur={vi.fn()}
+    />,
+  );
+  expect(screen.queryByRole("textbox", { name: "替换为" })).toBeNull();
+  fireEvent.keyDown(container.querySelector(".cm-content")!, {
+    key: "h",
+    code: "KeyH",
+    ctrlKey: true,
+  });
+  expect(await screen.findByRole("textbox", { name: "替换为" })).toBeTruthy();
+});

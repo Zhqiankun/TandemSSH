@@ -131,7 +131,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
           },
           {
             key: "Mod-h",
-            run: () => false,
+            run: openSearchPanel,
             preventDefault: true,
           },
         ]),
