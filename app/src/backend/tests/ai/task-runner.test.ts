@@ -55,6 +55,17 @@ function fixture(
       hostName: "fixture",
       groups: () => [],
       control,
+      readOutput: () => ({
+        text:
+          cwd === "/srv/manual"
+            ? "人工检查完成\napi_key=secret-manual-key\n" +
+              "x".repeat(13000) +
+              "\nmanual-service-active\napi_key=secret-manual-key"
+            : "initial-output",
+        generation: control.snapshot().generation,
+        cursor: cwd === "/srv/manual" ? 2 : 1,
+        truncated: false,
+      }),
       executor: {
         prepareContext: () => ({
           bytes: Buffer.from("context"),
@@ -291,6 +302,16 @@ describe("shared-session AI orchestration", () => {
       ),
     );
     expect(f.writes).not.toContain("printf stale");
+    const contextMessage = f.requests[2].messages.at(-1)!;
+    expect(contextMessage.role).toBe("user");
+    const context = JSON.parse(
+      contextMessage.content.split("\n").slice(1).join("\n"),
+    );
+    expect(context.text).toContain("manual-service-active");
+    expect(context.text.length).toBeLessThanOrEqual(12000);
+    expect(context.truncated).toBe(true);
+    expect(context.contentTrust).toBe("untrusted-terminal-output");
+    expect(JSON.stringify(f.requests)).not.toContain("secret-manual-key");
     expect(f.writes.filter((value) => value === "context")).toHaveLength(2);
     expect(f.requests[2].system).toContain('"cwd":"/srv/manual"');
     expect(
@@ -412,3 +433,46 @@ it.each(["automatic", "collaborative"] as const)(
     expect(f.writes.at(-1)).toBe("manual");
   },
 );
+it("isolates model terminal context by agent task ownership and current control", async () => {
+  const pending = deferred<void>();
+  const f = fixture(async function* (_request, index) {
+    if (index === 1) yield { type: "text", text: "计划" };
+    else {
+      await pending.promise;
+      yield call("finish_task", { summary: "结束" });
+    }
+  });
+  const created = await f.start();
+  const actor: TaskActor = {
+    kind: "agent",
+    userId: "owner",
+    agentRunId: created.run.id,
+  };
+  expect(() => f.runtime.modelTerminalContext(actor, created.task.id)).toThrow(
+    "STALE_CONTROL",
+  );
+  await f.authorize(created.task.id);
+  expect(f.runtime.modelTerminalContext(actor, created.task.id)?.text).toBe(
+    "initial-output",
+  );
+  expect(() =>
+    f.runtime.modelTerminalContext(
+      { ...actor, agentRunId: "other" },
+      created.task.id,
+    ),
+  ).toThrow("TASK_NOT_FOUND");
+  expect(() =>
+    f.runtime.modelTerminalContext(
+      { ...actor, userId: "other" },
+      created.task.id,
+    ),
+  ).toThrow("TASK_NOT_FOUND");
+  expect(() => f.runtime.modelTerminalContext(user, created.task.id)).toThrow(
+    "AGENT_IDENTITY_REQUIRED",
+  );
+  f.control.takeover();
+  expect(() => f.runtime.modelTerminalContext(actor, created.task.id)).toThrow(
+    "STALE_CONTROL",
+  );
+  pending.resolve();
+});

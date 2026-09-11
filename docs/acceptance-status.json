@@ -889,9 +889,10 @@
         "56-linux-ssh-acceptance.md",
         "64-jump-combined-acceptance.md",
         "68-provider-response-bounds.md",
-        "98-handback-context-review.md"
+        "98-handback-context-review.md",
+        "99-ai-terminal-context.md"
       ],
-      "remaining": "已验证旧批准在交还后不可复用，模型请求含最新 cwd 和人工介入提示；仍缺接管期间人工新增终端输出的有界脱敏读取与模型上下文衔接。"
+      "remaining": "旧批准失效、新 cwd、人工介入提示和有界脱敏终端输出已接入并通过核心回归；仍需实际 Windows/SSH 交还场景验证。"
     },
     {
       "id": "A09",

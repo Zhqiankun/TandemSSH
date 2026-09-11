@@ -111,6 +111,7 @@ export const taskRuntime = new TaskRuntime({
         ];
       },
       control: session.control,
+      readOutput: () => sessionManager.getOutputSnapshot(session),
       files: directoryTransfers.executor(
         session.userId,
         session.id,

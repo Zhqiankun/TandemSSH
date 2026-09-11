@@ -63,6 +63,12 @@ export type TaskActor =
       allowedHostIds: number[];
     };
 export interface TaskSession {
+  readOutput?: () => {
+    text: string;
+    generation: number;
+    cursor: number;
+    truncated: boolean;
+  };
   acceptedHostKey?: string;
   assertAvailable?: () => void;
   files?: FileExecutorPort;
@@ -216,6 +222,28 @@ export class TaskRuntime {
         task.probe?.dispose();
         this.returnControl(task);
       }
+  }
+  modelTerminalContext(actor: TaskActor, taskId: string) {
+    if (actor.kind !== "agent") throw Error("AGENT_IDENTITY_REQUIRED");
+    const task = this.owned(actor, taskId);
+    const session = this.sessionFor(actor, task.view.sessionId);
+    if (!task.lease || task.view.state !== "ready")
+      throw Error("STALE_CONTROL");
+    session.control.assertLease(task.lease);
+    const output = session.readOutput?.();
+    if (!output) return undefined;
+    session.control.assertLease(task.lease);
+    if (output.generation !== task.lease.generation)
+      throw Error("STALE_CONTROL");
+    const safe = redact(output.text) as string;
+    return {
+      sessionId: task.view.sessionId,
+      generation: output.generation,
+      cursor: output.cursor,
+      truncated: output.truncated || safe.length > 12000,
+      text: safe.slice(-12000),
+      contentTrust: "untrusted-terminal-output" as const,
+    };
   }
   private sessionFor(actor: TaskActor, id: string): TaskSession {
     const session = this.ports.getSession(id);
