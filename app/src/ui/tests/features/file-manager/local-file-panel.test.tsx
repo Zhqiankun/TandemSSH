@@ -262,3 +262,30 @@ it("formats local millisecond timestamps with the application language and handl
   });
   await screen.findByText(/09\/\d{2}\/2026/);
 });
+it("does not submit an old selection while a changed name filter is waiting to apply", async () => {
+  const f = await fixture();
+  fireEvent.click(screen.getAllByRole("button", { name: "选择目录" })[0]);
+  fireEvent.click(
+    await screen.findByRole("checkbox", { name: "选择 配置.txt" }),
+  );
+  const upload = screen.getByRole("button", { name: "预览上传（1 项）" });
+  expect(upload).toBeEnabled();
+  fireEvent.change(screen.getByLabelText("按名称筛选"), {
+    target: { value: "different" },
+  });
+  expect(upload).toBeDisabled();
+  fireEvent.click(upload);
+  expect(f.onUpload).not.toHaveBeenCalled();
+  await waitFor(() =>
+    expect(f.api.list).toHaveBeenCalledWith(
+      root.id,
+      "",
+      expect.objectContaining({ search: "different" }),
+    ),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "预览上传（0 项）" }),
+    ).toBeDisabled(),
+  );
+});

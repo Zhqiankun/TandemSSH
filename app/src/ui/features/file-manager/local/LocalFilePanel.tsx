@@ -184,6 +184,7 @@ export function LocalFilePanel({
     else if (!/^(?:[a-z]:|\/)/i.test(input)) navigate(input.replace(/\/$/, ""));
     else setError("LOCAL_PATH_INVALID");
   }
+  const filterPending = search !== (options.search ?? "");
   const chosen = Object.values(selected),
     single = chosen.length === 1 ? chosen[0] : undefined;
   const rows = page?.entries ?? [],
@@ -527,7 +528,9 @@ export function LocalFilePanel({
             <Button
               className="w-full"
               size="sm"
-              disabled={!canUpload || !chosen.length || busy || !page}
+              disabled={
+                !canUpload || !chosen.length || busy || filterPending || !page
+              }
               onClick={() =>
                 onUpload({
                   rootId: root.id,
