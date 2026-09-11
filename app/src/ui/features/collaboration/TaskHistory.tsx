@@ -80,7 +80,7 @@ export function TaskHistoryDialog({ userId }: { userId: string | null }) {
   );
 }
 function HistoryBrowser({ initialTaskId }: { initialTaskId?: string }) {
-  const { t } = useTranslation(),
+  const { t, i18n } = useTranslation(),
     [draft, setDraft] = useState(initialTaskId ?? ""),
     [filter, setFilter] = useState(initialTaskId),
     [cursor, setCursor] = useState<string>(),
@@ -201,7 +201,9 @@ function HistoryBrowser({ initialTaskId }: { initialTaskId?: string }) {
                     })}
                   </strong>
                   <time className="text-xs text-muted-foreground">
-                    {new Date(item.at).toLocaleString()}
+                    {new Date(item.at).toLocaleString(
+                      i18n.resolvedLanguage ?? i18n.language,
+                    )}
                   </time>
                 </div>
                 {item.title && <p className="break-all">{item.title}</p>}
