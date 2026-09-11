@@ -16,3 +16,22 @@ export function fileActionReceipt(
     targetName,
   };
 }
+
+/** Replace only the action being undone; later actions and failed receipts survive. */
+export function settleFileUndo<
+  T extends { data: { copiedFiles?: SuccessfulFileAction[] } },
+>(
+  history: readonly T[],
+  action: T,
+  completed: ReadonlySet<SuccessfulFileAction>,
+): T[] {
+  return history.flatMap((entry) => {
+    if (entry !== action) return [entry];
+    const remaining = entry.data.copiedFiles?.filter(
+      (file) => !completed.has(file),
+    );
+    return remaining?.length
+      ? [{ ...entry, data: { ...entry.data, copiedFiles: remaining } }]
+      : [];
+  });
+}

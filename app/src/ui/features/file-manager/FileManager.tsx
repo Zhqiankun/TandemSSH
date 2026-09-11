@@ -1,5 +1,6 @@
 import {
   fileActionReceipt,
+  settleFileUndo,
   type SuccessfulFileAction,
 } from "./file-operation-history";
 import { usePendingSudoOperation } from "./hooks/use-pending-sudo-operation";
@@ -266,6 +267,7 @@ function FileManagerContent({
   }
 
   const [undoHistory, setUndoHistory] = useState<UndoAction[]>([]);
+  const undoInProgress = useRef(false);
 
   const [createIntent, setCreateIntent] = useState<CreateIntent | null>(null);
   const [editingFile, setEditingFile] = useState<FileItem | null>(null);
@@ -2100,6 +2102,7 @@ function FileManagerContent({
   }
 
   async function handleUndo() {
+    if (undoInProgress.current) return;
     if (undoHistory.length === 0) {
       toast.info(t("fileManager.noUndoableActions"));
       return;
@@ -2107,6 +2110,8 @@ function FileManagerContent({
 
     const lastAction = undoHistory[undoHistory.length - 1];
 
+    undoInProgress.current = true;
+    const completed = new Set<SuccessfulFileAction>();
     try {
       await ensureSSHConnection();
 
@@ -2126,6 +2131,7 @@ function FileManagerContent({
                   currentHost?.id,
                   currentHost?.userId?.toString(),
                 );
+                completed.add(copiedFile);
                 successCount++;
               } catch (error: unknown) {
                 console.error(
@@ -2142,7 +2148,6 @@ function FileManagerContent({
             }
 
             if (successCount > 0) {
-              setUndoHistory((prev) => prev.slice(0, -1));
               toast.success(
                 t("fileManager.undoCopySuccess", { count: successCount }),
               );
@@ -2168,6 +2173,7 @@ function FileManagerContent({
                   currentHost?.id,
                   currentHost?.userId?.toString(),
                 );
+                completed.add(movedFile);
                 successCount++;
               } catch (error: unknown) {
                 console.error(
@@ -2184,7 +2190,6 @@ function FileManagerContent({
             }
 
             if (successCount > 0) {
-              setUndoHistory((prev) => prev.slice(0, -1));
               toast.success(
                 t("fileManager.undoMoveSuccess", { count: successCount }),
               );
@@ -2200,7 +2205,9 @@ function FileManagerContent({
 
         case "delete":
           toast.info(t("fileManager.undoDeleteNotSupported"));
-          setUndoHistory((prev) => prev.slice(0, -1));
+          setUndoHistory((prev) =>
+            prev.filter((entry) => entry !== lastAction),
+          );
           return;
 
         default:
@@ -2213,6 +2220,10 @@ function FileManagerContent({
       const errorMessage = getErrorMessage(error, String(error));
       toast.error(`${t("fileManager.undoOperationFailed")}: ${errorMessage}`);
       console.error("Undo failed:", error);
+    } finally {
+      if (completed.size)
+        setUndoHistory((prev) => settleFileUndo(prev, lastAction, completed));
+      undoInProgress.current = false;
     }
   }
 
