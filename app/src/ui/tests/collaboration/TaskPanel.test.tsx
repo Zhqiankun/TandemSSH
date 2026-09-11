@@ -35,10 +35,17 @@ import { TaskPanel } from "../../features/collaboration/TaskPanel";
 let runtime: TaskRuntime, control: SessionControl;
 const actor: TaskActor = { kind: "human", userId: "test-user" };
 let writes: string[];
+let heldCommand:
+  | {
+      promise: Promise<{ exitCode: number | null; output: string }>;
+      resolve: (value: { exitCode: number | null; output: string }) => void;
+    }
+  | undefined;
 beforeEach(async () => {
   vi.clearAllMocks();
   await i18n.changeLanguage("zh-CN");
   writes = [];
+  heldCommand = undefined;
   control = new SessionControl(
     "session",
     {
@@ -74,12 +81,15 @@ beforeEach(async () => {
       }),
       prepare: async (action: { program: string }) => ({
         bytes: Uint8Array.from(Buffer.from(action.program)),
-        completion: Promise.resolve({
-          exitCode: 0,
-          output: "执行输出 " + action.program,
-          cwd: "/srv",
-        }),
-        dispose: () => {},
+        completion:
+          heldCommand?.promise ??
+          Promise.resolve({
+            exitCode: 0,
+            output: "执行输出 " + action.program,
+            cwd: "/srv",
+          }),
+        dispose: () =>
+          heldCommand?.resolve({ exitCode: null, output: "接管前已有输出" }),
       }),
     },
   };
@@ -387,3 +397,35 @@ it("waits for the selected directory plan before initializing authorization defa
     ).value,
   ).toBe("100");
 });
+
+it.each([false, true])(
+  "keeps dispatched output uncertain after takeover in automatic=%s mode",
+  async (automatic) => {
+    let resolve!: (value: { exitCode: number | null; output: string }) => void;
+    const promise = new Promise<{ exitCode: number | null; output: string }>(
+      (yes) => {
+        resolve = yes;
+      },
+    );
+    heldCommand = { promise, resolve };
+    await createPlan(automatic);
+    authorize();
+    if (!automatic)
+      fireEvent.click(
+        await screen.findByRole("button", { name: "确认执行这一条" }),
+      );
+    await waitFor(() => expect(writes).toContain("pwd"));
+    fireEvent.click(screen.getByRole("button", { name: "立即接管" }));
+    await waitFor(() =>
+      expect(runtime.list(actor)[0].operations[0].status).toBe("unknown"),
+    );
+    await screen.findByText("你持有控制权");
+    expect(writes).toEqual(["context", "pwd"]);
+    expect(runtime.list(actor)[0].state).toBe("paused-human");
+    await screen.findByText("结果未知");
+    expect(
+      document.querySelector(".tandem-operation.unknown")?.textContent,
+    ).toContain("pwd");
+    expect(document.body.textContent).not.toContain("已完成");
+  },
+);

@@ -836,9 +836,10 @@
         "43-task-execution-recovery.md",
         "56-linux-ssh-acceptance.md",
         "64-jump-combined-acceptance.md",
-        "68-provider-response-bounds.md"
+        "68-provider-response-bounds.md",
+        "106-dispatched-takeover-ui.md"
       ],
-      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+      "remaining": "已派发 pwd 在自动/协作中文面板接管后显示结果未知、保留命令且不派发后续步骤，服务端未发送竞态已有专项；仍需完整真实远端派发时点与界面联动观察。"
     },
     {
       "id": "A06",
