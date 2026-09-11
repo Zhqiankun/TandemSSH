@@ -651,3 +651,84 @@ it("keeps the running workflow snapshot and uses an edit only on its next run", 
     f.runtime.workflowRun(actor, task.id, second.id).workflow.revision,
   ).toBe(updated.revision);
 });
+
+it.each(["automatic", "collaborative"] as const)(
+  "resumes after the interrupted second step without replaying step one in %s mode",
+  async (mode) => {
+    const f = fixture({ holdProgram: "printf" });
+    f.definition.steps.push({
+      id: "three",
+      name: "最后一步",
+      action: { type: "command", program: "pwd", args: ["-L"] },
+    });
+    const saved = await f.saved(),
+      task = await f.create(mode);
+    await f.authorize(task.id);
+    const run = await f.library.run(
+      actor,
+      task.id,
+      f.preview(saved.id, task.id).id,
+      "second-step-takeover",
+    );
+    if (mode === "collaborative") {
+      for (let i = 0; i < 2; i++) {
+        await vi.waitFor(() => {
+          const view = f.runtime.get(actor, task.id);
+          expect(view.state).toBe("awaiting-approval");
+          expect(view.operations).toHaveLength(i + 1);
+        });
+        const op = f.runtime.get(actor, task.id).operations[i];
+        await f.runtime.approve(human, task.id, op.id, op.digest, 1);
+      }
+    }
+    await vi.waitFor(() => expect(f.writes).toContain("printf"));
+    const previous = f.runtime.get(actor, task.id).operations[1];
+    f.control.humanInput(Buffer.from("manual"));
+    await vi.waitFor(() =>
+      expect(f.runtime.get(actor, task.id).operations[1].status).toBe(
+        "unknown",
+      ),
+    );
+    expect(f.commands.map((c) => c.args)).toEqual([[], ["%s", "hello"]]);
+    await expect(f.authorize(task.id)).rejects.toThrow(
+      "RECONCILIATION_REQUIRED",
+    );
+    await expect(
+      f.runtime.approve(human, task.id, previous.id, previous.digest, 1),
+    ).rejects.toThrow();
+    await f.authorize(task.id, { reconciliation: "skip" });
+    if (mode === "collaborative") {
+      await vi.waitFor(() => {
+        const view = f.runtime.get(actor, task.id);
+        expect(view.state).toBe("awaiting-approval");
+        expect(view.operations).toHaveLength(3);
+      });
+      const third = f.runtime.get(actor, task.id).operations[2],
+        before = [...f.writes];
+      await expect(
+        f.runtime.approve(human, task.id, third.id, previous.digest, 1),
+      ).rejects.toThrow();
+      expect(f.writes).toEqual(before);
+      await f.runtime.approve(human, task.id, third.id, third.digest, 1);
+    }
+    await vi.waitFor(() =>
+      expect(f.runtime.workflowRun(actor, task.id, run.id).state).toBe(
+        "completed-with-errors",
+      ),
+    );
+    const operations = f.runtime.get(actor, task.id).operations;
+    expect(operations.map((op) => op.status)).toEqual([
+      "succeeded",
+      "unknown",
+      "succeeded",
+    ]);
+    expect(operations[1]).toMatchObject({ reviewed: { decision: "skip" } });
+    expect(
+      f.commands.map((c) => ({ program: c.program, args: c.args })),
+    ).toEqual([
+      { program: "pwd", args: [] },
+      { program: "printf", args: ["%s", "hello"] },
+      { program: "pwd", args: ["-L"] },
+    ]);
+  },
+);

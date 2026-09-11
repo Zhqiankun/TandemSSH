@@ -1129,7 +1129,7 @@
       "id": "A20",
       "requirement": "流程途中接管再交还",
       "acceptance": "选择恢复点，不重跑已完成步骤",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/workflows",
       "records": [
         "15-saved-workflows.md",
@@ -1138,9 +1138,10 @@
         "31-workflow-files.md",
         "36-workflow-directory-steps.md",
         "43-task-execution-recovery.md",
-        "45-parent-workflow-recovery.md"
+        "45-parent-workflow-recovery.md",
+        "153-workflow-takeover-resume.md"
       ],
-      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+      "remaining": ""
     },
     {
       "id": "A21",
