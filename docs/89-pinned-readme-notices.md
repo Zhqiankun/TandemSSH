@@ -11,3 +11,5 @@
 10 项测试通过（2 文件），含准确版本匹配、未来版本不套用及补充文本被修改后的拒绝；修改文件 ESLint 通过。真实 Windows afterPack 和 Electron 原生探针通过，341 个包、7 个待核对项，七份补充文本全部存在。证据 .cache/pinned-notices-tests.log、.cache/pinned-notices-package.log、.cache/pinned-notices-native-probe.log。
 
 剩余七项：@napi-rs/keyring-win32-x64-msvc 2.0.0、abstract-logging 2.0.1、base32.js 0.0.1、drizzle-orm 0.45.2、lazy-val 1.0.5、precond 0.2.3、standardwebhooks 1.0.0。部分有短许可证链接或代码版权头，但尚未确认完整原文，不凭关联包的许可证代替。前端打包依赖、字体图标和原生捆绑库也不在此七项范围内，仍需分别核对。公开 alpha.3 不包含此次补充。
+
+后续已通过固定上游提交补齐 keyring 平台包与 drizzle 两份原文，待核对项降到五个；具体来源和未采用的冲突声明见 [90](90-pinned-upstream-notices.md)。

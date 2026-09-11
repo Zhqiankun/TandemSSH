@@ -16,9 +16,10 @@
         "25-github-releases.md",
         "46-online-update-acceptance.md",
         "88-packaged-dependency-notices.md",
-        "89-pinned-readme-notices.md"
+        "89-pinned-readme-notices.md",
+        "90-pinned-upstream-notices.md"
       ],
-      "remaining": "实际随包 npm 清单与七份锁定版本 README 原文已交付验证；341 个包仍有 7 项需核对，前端打包依赖、字体图标和原生捆绑库声明仍需完成。"
+      "remaining": "实际随包 npm 清单与九份固定版本补充原文已验证；341 个包仍有 5 项需核对，前端打包依赖、字体图标和原生捆绑库声明仍需完成。"
     },
     {
       "id": "R02",
