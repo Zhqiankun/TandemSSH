@@ -803,7 +803,7 @@
       "id": "A04",
       "requirement": "排队命令中接管",
       "acceptance": "接管成功后旧队列无 remote.write",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/sessions/control.ts",
       "records": [
         "12-implementation.md",
@@ -812,9 +812,12 @@
         "43-task-execution-recovery.md",
         "56-linux-ssh-acceptance.md",
         "64-jump-combined-acceptance.md",
-        "68-provider-response-bounds.md"
+        "68-provider-response-bounds.md",
+        "91-core-control-acceptance.md"
       ],
-      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+      "remaining": "",
+      "verifiedAt": "2026-09-11",
+      "verification": "准备/审计排队阶段接管后，旧队列无自动写入，仅人工写入；旧租约再次交还仍失效。"
     },
     {
       "id": "A05",
@@ -837,7 +840,7 @@
       "id": "A06",
       "requirement": "模型迟到响应",
       "acceptance": "旧 epoch/generation 的请求被拒绝",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/sessions/control.ts",
       "records": [
         "12-implementation.md",
@@ -846,9 +849,12 @@
         "43-task-execution-recovery.md",
         "56-linux-ssh-acceptance.md",
         "64-jump-combined-acceptance.md",
-        "68-provider-response-bounds.md"
+        "68-provider-response-bounds.md",
+        "91-core-control-acceptance.md"
       ],
-      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+      "remaining": "",
+      "verifiedAt": "2026-09-11",
+      "verification": "阻塞的旧模型响应在人工接管与快速交还后被丢弃，新请求使用人工后的工作目录。"
     },
     {
       "id": "A07",
@@ -901,15 +907,18 @@
       "id": "A10",
       "requirement": "策略变更与审批竞态",
       "acceptance": "派发前重新判断，旧审批失效",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration",
       "records": [
         "18-file-operation-gateway.md",
         "20-legacy-command-migration.md",
         "23-host-trust.md",
-        "29-local-file-grants.md"
+        "29-local-file-grants.md",
+        "91-core-control-acceptance.md"
       ],
-      "remaining": "策略、路径授权与主机信任有专项；仍需完整规则组合、撤销与 UI 来源解释逐项核对。"
+      "remaining": "",
+      "verifiedAt": "2026-09-11",
+      "verification": "命令与文件在审计等待期间策略 revision 变化后不派发；文件分块不继续下一块；生产保存策略前同步撤销会话控制。"
     },
     {
       "id": "A11",

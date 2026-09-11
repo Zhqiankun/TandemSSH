@@ -4,6 +4,7 @@ import {
   OperationGateway,
   type FileExecutorPort,
   type OperationContext,
+  type OperationAuditPort,
 } from "../../collaboration/operations/gateway";
 import { SessionControl } from "../../collaboration/sessions/control";
 import {
@@ -36,6 +37,7 @@ function deferred() {
 function fixture(
   mode: OperationContext["mode"] = "automatic",
   custom?: FileExecutorPort,
+  beforeAudit?: OperationAuditPort["append"],
 ) {
   const writes: string[] = [],
     events: unknown[] = [],
@@ -78,6 +80,7 @@ function fixture(
     {
       append: async (event) => {
         events.push(event);
+        await beforeAudit?.(event);
       },
     },
     Date.now,
@@ -345,7 +348,7 @@ describe("file actions in the shared gateway", () => {
     expect(chunks).toEqual(["first"]);
     expect(f.writes).toEqual([]);
   });
-  it("rechecks canonical paths and policy changes before later I/O", async () => {
+  it("rechecks canonical paths before later I/O", async () => {
     let reads = 0;
     const f = fixture("automatic", {
       prepare: async () => ({
@@ -448,3 +451,62 @@ it.each([
     expect((await f.gateway.dispatch(op.id)).error).toBe("INVALID_FILE_RESULT");
   },
 );
+
+it("invalidates a file approval when policy changes during intent journaling", async () => {
+  const entered = deferred(),
+    release = deferred();
+  const f = fixture("collaborative", undefined, async (event) => {
+    if (event.type === "operation.intent") {
+      entered.resolve();
+      await release.promise;
+    }
+  });
+  f.grant();
+  const operation = await f.gateway.propose(
+    f.context("file-policy-race"),
+    write,
+  );
+  f.gateway.approveOnce(
+    operation.id,
+    operation.digest,
+    operation.decision.revision,
+  );
+  const pending = f.gateway.dispatch(operation.id);
+  await entered.promise;
+  f.policy.revision++;
+  release.resolve();
+  expect((await pending).status).toBe("cancelled-before-send");
+  expect(f.io).toEqual([]);
+  expect(f.writes).toEqual([]);
+});
+it("stops later file chunks after a policy revision change", async () => {
+  const entered = deferred(),
+    release = deferred(),
+    chunks: string[] = [];
+  const f = fixture("automatic", {
+    prepare: async (action) => ({
+      execute: async (guard) => {
+        guard(action.path);
+        chunks.push("first");
+        entered.resolve();
+        await release.promise;
+        guard(action.path);
+        chunks.push("second");
+        return { status: "succeeded" };
+      },
+      dispose: () => {},
+    }),
+  });
+  f.grant();
+  const operation = await f.gateway.propose(
+      f.context("file-policy-chunk"),
+      write,
+    ),
+    pending = f.gateway.dispatch(operation.id);
+  await entered.promise;
+  f.policy.revision++;
+  release.resolve();
+  expect((await pending).status).toBe("unknown");
+  expect(chunks).toEqual(["first"]);
+  expect(f.writes).toEqual([]);
+});
