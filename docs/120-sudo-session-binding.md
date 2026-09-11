@@ -41,3 +41,12 @@
 
 该修复限定结果真实性，不改变删除确认、命令权限或 SSH 通道。operation-commands 统一构造和判断删除协议，session 保留执行事实，route 组织响应。两个专项文件 10 项通过，包括 undefined/null/nonzero 状态；扩大到 file-manager 服务目录 12 文件 / 104 项通过，报告 .cache/file-manager-delete-status-results.json。模拟的是 SSH 通道事件，未执行真实删除。
 服务端结果修复的 ESLint 和 tsc -b 类型检查通过。
+
+## 其他文件操作的同类误报
+
+继续核对 createFile/createFolder/renameItem/moveItem，四个路由均在退出码检查之前仅凭 output.includes("SUCCESS") 返回成功。新增路由级测试使用失败退出码 1 和 SUCCESS 输出，修复前四项全部误返成功；改用统一 fileCommandSucceeded 后均返回 500。
+
+原删除判断函数按实际职责更名为 fileCommandSucceeded，仍属于文件操作命令协议模块，不下沉为跨业务通用层。四个入口保留原有零退出码无标记的兼容分支；本次修复的是非零退出码被文字标记覆盖，不夸大为远端副作用已回滚。成功标记要求独立行，不能由错误路径中的子串触发。
+
+文件服务 13 文件 / 108 项通过，报告 .cache/file-operation-exit-results.json；新增路由测试模拟 SSH 流并使用真实注册处理器，未执行真实文件操作。ESLint 通过。
+其他操作退出状态修复的 tsc -b 类型检查通过。

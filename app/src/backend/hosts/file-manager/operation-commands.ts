@@ -38,7 +38,7 @@ export function buildDeleteCommand(
   };
 }
 
-export function deleteResultSucceeded(
+export function fileCommandSucceeded(
   code: number | null | undefined,
   output?: string,
 ): boolean {

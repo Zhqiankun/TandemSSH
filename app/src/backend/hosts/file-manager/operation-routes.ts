@@ -9,7 +9,7 @@ import {
 } from "./session.js";
 import {
   buildDeleteCommand,
-  deleteResultSucceeded,
+  fileCommandSucceeded,
 } from "./operation-commands.js";
 import {
   emptyTrash,
@@ -247,7 +247,7 @@ export function registerFileOperationRoutes(
       });
 
       stream.on("close", (code) => {
-        if (outputData.includes("SUCCESS")) {
+        if (fileCommandSucceeded(code, outputData)) {
           if (!res.headersSent) {
             res.json({
               message: "File created successfully",
@@ -392,7 +392,7 @@ export function registerFileOperationRoutes(
       });
 
       stream.on("close", (code) => {
-        if (outputData.includes("SUCCESS")) {
+        if (fileCommandSucceeded(code, outputData)) {
           fileLogger.success("Directory created successfully", {
             operation: "file_mkdir_success",
             sessionId,
@@ -554,7 +554,7 @@ export function registerFileOperationRoutes(
         if (useSudo && sshConn.sudoPassword) {
           execWithSudo(sshConn, deleteCommand, sshConn.sudoPassword).then(
             (result) => {
-              if (deleteResultSucceeded(result.code)) {
+              if (fileCommandSucceeded(result.code)) {
                 res.json({
                   message: "Item deleted successfully",
                   path: itemPath,
@@ -616,7 +616,7 @@ export function registerFileOperationRoutes(
               return;
             }
 
-            if (deleteResultSucceeded(code, outputData)) {
+            if (fileCommandSucceeded(code, outputData)) {
               fileLogger.success("Item deleted successfully", {
                 operation: "file_delete_success",
                 sessionId,
@@ -764,7 +764,7 @@ export function registerFileOperationRoutes(
       });
 
       stream.on("close", (code) => {
-        if (outputData.includes("SUCCESS")) {
+        if (fileCommandSucceeded(code, outputData)) {
           fileLogger.success("Item renamed successfully", {
             operation: "file_rename_success",
             sessionId,
@@ -941,7 +941,7 @@ export function registerFileOperationRoutes(
 
       stream.on("close", (code) => {
         clearTimeout(commandTimeout);
-        if (outputData.includes("SUCCESS")) {
+        if (fileCommandSucceeded(code, outputData)) {
           if (!res.headersSent) {
             res.json({
               message: "Item moved successfully",

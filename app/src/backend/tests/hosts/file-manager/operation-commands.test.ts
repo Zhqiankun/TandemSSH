@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDeleteCommand,
-  deleteResultSucceeded,
+  fileCommandSucceeded,
 } from "../../../hosts/file-manager/operation-commands.js";
 
 describe("buildDeleteCommand", () => {
@@ -49,10 +49,10 @@ describe("buildDeleteCommand", () => {
 
 it("requires an actual zero exit and, for framed deletes, a standalone success marker", () => {
   for (const code of [null, undefined, 1, 126, 127]) {
-    expect(deleteResultSucceeded(code)).toBe(false);
-    expect(deleteResultSucceeded(code, "SUCCESS\n")).toBe(false);
+    expect(fileCommandSucceeded(code)).toBe(false);
+    expect(fileCommandSucceeded(code, "SUCCESS\n")).toBe(false);
   }
-  expect(deleteResultSucceeded(0)).toBe(true);
-  expect(deleteResultSucceeded(0, "SUCCESS\r\n")).toBe(true);
-  expect(deleteResultSucceeded(0, "not SUCCESS")).toBe(false);
+  expect(fileCommandSucceeded(0)).toBe(true);
+  expect(fileCommandSucceeded(0, "SUCCESS\r\n")).toBe(true);
+  expect(fileCommandSucceeded(0, "not SUCCESS")).toBe(false);
 });
