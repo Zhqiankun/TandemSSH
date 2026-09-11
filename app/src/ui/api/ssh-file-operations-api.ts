@@ -1,3 +1,4 @@
+import { throwFileOperationError } from "./file-operation-errors";
 import type {
   SaveFileDocument,
   SavedFileDocument,
@@ -484,7 +485,7 @@ export async function createSSHFile(
     );
     return response.data;
   } catch (error) {
-    handleApiError(error, "create SSH file");
+    throwFileOperationError(error, "create SSH file");
   }
 }
 
@@ -502,7 +503,7 @@ export async function createSSHFolder(
     );
     return response.data;
   } catch (error) {
-    handleApiError(error, "create SSH folder");
+    throwFileOperationError(error, "create SSH folder");
   }
 }
 
@@ -659,7 +660,7 @@ export async function copySSHItem(
     );
     return response.data;
   } catch (error) {
-    handleApiError(error, "copy SSH item");
+    throwFileOperationError(error, "copy SSH item");
     throw error;
   }
 }
@@ -682,7 +683,7 @@ export async function renameSSHItem(
     invalidateCachedFileContent(sessionId, newPath);
     return response.data;
   } catch (error) {
-    handleApiError(error, "rename SSH item");
+    throwFileOperationError(error, "rename SSH item");
     throw error;
   }
 }
@@ -712,7 +713,7 @@ export async function moveSSHItem(
     invalidateCachedFileContent(sessionId, newPath);
     return response.data;
   } catch (error) {
-    handleApiError(error, "move SSH item");
+    throwFileOperationError(error, "move SSH item");
     throw error;
   }
 }

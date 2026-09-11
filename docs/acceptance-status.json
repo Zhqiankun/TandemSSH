@@ -642,9 +642,11 @@
         "125-cross-filesystem-move.md",
         "126-partial-file-undo.md",
         "127-file-undo-session.md",
-        "128-desktop-file-undo.md"
+        "128-desktop-file-undo.md",
+        "135-exclusive-file-create.md",
+        "136-desktop-file-create.md"
       ],
-      "remaining": "重命名已有真实 OpenSSH 冲突验证；Linux 跨文件系统文件/目录/链接移动及满盘保源已实测。Windows 客户端连接真实 SSH 的目录复制、移动和切换目录后撤销已通过；批量失败撤销、重连中止目前仅逻辑测试/调用检查。新建文件/目录与完整批量操作界面仍需验收，复制命名冲突和超时结果仍需审查。"
+      "remaining": "重命名与 Linux 跨文件系统移动已有真实 OpenSSH 验证；Windows→真实 SSH 的目录复制/移动/异地撤销、新建文件/目录及同名冲突已通过。批量失败撤销、重连中止仍只有逻辑测试/调用检查；复制命名冲突、超时/断连以及完整批量删除界面仍需验收。"
     },
     {
       "id": "B10",
