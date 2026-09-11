@@ -788,7 +788,7 @@
       "id": "A03",
       "requirement": "切标签时 AI 派发",
       "acceptance": "动作仍绑定原会话，不能落到新活动标签",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/sessions/control.ts",
       "records": [
         "12-implementation.md",
@@ -799,9 +799,12 @@
         "64-jump-combined-acceptance.md",
         "68-provider-response-bounds.md",
         "103-workbench-session-isolation.md",
-        "104-ai-session-binding.md"
+        "104-ai-session-binding.md",
+        "107-windows-multitab-ai.md"
       ],
-      "remaining": "界面延迟提交绑定、工作台跨会话隔离、服务端双模式并发命令及上下文隔离均有专项测试；仍需实际 Windows 多标签与远端副作用联动观察。"
+      "remaining": "",
+      "verifiedAt": "2026-09-12",
+      "verification": "真实 Windows 双标签连接独立 Linux SSH 会话：B 人工输入期间释放 A 模型响应，自动及协作模式仅在 A 执行，B 输出与控制权独立；实际截图、模型请求和两会话输出均已核对。"
     },
     {
       "id": "A04",
