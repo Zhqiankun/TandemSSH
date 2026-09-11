@@ -6,9 +6,17 @@ import type { AiTaskView } from "@/types/ai-task";
 export function AiTaskTranscript({ run }: { run: AiTaskView }) {
   const { t } = useTranslation();
   const nextBudget = Math.min(64, run.maxTurns + 10);
-  const [answer, setAnswer] = useState(""),
+  const [draft, setDraft] = useState<{
+      runId: string;
+      questionId: string;
+      text: string;
+    }>(),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const answer =
+    draft?.runId === run.id && draft.questionId === run.question?.id
+      ? draft.text
+      : "";
   async function action(work: () => Promise<unknown>) {
     setBusy(true);
     setError("");
@@ -75,7 +83,13 @@ export function AiTaskTranscript({ run }: { run: AiTaskView }) {
             event.preventDefault();
             void action(async () => {
               await aiTaskApi.reply(run.id, run.question!.id, answer);
-              setAnswer("");
+              setDraft((current) =>
+                current?.runId === run.id &&
+                current.questionId === run.question!.id &&
+                current.text === answer
+                  ? undefined
+                  : current,
+              );
             });
           }}
         >
@@ -83,7 +97,13 @@ export function AiTaskTranscript({ run }: { run: AiTaskView }) {
             {run.question.text}
             <textarea
               value={answer}
-              onChange={(event) => setAnswer(event.target.value)}
+              onChange={(event) =>
+                setDraft({
+                  runId: run.id,
+                  questionId: run.question!.id,
+                  text: event.target.value,
+                })
+              }
               required
               maxLength={8000}
               rows={3}

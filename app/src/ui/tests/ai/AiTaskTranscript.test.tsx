@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -76,4 +77,63 @@ it("retains the paused state and displays a Chinese failure when the budget requ
       .hasAttribute("disabled"),
   ).toBe(false);
   expect(document.body.textContent).not.toContain("offline");
+});
+it("does not carry an answer draft into a different question of the same task", async () => {
+  const initial = {
+    ...run(20),
+    error: undefined,
+    phase: "awaiting-answer" as const,
+    question: { id: "first", text: "第一问" },
+  };
+  const { rerender } = render(<AiTaskTranscript run={initial} />);
+  fireEvent.change(screen.getByRole("textbox"), {
+    target: { value: "旧问题的回答" },
+  });
+  rerender(
+    <AiTaskTranscript
+      run={{ ...initial, question: { id: "second", text: "第二问" } }}
+    />,
+  );
+  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("");
+  expect(
+    screen
+      .getByRole("button", { name: "发送补充信息" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+});
+it("preserves text edited while an earlier reply is being sent", async () => {
+  let resolve!: () => void;
+  api.reply.mockReturnValue(
+    new Promise<void>((yes) => {
+      resolve = yes;
+    }),
+  );
+  render(
+    <AiTaskTranscript
+      run={{
+        ...run(20),
+        error: undefined,
+        phase: "awaiting-answer",
+        question: { id: "question", text: "补充信息" },
+      }}
+    />,
+  );
+  fireEvent.change(screen.getByRole("textbox"), {
+    target: { value: "已发送的回答" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "发送补充信息" }));
+  fireEvent.change(screen.getByRole("textbox"), {
+    target: { value: "发送期间新写的内容" },
+  });
+  await act(async () => {
+    resolve();
+  });
+  expect(api.reply).toHaveBeenCalledExactlyOnceWith(
+    "run",
+    "question",
+    "已发送的回答",
+  );
+  expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+    "发送期间新写的内容",
+  );
 });
