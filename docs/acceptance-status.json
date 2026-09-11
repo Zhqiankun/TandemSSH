@@ -129,7 +129,7 @@
       "id": "R08",
       "requirement": "可配置黑白名单",
       "acceptance": "全局、服务器组、服务器和任务规则可管理，冲突可解释",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration",
       "records": [
         "18-file-operation-gateway.md",
@@ -140,9 +140,10 @@
         "137-command-policy-scope-review.md",
         "138-policy-grants-and-conflicts.md",
         "139-policy-persistence-review.md",
-        "140-policy-encrypted-restart.md"
+        "140-policy-encrypted-restart.md",
+        "141-desktop-policy-management.md"
       ],
-      "remaining": "跨来源规则矩阵与A09来源解释已验证；生产保存函数故障/并发测试及真实加密数据库跨独立进程恢复四级规则已通过。桌面规则编辑、保存和重新打开的完整流程仍需验收。"
+      "remaining": ""
     },
     {
       "id": "R09",
