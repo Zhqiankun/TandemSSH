@@ -177,6 +177,12 @@ interface RecordTask {
   attempts: Set<string>;
   probe?: PreparedCommand;
   submitting?: boolean;
+  pendingSubmission?: {
+    requestId: string;
+    actionKey: string;
+    generation: number;
+    promise: Promise<OperationView>;
+  };
   listeners: Set<() => void>;
   progressListeners: Set<() => void>;
   directoryReservation?: object;
@@ -1960,6 +1966,15 @@ export class TaskRuntime {
         throw new Error("REQUEST_CONFLICT");
       return previous;
     }
+    const pending = task.pendingSubmission;
+    if (pending?.requestId === requestId) {
+      if (pending.actionKey !== JSON.stringify(action))
+        throw new Error("REQUEST_CONFLICT");
+      const original = await pending.promise;
+      if (pending.generation !== task.generation)
+        throw new Error("STALE_CONTROL");
+      return task.gateway.get(original.id);
+    }
     if (
       task.submitting ||
       task.view.state === "running" ||
@@ -1968,10 +1983,19 @@ export class TaskRuntime {
       throw new Error("OPERATION_IN_PROGRESS");
     const version = task.generation;
     task.submitting = true;
+    const submission = {
+      requestId,
+      actionKey: JSON.stringify(action),
+      generation: version,
+      promise: this.propose(task, action, requestId),
+    };
+    task.pendingSubmission = submission;
     let op: OperationView;
     try {
-      op = await this.propose(task, action, requestId);
+      op = await submission.promise;
     } finally {
+      if (task.pendingSubmission === submission)
+        task.pendingSubmission = undefined;
       task.submitting = false;
     }
     if (version !== task.generation) throw new Error("STALE_CONTROL");

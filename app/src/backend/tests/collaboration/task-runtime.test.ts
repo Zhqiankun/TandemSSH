@@ -1219,3 +1219,65 @@ it.each(["failed", "takeover"] as const)(
   },
 );
 
+it("keeps joined retries stale when takeover happens during proposal audit", async () => {
+  const entered = deferred<void>(),
+    release = deferred<void>();
+  const audit = {
+    record: vi.fn(async () => {}),
+    append: vi.fn(
+      async (event: Parameters<OperationAuditPort["append"]>[0]) => {
+        if (event.type === "operation.proposed") {
+          entered.resolve();
+          await release.promise;
+        }
+      },
+    ),
+  };
+  const f = fixture({ audit });
+  const task = await f.create("automatic", [], mcp, "joined-takeover");
+  await f.authorize(task, { matches: [{ kind: "program", program: "pwd" }] });
+  const first = f.runtime.submit(
+    mcp,
+    task.id,
+    { program: "pwd", args: [] },
+    "joined",
+  );
+  await entered.promise;
+  const duplicate = f.runtime.submit(
+    mcp,
+    task.id,
+    { program: "pwd", args: [] },
+    "joined",
+  );
+  const settled = Promise.allSettled([first, duplicate]);
+  try {
+    await expect(
+      f.runtime.submit(
+        mcp,
+        task.id,
+        { program: "pwd", args: ["-L"] },
+        "joined",
+      ),
+    ).rejects.toThrow("REQUEST_CONFLICT");
+    await expect(
+      f.runtime.submit(mcp, task.id, { program: "pwd", args: [] }, "different"),
+    ).rejects.toThrow("OPERATION_IN_PROGRESS");
+    f.control.humanInput(Buffer.from("manual"));
+  } finally {
+    release.resolve();
+  }
+  const results = await settled;
+  for (const result of results) {
+    expect(result.status).toBe("rejected");
+    if (result.status === "rejected")
+      expect(result.reason.message).toBe("STALE_CONTROL");
+  }
+  expect(
+    audit.append.mock.calls.filter(
+      ([event]) => event.type === "operation.proposed",
+    ),
+  ).toHaveLength(1);
+  expect(f.writes.filter((value) => value === "pwd")).toHaveLength(0);
+  expect(f.control.snapshot().controller.kind).toBe("human");
+  f.disconnect();
+});

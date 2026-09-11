@@ -1017,9 +1017,10 @@
         "43-task-execution-recovery.md",
         "56-linux-ssh-acceptance.md",
         "64-jump-combined-acceptance.md",
-        "68-provider-response-bounds.md"
+        "68-provider-response-bounds.md",
+        "155-mcp-pending-retry.md"
       ],
-      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+      "remaining": "自动/协作MCP命令并发重复、完成后重复、改参数复用及登记时接管已验证；文件/目录等其他带requestId入口仍需逐项核对。"
     },
     {
       "id": "A14",

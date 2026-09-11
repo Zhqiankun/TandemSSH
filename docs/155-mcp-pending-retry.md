@@ -1,0 +1,9 @@
+# MCP 并发重试等待同一次命令登记
+
+2026-09-12，A13命令请求专项。实际MCP SDK→Server→CoreService→TaskRuntime并发提交同一run_command时，原代码在operation尚未进入索引期间返回OPERATION_IN_PROGRESS；不会重复写入，但不满足同请求返回原操作的重试契约。
+
+RecordTask新增最多一项pendingSubmission，保存requestId、动作摘要、generation和原提议Promise。同ID同动作等待这一次Promise；动作不同立即REQUEST_CONFLICT；其他requestId继续OPERATION_IN_PROGRESS。返回前再次验证generation，接管后两个请求都失效；原请求仍是唯一触发dispatch的路径。finally清理临时元数据，未增加持久化或共享抽象，原submitting锁供其他流程/恢复边界继续使用。
+
+MCP协议测试覆盖自动/协作：并发start_task仅一任务，并发run_command返回同operationId；协作先不执行，人工批准后仅写入一次；完成后重试仍返回原成功操作，改参数复用ID被拒绝。另在提议审计挂起时发起重复/冲突/不同请求，再人工接管：两相同请求返回STALE_CONTROL，只有一次提议审计，无pwd写入，控制权保持human。
+
+首轮五文件71项通过（含父流程、任务运行时及MCP协议），增加接管竞态后两文件44项通过。ESLint与tsc -b通过。传输为MCP内存链路、SSH写入为测试端口，不冒充实际Codex stdio/远端SSH重跑。A13其他文件/目录请求重试范围仍需核对，不据命令测试单独标记整个A13完成。
