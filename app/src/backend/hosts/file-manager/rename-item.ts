@@ -41,6 +41,22 @@ export async function renameFileItem(
     throw Error("INVALID_RENAME_PATH");
   if (isWindowsSftpPath(oldPath)) oldPath = oldPath.replaceAll("\\", "/");
   const target = oldPath.slice(0, oldPath.lastIndexOf("/") + 1) + newName;
+  return moveFileItem(sftp, oldPath, target);
+}
+export async function moveFileItem(
+  sftp: SFTPWrapper,
+  oldPath: string,
+  target: string,
+): Promise<string> {
+  if (
+    [oldPath, target].some(
+      (value) =>
+        typeof value !== "string" || !value.length || value.includes("\0"),
+    )
+  )
+    throw Error("INVALID_MOVE_PATH");
+  if (isWindowsSftpPath(oldPath)) oldPath = oldPath.replaceAll("\\", "/");
+  if (isWindowsSftpPath(target)) target = target.replaceAll("\\", "/");
   await request((done) => sftp.lstat(oldPath, done), "FILE_READ_TIMEOUT");
   if (target === oldPath) return target;
   try {

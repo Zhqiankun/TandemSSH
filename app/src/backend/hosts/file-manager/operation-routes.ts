@@ -1,4 +1,4 @@
-import { renameFileItem } from "./rename-item.js";
+import { renameFileItem, moveFileItem } from "./rename-item.js";
 import type { Express } from "express";
 import type { AuthenticatedRequest } from "../../../types/index.js";
 import { fileLogger } from "../../utils/logger.js";
@@ -830,109 +830,36 @@ export function registerFileOperationRoutes(
 
     sshConn.lastActive = Date.now();
 
-    const escapedOldPath = oldPath.replace(/'/g, "'\"'\"'");
-    const escapedNewPath = newPath.replace(/'/g, "'\"'\"'");
-
-    const moveCommand = `mv -- '${escapedOldPath}' '${escapedNewPath}' && echo "SUCCESS" && exit 0`;
-
-    const commandTimeout = setTimeout(() => {
-      if (!res.headersSent) {
-        res.status(408).json({
-          error: "Move operation timed out. SSH connection may be unstable.",
-          toast: {
-            type: "error",
-            message:
-              "Move operation timed out. SSH connection may be unstable.",
-          },
+    try {
+      const movedPath = await moveFileItem(
+        await getSessionSftp(sshConn),
+        oldPath,
+        newPath,
+      );
+      res.json({
+        message: "Item moved successfully",
+        oldPath,
+        newPath: movedPath,
+      });
+    } catch (error) {
+      const message = (error as Error).message;
+      const code = (error as { code?: number }).code;
+      res
+        .status(
+          message === "FILE_TARGET_EXISTS"
+            ? 409
+            : message === "INVALID_MOVE_PATH"
+              ? 400
+              : code === 3
+                ? 403
+                : 500,
+        )
+        .json({
+          error:
+            message === "RENAME_RESULT_UNKNOWN"
+              ? "MOVE_RESULT_UNKNOWN"
+              : message,
         });
-      }
-    }, 60000);
-
-    execChannel(sshConn, moveCommand, (err, stream) => {
-      if (err) {
-        clearTimeout(commandTimeout);
-        fileLogger.error("SSH moveItem error:", err);
-        if (!res.headersSent) {
-          return res.status(500).json({ error: err.message });
-        }
-        return;
-      }
-
-      let outputData = "";
-      let errorData = "";
-
-      stream.on("data", (chunk: Buffer) => {
-        outputData += chunk.toString();
-      });
-
-      stream.stderr.on("data", (chunk: Buffer) => {
-        errorData += chunk.toString();
-
-        if (chunk.toString().includes("Permission denied")) {
-          fileLogger.error(`Permission denied moving: ${oldPath}`);
-          if (!res.headersSent) {
-            return res.status(403).json({
-              error: `Permission denied: Cannot move ${oldPath}. Check file permissions.`,
-              toast: {
-                type: "error",
-                message: `Permission denied: Cannot move ${oldPath}. Check file permissions.`,
-              },
-            });
-          }
-          return;
-        }
-      });
-
-      stream.on("close", (code) => {
-        clearTimeout(commandTimeout);
-        if (fileCommandSucceeded(code, outputData)) {
-          if (!res.headersSent) {
-            res.json({
-              message: "Item moved successfully",
-              oldPath,
-              newPath,
-              toast: {
-                type: "success",
-                message: `Item moved: ${oldPath} -> ${newPath}`,
-              },
-            });
-          }
-          return;
-        }
-
-        if (code !== 0) {
-          fileLogger.error(
-            `SSH moveItem command failed with code ${code}: ${errorData.replace(/\n/g, " ").trim()}`,
-          );
-          if (!res.headersSent) {
-            return res.status(500).json({
-              error: `Command failed: ${errorData}`,
-              toast: { type: "error", message: `Move failed: ${errorData}` },
-            });
-          }
-          return;
-        }
-
-        if (!res.headersSent) {
-          res.json({
-            message: "Item moved successfully",
-            oldPath,
-            newPath,
-            toast: {
-              type: "success",
-              message: `Item moved: ${oldPath} -> ${newPath}`,
-            },
-          });
-        }
-      });
-
-      stream.on("error", (streamErr) => {
-        clearTimeout(commandTimeout);
-        fileLogger.error("SSH moveItem stream error:", streamErr);
-        if (!res.headersSent) {
-          res.status(500).json({ error: `Stream error: ${streamErr.message}` });
-        }
-      });
-    });
+    }
   });
 }

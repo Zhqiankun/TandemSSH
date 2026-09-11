@@ -1,6 +1,9 @@
 import { expect, it, vi } from "vitest";
 import type { SFTPWrapper } from "ssh2";
-import { renameFileItem } from "../../../hosts/file-manager/rename-item.js";
+import {
+  renameFileItem,
+  moveFileItem,
+} from "../../../hosts/file-manager/rename-item.js";
 function fixture(targetExists = false, race = false) {
   const files = new Map([["/srv/source", "source"]]);
   if (targetExists) files.set("/srv/target", "existing");
@@ -69,5 +72,25 @@ it("does not report a conflict or retry after an unconfirmed rename response", a
   await expect(renameFileItem(f.sftp, "/srv/source", "target")).rejects.toThrow(
     "RENAME_RESULT_UNKNOWN",
   );
+  expect(f.rename).toHaveBeenCalledTimes(1);
+});
+
+it("moves to an explicit destination in a different directory", async () => {
+  const f = fixture();
+  expect(await moveFileItem(f.sftp, "/srv/source", "/other/new")).toBe(
+    "/other/new",
+  );
+  expect(f.files.get("/other/new")).toBe("source");
+  expect(f.files.has("/srv/source")).toBe(false);
+});
+it("does not fall back to destructive copying when the server refuses a move", async () => {
+  const f = fixture();
+  f.rename.mockImplementation((_old, _next, done) =>
+    done(Object.assign(Error("cross-device"), { code: 4 })),
+  );
+  await expect(
+    moveFileItem(f.sftp, "/srv/source", "/other/new"),
+  ).rejects.toThrow("cross-device");
+  expect(f.files.get("/srv/source")).toBe("source");
   expect(f.rename).toHaveBeenCalledTimes(1);
 });

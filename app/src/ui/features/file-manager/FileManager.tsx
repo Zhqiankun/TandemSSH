@@ -1791,6 +1791,14 @@ function FileManagerContent({
     }
   }
 
+  function fileMoveError(error: unknown) {
+    const code = (error as { response?: { data?: { error?: string } } })
+      ?.response?.data?.error;
+    if (code === "FILE_TARGET_EXISTS") return t("fileManager.moveTargetExists");
+    if (code === "MOVE_RESULT_UNKNOWN")
+      return t("fileManager.moveResultUnknown");
+    return getErrorMessage(error, String(error));
+  }
   async function handlePasteFiles() {
     if (!clipboard || !sshSessionId) return;
 
@@ -1869,7 +1877,7 @@ function FileManagerContent({
                     ? t("fileManager.copy")
                     : t("fileManager.move"),
                 name: file.name,
-                error: getErrorMessage(error, String(error)),
+                error: fileMoveError(error),
               }),
             );
           }
@@ -1948,7 +1956,7 @@ function FileManagerContent({
         setClipboard(null);
       }
     } catch (error: unknown) {
-      const errorMessage = getErrorMessage(error, String(error));
+      const errorMessage = fileMoveError(error);
       toast.error(`${t("fileManager.pasteFailed")}: ${errorMessage}`);
     }
   }
@@ -2788,7 +2796,7 @@ function FileManagerContent({
           toast.error(
             t("fileManager.moveFileFailed", { name: file.name }) +
               ": " +
-              getErrorMessage(error, String(error)),
+              fileMoveError(error),
           );
         }
       }
@@ -2823,9 +2831,7 @@ function FileManagerContent({
     } catch (error: unknown) {
       console.error("Drag move operation failed:", error);
       toast.error(
-        t("fileManager.moveOperationFailed") +
-          ": " +
-          getErrorMessage(error, String(error)),
+        t("fileManager.moveOperationFailed") + ": " + fileMoveError(error),
       );
     }
   }

@@ -2386,7 +2386,9 @@
     "batchDeletePartial": "Confirmed {{completed}} items deleted or moved to trash; {{remaining}} items are unconfirmed or not attempted. Refresh before retrying.",
     "sudoSessionChanged": "The connection changed. The pending privileged operation was cancelled; refresh and start it again.",
     "renameTargetExists": "A file or folder with that name already exists. Choose another name; nothing was overwritten.",
-    "renameResultUnknown": "The rename result is unconfirmed. Refresh the directory before trying again."
+    "renameResultUnknown": "The rename result is unconfirmed. Refresh the directory before trying again.",
+    "moveTargetExists": "The destination already exists. No target was overwritten; choose another destination.",
+    "moveResultUnknown": "The move result is unconfirmed. Refresh both directories before trying again."
   },
   "transfer": {
     "copyToHost": "Copy to host…",
