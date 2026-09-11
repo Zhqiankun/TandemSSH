@@ -153,9 +153,11 @@
         "36-workflow-directory-steps.md",
         "43-task-execution-recovery.md",
         "45-parent-workflow-recovery.md",
-        "113-workflow-policy-review.md"
+        "113-workflow-policy-review.md",
+        "114-workflow-secret-store.md",
+        "115-secret-execution-decision.md"
       ],
-      "remaining": "普通串行流程、参数、快照及人工/AI/MCP 调用已核对；08 文档的 secret-ref 安全传输仍未实现，当前明确拒绝而不使用明文参数。"
+      "remaining": "普通串行流程、参数、快照及人工/AI/MCP 调用已核对；系统凭据存储有实际 OS 读写与撤销测试，但未接入执行。08 文档 secret-ref 传输仍未实现，独立无 PTY 输入是否允许已提问待答，当前明确拒绝而不使用明文参数。"
     },
     {
       "id": "R10",
@@ -551,7 +553,7 @@
         "59-windows-file-attributes.md",
         "118-transfer-queue-review.md"
       ],
-      "remaining": "上传并发上限和单项预检失败后继续队列已直接验证，双向暂停/取消/未知提交/释放记录有回归；速度和预计剩余时间、动态并发及完整桌面多文件流程仍需逐项归并。"
+      "remaining": "上传并发上限和单项预检失败后继续队列已直接验证，双向暂停/取消/未知提交/释放记录有回归；速度与预计剩余时间已有实际面板组件和数值边界测试，动态并发及完整桌面多文件流程仍需实机验收。"
     },
     {
       "id": "B07",
@@ -635,9 +637,14 @@
         "119-file-delete-partial-results.md",
         "121-rename-no-overwrite.md",
         "123-move-target-conflicts.md",
-        "124-move-source-cleanup.md"
+        "124-move-source-cleanup.md",
+        "120-sudo-session-binding.md",
+        "125-cross-filesystem-move.md",
+        "126-partial-file-undo.md",
+        "127-file-undo-session.md",
+        "128-desktop-file-undo.md"
       ],
-      "remaining": "重命名已有真实 OpenSSH 冲突验证；移动改为标准 SFTP 拒绝覆盖，但跨文件系统兼容性待补齐，不能作为完整交付。复制/新建及完整批量桌面撤销链仍需验收。"
+      "remaining": "重命名已有真实 OpenSSH 冲突验证；Linux 跨文件系统文件/目录/链接移动及满盘保源已实测。Windows 客户端连接真实 SSH 的目录复制、移动和切换目录后撤销已通过；批量失败撤销、重连中止目前仅逻辑测试/调用检查。新建文件/目录与完整批量操作界面仍需验收，复制命名冲突和超时结果仍需审查。"
     },
     {
       "id": "B10",
