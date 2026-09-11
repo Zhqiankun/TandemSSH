@@ -35,9 +35,14 @@ afterEach(() => {
   mocks.journal.mockClear();
 });
 describe("production file tools over a reused SSH connection", () => {
-  it.each(["automatic", "collaborative"] as const)(
-    "%s MCP file editing uses one authenticated SSH connection",
-    async (mode) => {
+  it.each([
+    ["automatic", "edit"],
+    ["collaborative", "edit"],
+    ["automatic", "write"],
+    ["collaborative", "write"],
+  ] as const)(
+    "%s MCP file %s uses one authenticated SSH connection",
+    async (mode, changeKind) => {
       const remote = await fileSftpFixture(),
         sessionId = randomUUID(),
         principal = {
@@ -239,11 +244,12 @@ describe("production file tools over a reused SSH connection", () => {
           ["list_directory", "/目录"],
           ["stat_file", "/目录/配置%2F.txt"],
         ] as const) {
-          const submitted = await call<{ operationId: string }>(name, {
-            taskId: task.id,
-            path,
-            requestId: name,
-          });
+          const inspectInput = { taskId: task.id, path, requestId: name };
+          const [submitted, inspectionRetry] = await Promise.all([
+            call<{ operationId: string }>(name, inspectInput),
+            call<{ operationId: string }>(name, inspectInput),
+          ]);
+          expect(inspectionRetry.operationId).toBe(submitted.operationId);
           if (mode === "collaborative") {
             await vi.waitFor(() =>
               expect(
@@ -278,11 +284,16 @@ describe("production file tools over a reused SSH connection", () => {
         }
         expect(remote.directoryReads()).toBeGreaterThan(1);
         expect(remote.directoryHandles()).toBe(0);
-        const read = await call<{ operationId: string }>("read_file", {
+        const readInput = {
           taskId: task.id,
           path: "/目录/配置%2F.txt",
           requestId: "read",
-        });
+        };
+        const [read, readRetry] = await Promise.all([
+          call<{ operationId: string }>("read_file", readInput),
+          call<{ operationId: string }>("read_file", readInput),
+        ]);
+        expect(readRetry.operationId).toBe(read.operationId);
         if (mode === "collaborative") {
           await vi.waitFor(() =>
             expect(
@@ -305,13 +316,22 @@ describe("production file tools over a reused SSH connection", () => {
         });
         expect(body.content).toBe("原始内容\n");
         expect(body.document.hostIdentity).toBe(terminal.hostName);
-        const edit = await call<{ operationId: string }>("propose_file_edit", {
+        const editTool =
+          changeKind === "edit" ? "propose_file_edit" : "propose_file_write";
+        const editInput = {
           taskId: task.id,
           version,
-          edits: [{ before: "原始内容", after: "工具修改成功" }],
+          ...(changeKind === "edit"
+            ? { edits: [{ before: "原始内容", after: "工具修改成功" }] }
+            : { content: "工具修改成功\n" }),
           saveAs: "/目录/工具结果.txt",
           requestId: "edit",
-        });
+        };
+        const [edit, editRetry] = await Promise.all([
+          call<{ operationId: string }>(editTool, editInput),
+          call<{ operationId: string }>(editTool, editInput),
+        ]);
+        expect(editRetry.operationId).toBe(edit.operationId);
         if (mode === "collaborative") {
           await vi.waitFor(() =>
             expect(
@@ -341,6 +361,32 @@ describe("production file tools over a reused SSH connection", () => {
         expect((await remote.read("/目录/工具结果.txt")).toString()).toBe(
           "工具修改成功\r\n",
         );
+        expect(
+          (await call<{ operationId: string }>("read_file", readInput))
+            .operationId,
+        ).toBe(read.operationId);
+        expect(
+          (await call<{ operationId: string }>(editTool, editInput))
+            .operationId,
+        ).toBe(edit.operationId);
+        const changed = await client.callTool({
+          name: editTool,
+          arguments: {
+            ...editInput,
+            ...(changeKind === "edit"
+              ? { edits: [{ before: "原始内容", after: "changed-retry" }] }
+              : { content: "changed-retry\n" }),
+          },
+        });
+        expect(changed.isError).toBe(true);
+        expect(changed.structuredContent).toMatchObject({
+          error: { code: "REQUEST_CONFLICT" },
+        });
+        expect(
+          tasks
+            .get(human, task.id)
+            .operations.filter((op) => op.action.type === "file.write"),
+        ).toHaveLength(1);
         expect(remote.connections()).toBe(1);
         expect(writes).toEqual(["context-probe"]);
         await client.close();
