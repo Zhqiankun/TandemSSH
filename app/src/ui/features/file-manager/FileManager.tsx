@@ -1,3 +1,4 @@
+import { usePendingSudoOperation } from "./hooks/use-pending-sudo-operation";
 import { runFileBatch, assertFileSession } from "./file-batch";
 import { changeFileOwnership } from "@/api/file-ownership-api";
 import {
@@ -105,7 +106,6 @@ import { createFormatTransferMetrics } from "./transferMetricsFormat.ts";
 import type {
   CreateIntent,
   FileManagerProps,
-  PendingSudoOperation,
   SSHConnectionError,
 } from "./file-manager-types.ts";
 import { formatFileSize } from "./file-manager-utils.ts";
@@ -275,8 +275,11 @@ function FileManagerContent({
   const [transferMove, setTransferMove] = useState(false);
 
   const [sudoDialogOpen, setSudoDialogOpen] = useState(false);
-  const [pendingSudoOperation, setPendingSudoOperation] =
-    useState<PendingSudoOperation | null>(null);
+  const {
+    pending: pendingSudoOperation,
+    setPending: setPendingSudoOperation,
+    isCurrent: isCurrentSudoOperation,
+  } = usePendingSudoOperation();
 
   const { selectedFiles, clearSelection, setSelection } = useFileSelection();
 
@@ -1308,8 +1311,11 @@ function FileManagerContent({
     if (!sshSessionId || !pendingSudoOperation) return;
 
     const operationSession = pendingSudoOperation.sessionId;
-    const assertCurrent = () =>
+    const assertCurrent = () => {
+      if (!isCurrentSudoOperation(pendingSudoOperation))
+        throw Error("FILE_OPERATION_CANCELLED");
       assertFileSession(operationSession, sshSessionIdRef.current);
+    };
     try {
       assertCurrent();
       await setSudoPassword(operationSession, password);
@@ -1347,6 +1353,7 @@ function FileManagerContent({
 
       setPendingSudoOperation(null);
     } catch (error: unknown) {
+      if (!isCurrentSudoOperation(pendingSudoOperation)) return;
       if (
         sshSessionIdRef.current !== operationSession ||
         (error instanceof Error && error.message === "FILE_SESSION_CHANGED")
