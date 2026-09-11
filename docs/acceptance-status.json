@@ -138,9 +138,11 @@
         "29-local-file-grants.md",
         "113-workflow-policy-review.md",
         "137-command-policy-scope-review.md",
-        "138-policy-grants-and-conflicts.md"
+        "138-policy-grants-and-conflicts.md",
+        "139-policy-persistence-review.md",
+        "140-policy-encrypted-restart.md"
       ],
-      "remaining": "受控来源×模式×四级deny，以及allow/confirm预授权、参数范围和无关范围隔离已有统一网关验证；全局拒绝/主机允许冲突与中文来源显示A09已核对。完整规则管理持久化和桌面操作矩阵仍需验收。"
+      "remaining": "跨来源规则矩阵与A09来源解释已验证；生产保存函数故障/并发测试及真实加密数据库跨独立进程恢复四级规则已通过。桌面规则编辑、保存和重新打开的完整流程仍需验收。"
     },
     {
       "id": "R09",
