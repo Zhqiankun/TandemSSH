@@ -5,6 +5,7 @@ import { aiTaskApi } from "@/api/ai-task-api";
 import type { AiTaskView } from "@/types/ai-task";
 export function AiTaskTranscript({ run }: { run: AiTaskView }) {
   const { t } = useTranslation();
+  const nextBudget = Math.min(64, run.maxTurns + 10);
   const [answer, setAnswer] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -99,12 +100,10 @@ export function AiTaskTranscript({ run }: { run: AiTaskView }) {
           variant="outline"
           disabled={busy}
           onClick={() =>
-            void action(() =>
-              aiTaskApi.budget(run.id, Math.min(64, run.maxTurns + 10)),
-            )
+            void action(() => aiTaskApi.budget(run.id, nextBudget))
           }
         >
-          {t("tandem.agent.addBudget")}
+          {t("tandem.agent.addBudget", { count: nextBudget - run.maxTurns })}
         </Button>
       )}
       {!["completed", "cancelled"].includes(run.phase) && (

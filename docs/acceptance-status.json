@@ -1164,16 +1164,19 @@
       "id": "A24",
       "requirement": "自动任务超预算",
       "acceptance": "暂停，不自动切端点、扩权限或继续收费",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/ai",
       "records": [
         "14-built-in-ai.md",
         "44-ai-task-recovery.md",
         "68-provider-response-bounds.md",
         "69-chat-stream-bounds.md",
-        "110-byok-budget-review.md"
+        "110-byok-budget-review.md",
+        "111-model-budget-ui.md"
       ],
-      "remaining": "自动/协作耗尽预算停止调用并归还控制权，增加预算仍须重新授权已验证；中文预算错误与恢复入口需完成对应界面观察。"
+      "remaining": "",
+      "verifiedAt": "2026-09-12",
+      "verification": "自动/协作任务模型调用预算耗尽后暂停并归还控制权；增加额度仍不调用，须重新授权。中文错误提示和额度上限/真实增量/失败处理已验证，生产配置 identity 检查阻止静默切端点。"
     },
     {
       "id": "A25",

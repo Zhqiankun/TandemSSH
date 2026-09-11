@@ -5145,7 +5145,7 @@
       "interrupted": "Interrupted; unsent actions from this response are discarded",
       "turns": "Model calls {{used}} / {{max}}",
       "reply": "Send information",
-      "addBudget": "Add 10 model calls",
+      "addBudget": "Add {{count}} model calls",
       "stop": "Stop AI task",
       "reviewed": "Reviewed by a human; continuation allowed",
       "unavailable": "AI is unavailable. Check the feature switch and provider configuration.",

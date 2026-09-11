@@ -5145,7 +5145,7 @@
       "interrupted": "已中断，未执行的旧计划不会继续发送",
       "turns": "模型调用 {{used}} / {{max}} 次",
       "reply": "发送补充信息",
-      "addBudget": "增加 10 次模型调用预算",
+      "addBudget": "增加 {{count}} 次模型调用预算",
       "stop": "停止 AI 任务",
       "reviewed": "已由人工核对并允许继续",
       "unavailable": "AI 当前不可用，请检查功能开关或模型配置。",
