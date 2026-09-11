@@ -197,3 +197,47 @@ it("explains which applicable rule set rejected an allowlist trial", async () =>
   ).toBeTruthy();
   expect(api.save).not.toHaveBeenCalled();
 });
+
+it("shows global deny and host allow sources for the final denied trial", async () => {
+  api.read.mockResolvedValue({
+    revision: 2,
+    sets: [
+      {
+        id: "global",
+        scope: { type: "global" },
+        strictAllowlist: false,
+        rules: [
+          {
+            id: "deny-rm",
+            effect: "deny",
+            match: { kind: "program", program: "rm" },
+            reason: "全局禁止删除",
+          },
+        ],
+      },
+      {
+        id: "host",
+        scope: { type: "host", id: "1" },
+        strictAllowlist: false,
+        rules: [
+          {
+            id: "allow-rm",
+            effect: "allow",
+            match: { kind: "program", program: "rm" },
+            reason: "主机允许删除",
+          },
+        ],
+      },
+    ],
+  });
+  await open();
+  fireEvent.change(screen.getByLabelText("试算命令（仅一条）"), {
+    target: { value: "rm /srv/test" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "只试算，不执行" }));
+  await screen.findByText("规则拒绝");
+  expect(screen.getByText(/全局禁止删除.*主机允许删除/)).toBeTruthy();
+  expect(screen.getByText(/全局.*rm.*主机.*rm/)).toBeTruthy();
+  expect(api.save).not.toHaveBeenCalled();
+  expect(collab.takeover).not.toHaveBeenCalled();
+});

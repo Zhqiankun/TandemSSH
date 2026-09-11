@@ -137,9 +137,10 @@
         "23-host-trust.md",
         "29-local-file-grants.md",
         "113-workflow-policy-review.md",
-        "137-command-policy-scope-review.md"
+        "137-command-policy-scope-review.md",
+        "138-policy-grants-and-conflicts.md"
       ],
-      "remaining": "四种受控来源×两模式×四级规则的32种 deny 组合已验证不可由任务授权/单次批准绕过；中文试算显示分组与主机白名单拒绝来源。仍需完整允许/确认组合、规则管理持久化及桌面来源解释验收。"
+      "remaining": "受控来源×模式×四级deny，以及allow/confirm预授权、参数范围和无关范围隔离已有统一网关验证；全局拒绝/主机允许冲突与中文来源显示A09已核对。完整规则管理持久化和桌面操作矩阵仍需验收。"
     },
     {
       "id": "R09",
@@ -936,15 +937,17 @@
       "id": "A09",
       "requirement": "全局拒绝与服务器允许冲突",
       "acceptance": "最终拒绝，显示规则来源",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration",
       "records": [
         "18-file-operation-gateway.md",
         "20-legacy-command-migration.md",
         "23-host-trust.md",
-        "29-local-file-grants.md"
+        "29-local-file-grants.md",
+        "137-command-policy-scope-review.md",
+        "138-policy-grants-and-conflicts.md"
       ],
-      "remaining": "策略、路径授权与主机信任有专项；仍需完整规则组合、撤销与 UI 来源解释逐项核对。"
+      "remaining": ""
     },
     {
       "id": "A10",

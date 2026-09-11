@@ -677,3 +677,114 @@ it.each(["agent", "workflow", "mcp", "command-panel"] as const)(
     }
   },
 );
+
+it.each(["agent", "workflow", "mcp", "command-panel"] as const)(
+  "honors allow/confirm grants and ignores unrelated scopes for %s",
+  async (origin) => {
+    for (const mode of ["automatic", "collaborative"] as const) {
+      for (const effect of ["allow", "confirm"] as const) {
+        const f = fixture({ mode });
+        f.policy.sets[0].rules[0].effect = effect;
+        for (const scope of [
+          { type: "group", id: "other-group" },
+          { type: "host", id: "other-host" },
+          { type: "task", id: "other-task" },
+        ] as const) {
+          f.policy.sets.push({
+            id: "unrelated-" + scope.type,
+            scope,
+            strictAllowlist: true,
+            rules: [
+              {
+                id: "deny",
+                effect: "deny",
+                match: { kind: "program", program: "df" },
+                reason: "不属于当前目标",
+              },
+            ],
+          });
+        }
+        const context = (id: string) => ({ ...f.context(id), origin });
+        const unapproved = await f.gateway.propose(
+          context("before-grant"),
+          action(),
+        );
+        expect(unapproved.decision.outcome).toBe(effect);
+        expect(
+          unapproved.decision.matchedRules.some((id) =>
+            id.startsWith("unrelated-"),
+          ),
+        ).toBe(false);
+        await expect(f.gateway.dispatch(unapproved.id)).rejects.toThrow(
+          "APPROVAL_REQUIRED",
+        );
+        expect(f.writes).toEqual([]);
+        f.grant(2);
+        const allowed = await f.gateway.propose(context("in-grant"), action());
+        if (mode === "collaborative") {
+          await expect(f.gateway.dispatch(allowed.id)).rejects.toThrow(
+            "APPROVAL_REQUIRED",
+          );
+          expect(f.writes).toEqual([]);
+          f.gateway.approveOnce(
+            allowed.id,
+            allowed.digest,
+            allowed.decision.revision,
+          );
+        }
+        expect((await f.gateway.dispatch(allowed.id)).status).toBe("succeeded");
+        expect(f.writes).toEqual(["df -h"]);
+        const outside = await f.gateway.propose(
+          context("outside-grant"),
+          action("df", ["-i"]),
+        );
+        await expect(f.gateway.dispatch(outside.id)).rejects.toThrow(
+          "APPROVAL_REQUIRED",
+        );
+        const next = await f.gateway.propose(
+          context("second-in-grant"),
+          action(),
+        );
+        if (mode === "collaborative")
+          await expect(f.gateway.dispatch(next.id)).rejects.toThrow(
+            "APPROVAL_REQUIRED",
+          );
+        else
+          expect((await f.gateway.dispatch(next.id)).status).toBe("succeeded");
+        expect(f.writes).toHaveLength(mode === "collaborative" ? 1 : 2);
+      }
+    }
+  },
+);
+
+it("keeps a global deny above a host allow regardless of rule order", async () => {
+  for (const reversed of [false, true]) {
+    const f = fixture();
+    f.grant();
+    f.policy.sets[0].rules[0].effect = "deny";
+    f.policy.sets.push({
+      id: "host-allow",
+      scope: { type: "host", id: "host-1" },
+      strictAllowlist: false,
+      rules: [
+        {
+          id: "allow",
+          effect: "allow",
+          match: { kind: "program", program: "df" },
+          reason: "主机允许",
+        },
+      ],
+    });
+    if (reversed) f.policy.sets.reverse();
+    const op = await f.gateway.propose(
+      f.context("global-host-conflict"),
+      action(),
+    );
+    expect(op.decision.outcome).toBe("deny");
+    expect(op.decision.matchedRules).toEqual(
+      expect.arrayContaining(["global/allow-df", "host-allow/allow"]),
+    );
+    await expect(f.gateway.dispatch(op.id)).rejects.toThrow("POLICY_DENIED");
+    expect(f.writes).toEqual([]);
+  }
+});
