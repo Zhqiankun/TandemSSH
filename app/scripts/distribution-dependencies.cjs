@@ -3,6 +3,10 @@ const fs = require("node:fs"),
   crypto = require("node:crypto");
 const RELATIVE_MODULES = "resources/app.asar.unpacked/node_modules";
 const RELATIVE_OUTPUT = "resources/notices/dependencies";
+const SUPPLEMENTAL_ROOT = path.resolve(
+  __dirname,
+  "../packaging/dependency-notices",
+);
 const digest = (bytes) =>
   crypto.createHash("sha256").update(bytes).digest("hex");
 function inside(root, file) {
@@ -17,6 +21,36 @@ function inside(root, file) {
   return resolved;
 }
 function collectDependencyNotices(packageRoot) {
+  const supplements = new Map(),
+    usedSupplements = new Map();
+  const supplementalManifest = path.join(SUPPLEMENTAL_ROOT, "manifest.json");
+  if (fs.existsSync(supplementalManifest)) {
+    const sourceRoot = fs.realpathSync(SUPPLEMENTAL_ROOT);
+    inside(sourceRoot, supplementalManifest);
+    const manifest = JSON.parse(fs.readFileSync(supplementalManifest, "utf8"));
+    if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.entries))
+      throw Error("Invalid supplemental notice manifest");
+    for (const entry of manifest.entries) {
+      if (
+        typeof entry.name !== "string" ||
+        typeof entry.version !== "string" ||
+        typeof entry.file !== "string" ||
+        path.basename(entry.file) !== entry.file
+      )
+        throw Error("Invalid supplemental notice entry");
+      const file = inside(sourceRoot, path.join(sourceRoot, entry.file));
+      if (fs.statSync(file).size > 4 * 1024 * 1024)
+        throw Error("Supplemental notice size limit exceeded");
+      const content = fs.readFileSync(file);
+      if (digest(content) !== entry.sha256)
+        throw Error("Supplemental notice digest mismatch");
+      const key = entry.name + "@" + entry.version;
+      if (supplements.has(key))
+        throw Error("Duplicate supplemental notice version");
+      supplements.set(key, { ...entry, content });
+    }
+  }
+
   const root = fs.realpathSync(packageRoot),
     modules = inside(root, path.join(root, RELATIVE_MODULES));
   const packages = [],
@@ -87,6 +121,27 @@ function collectDependencyNotices(packageRoot) {
       if (text !== undefined)
         sections.push("\n--- " + entry.name + " ---\n" + text);
     }
+    const supplement = supplements.get(name + "@" + version);
+    if (supplement) {
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(
+        supplement.content,
+      );
+      texts.push({
+        path: RELATIVE_OUTPUT + "/supplemental/" + supplement.file,
+        origin: "supplemental",
+        bytes: supplement.content.length,
+        sha256: supplement.sha256,
+        included: true,
+        provenance: supplement.source,
+      });
+      sections.push(
+        "\n--- Supplemental notice: " + supplement.file + " ---\n" + text,
+      );
+      usedSupplements.set(supplement.file, {
+        file: supplement.file,
+        content: supplement.content,
+      });
+    }
     if (!texts.length) issues.push("NO_TOP_LEVEL_NOTICE");
     if (issues.length) sections.push("Review items: " + issues.join(", "));
     packages.push({
@@ -131,6 +186,7 @@ function collectDependencyNotices(packageRoot) {
       packages,
     },
     text: sections.join("\n") + "\n",
+    supplements: [...usedSupplements.values()],
   };
 }
 function writeDependencyNotices(packageRoot) {
@@ -141,6 +197,18 @@ function writeDependencyNotices(packageRoot) {
   const output = path.join(root, RELATIVE_OUTPUT);
   fs.mkdirSync(output, { recursive: true });
   inside(root, output);
+  if (result.supplements.length) {
+    const directory = path.join(output, "supplemental");
+    if (fs.existsSync(directory)) inside(root, directory);
+    fs.mkdirSync(directory, { recursive: true });
+    inside(root, directory);
+    for (const entry of result.supplements) {
+      const target = path.join(directory, entry.file);
+      if (fs.existsSync(target)) inside(root, target);
+      fs.writeFileSync(target, entry.content);
+    }
+  }
+
   for (const [name, content] of [
     ["inventory.json", JSON.stringify(result.inventory, null, 2) + "\n"],
     ["THIRD-PARTY-NOTICES.txt", result.text],
@@ -168,6 +236,12 @@ function verifyDependencyNotices(packageRoot) {
       throw Error(
         "Dependency notice inventory differs from shipped files: " + name,
       );
+  }
+  for (const entry of expected.supplements) {
+    const target = path.join(root, RELATIVE_OUTPUT, "supplemental", entry.file);
+    inside(root, target);
+    if (!fs.readFileSync(target).equals(entry.content))
+      throw Error("Supplemental notice differs from source: " + entry.file);
   }
   return {
     packages: expected.inventory.packageCount,

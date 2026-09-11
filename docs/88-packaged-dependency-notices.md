@@ -15,3 +15,5 @@
 14 个待核对包：@napi-rs/keyring-win32-x64-msvc 2.0.0、abstract-logging 2.0.1、agent-base 6.0.2、assert-plus 1.0.0、base32.js 0.0.1、cookie-signature 1.0.6、drizzle-orm 0.45.2、https-proxy-agent 5.0.1、isarray 1.0.0、lazy-val 1.0.5、pg-types 2.2.0、pgpass 1.0.5、precond 0.2.3、standardwebhooks 1.0.0。均未发现顶层声明文件，其中 precond 还没有 license 元数据；这不证明没有许可证，代码头部及同版本上游原文仍需核对。
 
 该清单只覆盖实际随包 npm 目录。编译进前端 JS 的开发依赖、字体、图标、Electron/Chromium 以及原生组件捆绑的第三方代码必须另行核对，不能将此文当作完整许可审查或完整软件物料清单。公开 alpha.3 尚不包含该生成清单。
+
+后续已从准确版本 README 补齐七份原文，实际包待核对项降至 7；来源摘要、版本锁定和实际打包证据见 [89](89-pinned-readme-notices.md)。原 14 项为首次扫描结果，不代表当前全部仍缺失。

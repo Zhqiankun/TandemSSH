@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "name": "assert-plus",
+      "version": "1.0.0",
+      "file": "assert-plus-1.0.0.txt",
+      "sha256": "f7cde03743a5c55e00d33127b5491de330c9186585c818a9f0b8b5bce6aba0a8",
+      "source": {
+        "kind": "installed-package-readme",
+        "file": "README.md",
+        "sha256": "d618915d542e9f57f2437fe074af88ae859e6cc54563849bd6711827ff62e04e",
+        "startLine": 138,
+        "endLine": 159,
+        "resolved": "https://registry.npmjs.org/assert-plus/-/assert-plus-1.0.0.tgz",
+        "integrity": "sha512-NfJ4UzBCcQGLDlQq7nHxH+tv3kyZ0hHQqF5BO6J7tNJeP5do1llPr8dZ8zHonfhAu0PHAdMkSo+8o0wxg9lZWw=="
+      }
+    },
+    {
+      "name": "isarray",
+      "version": "1.0.0",
+      "file": "isarray-1.0.0.txt",
+      "sha256": "a1bd5deadb6a06dd74efa852c1b8b23f63b67f2214fbe9c8bd591da51da69268",
+      "source": {
+        "kind": "installed-package-readme",
+        "file": "README.md",
+        "sha256": "ff138e683771b187f3629c383db72ee7d632009010a36d08e18e8d2a34222ec7",
+        "startLine": 39,
+        "endLine": 61,
+        "resolved": "https://registry.npmjs.org/isarray/-/isarray-1.0.0.tgz",
+        "integrity": "sha512-VLghIWNM6ELQzo7zwmcg0NmTVyWKYjvIeM83yjp0wRDTmUnrM678fQbcKBo6n2CJEF0szoG//ytg+TKla89ALQ=="
+      }
+    },
+    {
+      "name": "pg-types",
+      "version": "2.2.0",
+      "file": "pg-types-2.2.0.txt",
+      "sha256": "2c8a6e1b7782f0ca241792868af742f1c281c9661f59ec36c9acf40381c86645",
+      "source": {
+        "kind": "installed-package-readme",
+        "file": "README.md",
+        "sha256": "ecda9bca71d3f0cee4e600d1dd2bef336213f39ef2e8fca6a1a1c1c8723f643a",
+        "startLine": 54,
+        "endLine": 76,
+        "resolved": "https://registry.npmjs.org/pg-types/-/pg-types-2.2.0.tgz",
+        "integrity": "sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA=="
+      }
+    },
+    {
+      "name": "pgpass",
+      "version": "1.0.5",
+      "file": "pgpass-1.0.5.txt",
+      "sha256": "492e56ee92e47d39ca91d60ef75f55b1104678fab8f09838206b61b43136e211",
+      "source": {
+        "kind": "installed-package-readme",
+        "file": "README.md",
+        "sha256": "62549909404b5a0dcb2b4b74c9a930baf8095dbcfa1543c4ffc79378acd22b57",
+        "startLine": 67,
+        "endLine": 75,
+        "resolved": "https://registry.npmjs.org/pgpass/-/pgpass-1.0.5.tgz",
+        "integrity": "sha512-FdW9r/jQZhSeohs1Z3sI1yxFQNFvMcnmfuj4WBMUTxOrAyLMaTcE1aAMBiTlbMNaXvBCQuVi0R7hd8udDSP7ug=="
+      }
+    },
+    {
+      "name": "agent-base",
+      "version": "6.0.2",
+      "file": "agent-base-6.0.2.txt",
+      "sha256": "b3681ff73335c04770aa0367aa4ca72e77e5ca55007fc0bcb9d564d00cce20f4",
+      "source": {
+        "kind": "installed-package-readme",
+        "file": "README.md",
+        "sha256": "f1425c3b72330fe4fb2aa5a2fb152e939bdf534692a32b5f0b38f74147b98556",
+        "startLine": 118,
+        "endLine": 139,
+        "resolved": "https://registry.npmjs.org/agent-base/-/agent-base-6.0.2.tgz",
+        "integrity": "sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ=="
+      }
+    },
+    {
+      "name": "https-proxy-agent",
+      "version": "5.0.1",
+      "file": "https-proxy-agent-5.0.1.txt",
+      "sha256": "b3681ff73335c04770aa0367aa4ca72e77e5ca55007fc0bcb9d564d00cce20f4",
+      "source": {
+        "kind": "installed-package-readme",
+        "file": "README.md",
+        "sha256": "32f0856d2c43df7d05cca960fdee84e1e38ab545bd7b2186433dfa41aa90a712",
+        "startLine": 114,
+        "endLine": 135,
+        "resolved": "https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-5.0.1.tgz",
+        "integrity": "sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA=="
+      }
+    },
+    {
+      "name": "cookie-signature",
+      "version": "1.0.6",
+      "file": "cookie-signature-1.0.6.txt",
+      "sha256": "9771dacd324f4cf3b07fa7f302b790517f0c82c2f91e15631c2124f070910471",
+      "source": {
+        "kind": "installed-package-readme",
+        "file": "Readme.md",
+        "sha256": "1621ed10d0b2f865eb8608e0474a356cf7a9737a384b6593b61b30a9f6e50366",
+        "startLine": 21,
+        "endLine": 42,
+        "resolved": "https://registry.npmjs.org/cookie-signature/-/cookie-signature-1.0.6.tgz",
+        "integrity": "sha512-QADzlaHc8icV8I7vbaJXJwod9HWYp8uCqf1xa4OfNu1T7JVxQIrUgOWtHdNDtPiywmFbiS12VjotIXLrKM3orQ=="
+      }
+    }
+  ]
+}

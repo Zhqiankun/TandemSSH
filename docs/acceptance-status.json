@@ -15,9 +15,10 @@
         "11-m0-validation.md",
         "25-github-releases.md",
         "46-online-update-acceptance.md",
-        "88-packaged-dependency-notices.md"
+        "88-packaged-dependency-notices.md",
+        "89-pinned-readme-notices.md"
       ],
-      "remaining": "已公开 alpha.3；实际随包 npm 清单与声明汇编已接入构建并验证 341 个包，其中 14 项需核对上游/代码头部原文；前端打包依赖、字体图标和原生捆绑库声明仍需完成。"
+      "remaining": "实际随包 npm 清单与七份锁定版本 README 原文已交付验证；341 个包仍有 7 项需核对，前端打包依赖、字体图标和原生捆绑库声明仍需完成。"
     },
     {
       "id": "R02",

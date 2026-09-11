@@ -147,3 +147,49 @@ it("runs the Windows hook for installers as well as directory packages", async (
     expect(fs.existsSync(path.join(root, ".portable"))).toBe(target === "dir");
   }
 });
+it("includes a pinned README notice only for its exact package version", () => {
+  const root = fixture();
+  pkg(root, "assert-plus", {
+    name: "assert-plus",
+    version: "1.0.0",
+    license: "MIT",
+  });
+  writeDependencyNotices(root);
+  const result = collectDependencyNotices(root);
+  expect(result.inventory.packages[0].reviewItems).toEqual([]);
+  expect(result.inventory.packages[0].notices[0]).toMatchObject({
+    origin: "supplemental",
+    provenance: { kind: "installed-package-readme", file: "README.md" },
+  });
+  expect(result.text).toContain("Copyright (c) 2012 Mark Cavage");
+  const supplemental = path.join(
+    root,
+    "resources/notices/dependencies/supplemental/assert-plus-1.0.0.txt",
+  );
+  expect(fs.readFileSync(supplemental, "utf8")).toContain(
+    "Permission is hereby granted",
+  );
+  expect(verifyDependencyNotices(root).reviewItems).toBe(0);
+  const other = fixture();
+  pkg(other, "assert-plus", {
+    name: "assert-plus",
+    version: "1.0.1",
+    license: "MIT",
+  });
+  expect(
+    collectDependencyNotices(other).inventory.packages[0].reviewItems,
+  ).toContain("NO_TOP_LEVEL_NOTICE");
+});
+it("rejects modified supplemental text in the distributed package", () => {
+  const root = fixture();
+  pkg(root, "pgpass", { name: "pgpass", version: "1.0.5", license: "MIT" });
+  writeDependencyNotices(root);
+  fs.appendFileSync(
+    path.join(
+      root,
+      "resources/notices/dependencies/supplemental/pgpass-1.0.5.txt",
+    ),
+    "changed",
+  );
+  expect(() => verifyDependencyNotices(root)).toThrow("differs from source");
+});
