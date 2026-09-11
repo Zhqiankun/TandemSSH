@@ -5254,7 +5254,7 @@
       "group": "分组路径或 tag:标签",
       "task": "任务 ID",
       "strict": "严格白名单：未明确允许就拒绝",
-      "strictHint": "设置允许规则后，该作用范围只允许匹配的命令；多个范围取交集。严格模式同时拒绝任意 Shell / 解释器脚本。",
+      "strictHint": "设置允许规则后，该作用范围只允许匹配的命令；多个范围取交集。严格模式同时拒绝无法判定行为的 Shell、解释器和交互式终端工具。",
       "effectLabel": "规则行为",
       "effect": {
         "deny": "拒绝 · 黑名单",
@@ -5294,7 +5294,7 @@
       "reasonSet": "规则集：{{id}}",
       "reasons": {
         "POLICY_ALLOWLIST_MISS": "未命中该范围的白名单",
-        "OPAQUE_COMMAND_IN_STRICT_MODE": "严格模式禁止无法判定行为的脚本或解释器",
+        "OPAQUE_COMMAND_IN_STRICT_MODE": "严格模式禁止无法判定行为的脚本、解释器或交互式终端工具",
         "COMMAND_NEEDS_MANUAL_REVIEW": "脚本内容需要人工审阅",
         "FILE_ALLOWLIST_MISS": "请求路径或实际目标未命中文件白名单。"
       }

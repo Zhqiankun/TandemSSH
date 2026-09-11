@@ -5254,7 +5254,7 @@
       "group": "Folder path or tag:name",
       "task": "Task ID",
       "strict": "Strict allowlist: deny unless explicitly allowed",
-      "strictHint": "Scopes containing allow rules only permit matching commands; scopes intersect. Strict mode also denies opaque interpreter scripts.",
+      "strictHint": "Scopes containing allow rules only permit matching commands; scopes intersect. Strict mode also denies opaque interpreters and interactive terminal tools.",
       "effectLabel": "Rule effect",
       "effect": {
         "deny": "Deny",
@@ -5294,7 +5294,7 @@
       "reasonSet": "Rule set: {{id}}",
       "reasons": {
         "POLICY_ALLOWLIST_MISS": "No allowlist match in this scope",
-        "OPAQUE_COMMAND_IN_STRICT_MODE": "Strict mode denies opaque scripts or interpreters",
+        "OPAQUE_COMMAND_IN_STRICT_MODE": "Strict mode denies opaque scripts, interpreters or interactive terminal tools",
         "COMMAND_NEEDS_MANUAL_REVIEW": "Script content requires manual review",
         "FILE_ALLOWLIST_MISS": "The requested or resolved path is not covered by the file allowlist."
       }

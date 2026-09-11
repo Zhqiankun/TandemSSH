@@ -78,6 +78,19 @@ const OPAQUE_PROGRAMS = new Set([
   "su",
   "env",
   "xargs",
+  // Interactive programs may accept further commands after initial dispatch.
+  "vi",
+  "vim",
+  "nvim",
+  "nano",
+  "emacs",
+  "less",
+  "more",
+  "top",
+  "htop",
+  "btop",
+  "tmux",
+  "screen",
 ]);
 
 /** Pure rule composition. This does not claim to sandbox a remote operating
