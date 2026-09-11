@@ -43,7 +43,7 @@
       "id": "R03",
       "requirement": "人机协同",
       "acceptance": "人和 AI 操作同一 SSH 会话，输出和上下文可衔接",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/sessions/control.ts",
       "records": [
         "12-implementation.md",
@@ -52,15 +52,18 @@
         "43-task-execution-recovery.md",
         "56-linux-ssh-acceptance.md",
         "64-jump-combined-acceptance.md",
-        "68-provider-response-bounds.md"
+        "68-provider-response-bounds.md",
+        "108-core-collaboration-review.md"
       ],
-      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+      "remaining": "",
+      "verifiedAt": "2026-09-12",
+      "verification": "真实 Windows/MCP/AI 与 Alpine 同一 SSH Shell 的环境、cwd 和人工输出衔接已验证；双标签输出独立。"
     },
     {
       "id": "R04",
       "requirement": "随时接管",
       "acceptance": "接管确认后旧 AI 写入不得进入会话；交还必须是明确操作",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/sessions/control.ts",
       "records": [
         "12-implementation.md",
@@ -69,9 +72,12 @@
         "43-task-execution-recovery.md",
         "56-linux-ssh-acceptance.md",
         "64-jump-combined-acceptance.md",
-        "68-provider-response-bounds.md"
+        "68-provider-response-bounds.md",
+        "108-core-collaboration-review.md"
       ],
-      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+      "remaining": "",
+      "verifiedAt": "2026-09-12",
+      "verification": "同步租约撤销和写入前检查有竞态回归；真实界面接管及明确交还、旧批准失效和 MCP 拒写均有直接证据。"
     },
     {
       "id": "R05",
