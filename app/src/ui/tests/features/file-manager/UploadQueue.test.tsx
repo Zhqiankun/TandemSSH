@@ -392,3 +392,65 @@ it.each(["completed", "committing"] as const)(
     );
   },
 );
+it("honors concurrency and continues queued files after one preparation fails", async () => {
+  const f = fixture(),
+    first = deferred(),
+    second = deferred();
+  const original = vi.mocked(f.api.prepare).getMockImplementation()!;
+  let active = 0,
+    peak = 0,
+    started = 0;
+  vi.mocked(f.api.prepare).mockImplementation(async (...args) => {
+    const index = started++;
+    active++;
+    peak = Math.max(peak, active);
+    try {
+      if (index === 0) {
+        await first.promise;
+        throw Error("UPLOAD_PERMISSION_DENIED");
+      }
+      if (index === 1) await second.promise;
+      return await original(...args);
+    } finally {
+      active--;
+    }
+  });
+  f.queue.setConcurrency(2);
+  const ids = [0, 1, 2].map((index) =>
+    f.queue.add({
+      file: file(Buffer.from("payload-" + index)),
+      sessionId: "session",
+      path: "/srv/file-" + index,
+      hostLabel: "fixture",
+    }),
+  );
+  await vi.waitFor(() => expect(started).toBe(2));
+  expect(f.queue.getSnapshot()[2].state).toBe("queued");
+  expect(active).toBe(2);
+  first.resolve();
+  await vi.waitFor(() => expect(started).toBe(3));
+  expect(f.queue.getSnapshot()[0].state).toBe("failed");
+  second.resolve();
+  await vi.waitFor(() =>
+    expect(
+      f.queue
+        .getSnapshot()
+        .slice(1)
+        .every((job) => job.state === "awaiting-review"),
+    ).toBe(true),
+  );
+  for (const id of ids.slice(1)) f.queue.start(id, false);
+  await vi.waitFor(() =>
+    expect(f.queue.getSnapshot().map((job) => job.state)).toEqual([
+      "failed",
+      "completed",
+      "completed",
+    ]),
+  );
+  expect(peak).toBe(2);
+  expect(f.queue.getSnapshot().map((job) => job.path)).toEqual([
+    "/srv/file-0",
+    "/srv/file-1",
+    "/srv/file-2",
+  ]);
+});

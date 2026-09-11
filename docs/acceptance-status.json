@@ -548,9 +548,10 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "118-transfer-queue-review.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": "上传并发上限和单项预检失败后继续队列已直接验证，双向暂停/取消/未知提交/释放记录有回归；速度和预计剩余时间、动态并发及完整桌面多文件流程仍需逐项归并。"
     },
     {
       "id": "B07",
