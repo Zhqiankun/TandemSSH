@@ -1015,3 +1015,124 @@ it("preserves provenance when a reviewed plan completes automatically", async ()
     f.disconnect();
   }
 });
+
+it.each([
+  ["workflow", "workflow", human],
+  [
+    "assistant",
+    "agent",
+    { kind: "agent", userId: "user-a", agentRunId: "history-agent" },
+  ],
+  ["mcp", "mcp", mcp],
+] as const)(
+  "roundtrips %s operation provenance through the real audit journal",
+  async (source, origin, actor) => {
+    const fs = await import("node:fs/promises"),
+      path = await import("node:path"),
+      os = await import("node:os");
+    const { AuditJournal } =
+      await import("../../collaboration/audit/journal.js");
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "tandem-audit-runtime-"),
+    );
+    try {
+      for (const mode of ["automatic", "collaborative"] as const) {
+        const journal = new AuditJournal(root, "user-a");
+        const f = fixture({
+          audit: journal,
+          operationOutput: "API_KEY=fixture-history-secret\nvisible-result",
+        });
+        try {
+          const task = await f.create(mode, [], actor, "audit-" + mode);
+          await f.authorize(task, {
+            matches: [{ kind: "program", program: "pwd" }],
+          });
+          await f.runtime.submit(
+            actor,
+            task.id,
+            { program: "pwd", args: [] },
+            "audit-command",
+          );
+          if (mode === "collaborative") {
+            await vi.waitFor(() =>
+              expect(f.runtime.get(human, task.id).state).toBe(
+                "awaiting-approval",
+              ),
+            );
+            const op = f.runtime.get(human, task.id).operations[0];
+            await f.runtime.approve(human, task.id, op.id, op.digest, 1);
+          }
+          await vi.waitFor(() =>
+            expect(f.runtime.get(human, task.id).operations[0].status).toBe(
+              "succeeded",
+            ),
+          );
+          await vi.waitFor(() =>
+            expect(f.runtime.get(human, task.id).state).toBe("ready"),
+          );
+          await f.runtime.finish(actor, task.id);
+          const reader = new AuditJournal(root, "user-a");
+          const records = (
+            await reader.queryHistory({ taskId: task.id, limit: 50 })
+          ).items;
+          const common = {
+            taskId: task.id,
+            hostId: 1,
+            hostName: "user@server:22",
+            sessionId: "session",
+            mode,
+          };
+          expect(records.find((r) => r.type === "task.created")).toMatchObject({
+            ...common,
+            origin: source,
+          });
+          expect(
+            records.find((r) => r.type === "task.authorization"),
+          ).toMatchObject({ ...common, origin: "human", policyRevision: 1 });
+          if (mode === "collaborative")
+            expect(
+              records.find((r) => r.type === "operation.approval"),
+            ).toMatchObject({ ...common, origin: "human", policyRevision: 1 });
+          for (const type of [
+            "operation.proposed",
+            "operation.intent",
+            "operation.completed",
+          ]) {
+            expect(records.find((r) => r.type === type)).toMatchObject({
+              ...common,
+              origin,
+              program: "pwd",
+              cwd: "/srv/app",
+              policyRevision: 1,
+              policyOutcome: "confirm",
+            });
+          }
+          const completed = records.find(
+            (r) => r.type === "operation.completed",
+          )!;
+          expect(completed).toMatchObject({ status: "succeeded", exitCode: 0 });
+          expect(completed.outputPreview).toContain("visible-result");
+          expect(completed.outputPreview).not.toContain(
+            "fixture-history-secret",
+          );
+          expect(
+            records.find((r) => r.type === "task.completed"),
+          ).toMatchObject({ ...common, origin: source, status: "completed" });
+          expect(JSON.stringify(records)).not.toContain(
+            "fixture-history-secret",
+          );
+        } finally {
+          f.disconnect();
+        }
+      }
+    } finally {
+      const resolved = await fs.realpath(root);
+      expect(path.dirname(resolved)).toBe(await fs.realpath(os.tmpdir()));
+      expect(path.basename(resolved)).toMatch(
+        /^tandem-audit-runtime-[A-Za-z0-9]+$/,
+      );
+      await fs.rm(resolved, { recursive: true, force: true });
+    }
+  },
+);
+
