@@ -870,9 +870,10 @@
         "35-directory-workbench.md",
         "43-task-execution-recovery.md",
         "48-task-download-directory-recovery.md",
-        "64-jump-combined-acceptance.md"
+        "64-jump-combined-acceptance.md",
+        "97-mcp-control-errors.md"
       ],
-      "remaining": "已存在 38 工具及打包 Codex 发现证据；撤销、导出和所有工具权限矩阵仍需逐项闭环。"
+      "remaining": "自动/协作两种模式的 MCP SDK→核心服务→任务运行时接管后拒写已验证，并修正 STALE_CONTROL 错误契约；其余并发入口及实际 stdio 对应场景仍需核对。"
     },
     {
       "id": "A08",

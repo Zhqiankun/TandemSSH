@@ -7,7 +7,7 @@ const closers: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const close of closers.splice(0)) await close();
 });
-async function connect(fail = false) {
+async function connect(failureCode?: string) {
   const calls: Array<{
     method: CoreMethod;
     parameters: Record<string, unknown>;
@@ -15,7 +15,7 @@ async function connect(fail = false) {
   const server = createTandemMcpServer({
     invoke: async (method, parameters) => {
       calls.push({ method, parameters });
-      if (fail) throw new Error("POLICY_DENIED");
+      if (failureCode) throw new Error(failureCode);
       return { state: "awaiting-approval", source: "desktop" };
     },
   });
@@ -83,7 +83,7 @@ describe("Codex-facing MCP tools", () => {
     expect(calls).toEqual([]);
   });
   it("returns a Chinese policy error instead of claiming execution", async () => {
-    const { client } = await connect(true);
+    const { client } = await connect("POLICY_DENIED");
     const result = await client.callTool({
       name: "run_command",
       arguments: { taskId, requestId: "cmd-1", program: "pwd", args: [] },
@@ -121,3 +121,32 @@ it("exposes checkpoint recovery without allowing MCP to supply a reconciliation 
   expect(invalid.isError).toBe(true);
   expect(calls).toHaveLength(1);
 });
+
+it.each([
+  ["CONTROL_BUSY", "等待用户明确授权"],
+  ["STALE_CONTROL", "等待用户交还"],
+])(
+  "preserves %s as a Chinese MCP tool error without claiming execution",
+  async (code, hint) => {
+    const { client, calls } = await connect(code);
+    const result = await client.callTool({
+      name: "run_command",
+      arguments: {
+        taskId,
+        requestId: "blocked-command",
+        program: "pwd",
+        args: [],
+      },
+    });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toEqual({
+      error: { code, message: expect.stringContaining(hint) },
+    });
+    expect(result.structuredContent).not.toHaveProperty("result");
+    expect(result.content).toEqual([
+      { type: "text", text: expect.stringContaining(code) },
+    ]);
+    expect(JSON.stringify(result.content)).toContain(hint);
+    expect(calls).toHaveLength(1);
+  },
+);

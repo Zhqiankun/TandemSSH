@@ -1669,6 +1669,7 @@ export class TaskRuntime {
     action: OperationAction,
     requestId: string,
   ): Promise<OperationView> {
+    if (task.view.state === "paused-human") throw new Error("STALE_CONTROL");
     if (
       !task.lease ||
       !["ready", "running", "awaiting-approval"].includes(task.view.state)

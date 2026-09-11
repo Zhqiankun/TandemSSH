@@ -74,11 +74,13 @@ export function createTandemMcpServer(
           const message =
             code === "APPROVAL_REQUIRED"
               ? "请在同舟 SSH 桌面确认本次操作或任务授权。"
-              : code === "STALE_CONTROL"
-                ? "控制权已经变化，请停止写入并等待用户交还。"
-                : code === "POLICY_DENIED"
-                  ? "操作被规则禁止，请查看桌面的规则说明。"
-                  : "操作未完成，请查看同舟 SSH 桌面的连接状态和任务记录。";
+              : code === "CONTROL_BUSY"
+                ? "当前控制权由人工或其他任务持有，请停止写入并等待用户明确授权。"
+                : code === "STALE_CONTROL"
+                  ? "控制权已经变化，请停止写入并等待用户交还。"
+                  : code === "POLICY_DENIED"
+                    ? "操作被规则禁止，请查看桌面的规则说明。"
+                    : "操作未完成，请查看同舟 SSH 桌面的连接状态和任务记录。";
           return {
             isError: true,
             content: [{ type: "text" as const, text: `${message}（${code}）` }],
