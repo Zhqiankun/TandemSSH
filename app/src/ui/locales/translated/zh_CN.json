@@ -6102,6 +6102,7 @@
         "collaborative": "协作"
       },
       "decisions": {
+        "unknown": "无法自动判定，需人工审查",
         "allow": "允许",
         "confirm": "要求确认",
         "deny": "拒绝"

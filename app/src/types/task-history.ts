@@ -16,7 +16,7 @@ export interface AuditHistoryItem {
     "human" | "agent" | "assistant" | "workflow" | "mcp" | "command-panel";
   mode?: "automatic" | "collaborative";
   policyRevision?: number;
-  policyOutcome?: "allow" | "confirm" | "deny";
+  policyOutcome?: "allow" | "confirm" | "deny" | "unknown";
   cwd?: string;
   outputPreview?: string;
   outputTruncated?: boolean;

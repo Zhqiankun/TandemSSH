@@ -49,3 +49,24 @@ it("labels missing source and host as unrecorded", async () => {
   expect(screen.getByText("服务器: 未记录")).toBeInTheDocument();
   expect(screen.queryByText("人工")).not.toBeInTheDocument();
 });
+
+it("shows a recorded unknown decision as manual review rather than omitting it", async () => {
+  await i18n.changeLanguage("zh-CN");
+  render(
+    <HistoryRecordSummary
+      item={{
+        id: "unknown",
+        at: 1,
+        type: "operation.proposed",
+        detail: "token",
+        origin: "agent",
+        policyRevision: 4,
+        policyOutcome: "unknown",
+      }}
+    />,
+  );
+  expect(
+    screen.getByText("策略判断: 无法自动判定，需人工审查"),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("策略判断: 允许")).not.toBeInTheDocument();
+});

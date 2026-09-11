@@ -368,3 +368,39 @@ it("projects trusted provenance and bounded redacted output without inventing mi
   expect(legacy.policyRevision).toBeUndefined();
   expect(legacy.hostName).toBeUndefined();
 });
+
+it("preserves a real unknown policy decision while omitting missing or invalid decisions", async () => {
+  const f = await fixture();
+  await f.journal.record("operation.proposed", {
+    id: "unknown",
+    decision: { revision: 4, outcome: "unknown" },
+    action: {
+      type: "terminal.command",
+      program: "bash",
+      args: ["-c", "printf test"],
+      cwd: "/srv",
+    },
+  });
+  await f.journal.record("operation.proposed", { id: "missing" });
+  await f.journal.record("operation.proposed", {
+    id: "invalid",
+    decision: { revision: 4, outcome: "arbitrary" },
+  });
+  const items = (await f.journal.queryHistory({})).items;
+  expect(items.map((item) => item.operationId).sort()).toEqual([
+    "invalid",
+    "missing",
+    "unknown",
+  ]);
+  expect(items.find((item) => item.operationId === "unknown")).toMatchObject({
+    policyRevision: 4,
+    policyOutcome: "unknown",
+    program: "bash",
+  });
+  expect(
+    items.find((item) => item.operationId === "missing")?.policyOutcome,
+  ).toBeUndefined();
+  expect(
+    items.find((item) => item.operationId === "invalid")?.policyOutcome,
+  ).toBeUndefined();
+});

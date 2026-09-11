@@ -6102,6 +6102,7 @@
         "collaborative": "Collaborative"
       },
       "decisions": {
+        "unknown": "Cannot determine automatically; manual review required",
         "allow": "Allow",
         "confirm": "Confirmation required",
         "deny": "Deny"

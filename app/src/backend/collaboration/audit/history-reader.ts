@@ -190,6 +190,7 @@ export class AuditHistoryReader {
         "allow",
         "confirm",
         "deny",
+        "unknown",
       ] as const),
       cwd: text(action.cwd ?? data.resultingCwd, 1024),
       outputPreview: text(data.output, 512),
