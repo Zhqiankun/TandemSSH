@@ -736,7 +736,8 @@
         "54-configuration-backup.md",
         "55-application-settings-backup.md",
         "71-network-configuration-backup.md",
-        "72-terminal-preferences-backup.md"
+        "72-terminal-preferences-backup.md",
+        "95-windows-image-storage-path.md"
       ],
       "remaining": "网络配置、用户终端默认显示值、配色库和主机终端外观已补齐并有迁移专项；实例级连接默认值、本机活动 C2S 配置及其余设置仍需闭环。"
     },

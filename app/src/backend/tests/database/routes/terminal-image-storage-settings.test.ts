@@ -190,3 +190,14 @@ describe("terminal image storage settings", () => {
     });
   });
 });
+
+it("round-trips native local paths while retaining traversal and UNC rejection", () => {
+  const native = path.resolve("image-storage-test");
+  expect(parseImageLocalDir(native)).toBe(native);
+  expect(parseImageLocalDir(parseImageLocalDir(native))).toBe(native);
+  expect(parseImageLocalDir("C:\\images\\..\\private")).toBeNull();
+  expect(parseImageLocalDir("\\\\server\\share\\images")).toBeNull();
+  expect(parseImageLocalDir("\\\\?\\C:\\images")).toBeNull();
+  expect(parseImageLocalDir("C:images")).toBeNull();
+  expect(parseImageHostPath("C:\\images")).toBeNull();
+});

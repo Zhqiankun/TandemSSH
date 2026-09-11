@@ -93,7 +93,9 @@ export function parseTerminalImageStorageMode(
 export function parseImageLocalDir(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  if (!trimmed || hasUnsafePathSyntax(trimmed)) return null;
+  const syntax =
+    process.platform === "win32" ? trimmed.replace(/\\/g, "/") : trimmed;
+  if (!trimmed || hasUnsafePathSyntax(syntax)) return null;
   if (!path.isAbsolute(trimmed)) return null;
   return path.resolve(trimmed);
 }
