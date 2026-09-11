@@ -85,3 +85,38 @@ it.each(["createFile", "createFolder", "renameItem", "moveItem"])(
     );
   },
 );
+it.each(["false", "true", 1, 0, null, {}])(
+  "rejects non-boolean deletion options %j before remote access",
+  async (invalid) => {
+    const routes = new Map<string, RequestHandler>();
+    const register = (path: string, handler: RequestHandler) =>
+      routes.set(path, handler);
+    registerFileOperationRoutes(
+      {
+        get: register,
+        post: register,
+        put: register,
+        delete: register,
+      } as unknown as Express,
+      {
+        sshSessions: { session: { isConnected: true } as SSHSession },
+        verifySessionOwnership: () => true,
+      },
+    );
+    for (const field of ["permanent", "isDirectory"]) {
+      const status = vi.fn().mockReturnThis(),
+        json = vi.fn();
+      await routes.get("/ssh/file_manager/ssh/deleteItem")!(
+        {
+          userId: "owner",
+          body: { sessionId: "session", path: "/srv/file", [field]: invalid },
+        } as never,
+        { status, json } as never,
+        vi.fn(),
+      );
+      expect(status).toHaveBeenCalledWith(400);
+      expect(json).toHaveBeenCalledWith({ error: "INVALID_DELETE_OPTIONS" });
+      expect(execChannel).not.toHaveBeenCalled();
+    }
+  },
+);

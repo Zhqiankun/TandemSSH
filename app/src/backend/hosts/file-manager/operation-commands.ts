@@ -17,6 +17,12 @@ export function buildDeleteCommand(
   itemPath: string,
   isDirectory: boolean,
 ): DeleteCommand {
+  if (
+    typeof itemPath !== "string" ||
+    !itemPath.length ||
+    itemPath.includes("\0")
+  )
+    throw Error("INVALID_FILE_PATH");
   if (isWindowsSftpPath(itemPath)) {
     const path = quotePowerShellLiteral(sftpPathToLocalPath(itemPath));
     const command = isDirectory
@@ -30,7 +36,7 @@ export function buildDeleteCommand(
   }
 
   const path = quotePosixPath(itemPath);
-  const command = isDirectory ? `rm -rf ${path}` : `rm -f ${path}`;
+  const command = isDirectory ? `rm -rf -- ${path}` : `rm -f -- ${path}`;
 
   return {
     command,

@@ -40,7 +40,7 @@ describe("buildDeleteCommand", () => {
   it("keeps POSIX delete commands using shell success chaining", () => {
     const command = buildDeleteCommand("/tmp/O'Brien.txt", false);
 
-    expect(command.command).toBe("rm -f '/tmp/O'\"'\"'Brien.txt'");
+    expect(command.command).toBe("rm -f -- '/tmp/O'\"'\"'Brien.txt'");
     expect(command.commandWithSuccess).toBe(
       `${command.command} && echo "SUCCESS"`,
     );
@@ -55,4 +55,15 @@ it("requires an actual zero exit and, for framed deletes, a standalone success m
   expect(fileCommandSucceeded(0)).toBe(true);
   expect(fileCommandSucceeded(0, "SUCCESS\r\n")).toBe(true);
   expect(fileCommandSucceeded(0, "not SUCCESS")).toBe(false);
+});
+
+it("keeps option-like names literal and rejects invalid deletion paths", () => {
+  expect(buildDeleteCommand("--no-preserve-root", false).command).toBe(
+    "rm -f -- '--no-preserve-root'",
+  );
+  expect(buildDeleteCommand("-rf", true).command).toBe("rm -rf -- '-rf'");
+  for (const path of ["", "a\0b", null, 42])
+    expect(() => buildDeleteCommand(path as never, false)).toThrow(
+      "INVALID_FILE_PATH",
+    );
 });

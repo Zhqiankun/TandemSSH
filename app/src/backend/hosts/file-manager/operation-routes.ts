@@ -500,8 +500,18 @@ export function registerFileOperationRoutes(
       return res.status(403).json({ error: "Session access denied" });
     }
 
-    if (!itemPath) {
-      return res.status(400).json({ error: "Item path is required" });
+    if (
+      typeof itemPath !== "string" ||
+      !itemPath.length ||
+      itemPath.includes("\0")
+    ) {
+      return res.status(400).json({ error: "INVALID_FILE_PATH" });
+    }
+    if (
+      (permanent !== undefined && typeof permanent !== "boolean") ||
+      (isDirectory !== undefined && typeof isDirectory !== "boolean")
+    ) {
+      return res.status(400).json({ error: "INVALID_DELETE_OPTIONS" });
     }
 
     fileLogger.info("Deleting item", {

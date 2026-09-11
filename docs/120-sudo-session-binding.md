@@ -50,3 +50,10 @@
 
 文件服务 13 文件 / 108 项通过，报告 .cache/file-operation-exit-results.json；新增路由测试模拟 SSH 流并使用真实注册处理器，未执行真实文件操作。ESLint 通过。
 其他操作退出状态修复的 tsc -b 类型检查通过。
+
+## 删除模式与命令选项输入边界
+
+deleteItem 原以 truthiness 判断 permanent，字符串 "false" 也可能进入永久删除分支。现在 permanent/isDirectory 仅允许 boolean 或未提供，其余字符串、数字、null、对象均返回 400 INVALID_DELETE_OPTIONS，远端执行前拒绝。路径必须是非空字符串且不含 NUL。
+
+POSIX buildDeleteCommand 使用 rm -f -- / rm -rf --，避免连字符开头的名称变成命令选项；Windows 继续使用 -LiteralPath。没有执行真实删除或改变用户确认流程。新增参数化路由与命令边界测试，文件服务 13 文件 / 115 项通过，报告 .cache/file-delete-input-results.json；ESLint 通过。
+删除输入边界修复的 tsc -b 类型检查通过。
