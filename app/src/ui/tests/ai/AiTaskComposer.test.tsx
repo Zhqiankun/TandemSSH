@@ -1,5 +1,5 @@
 import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
-import { cleanup,fireEvent,render,screen,waitFor } from "@testing-library/react";
+import { act,cleanup,fireEvent,render,screen,waitFor } from "@testing-library/react";
 import i18n from "../../i18n/i18n";
 const mocks=vi.hoisted(()=>({status:vi.fn(),providers:vi.fn(),preferences:vi.fn(),create:vi.fn()}));
 vi.mock("@/api/ai-api",()=>({getAiStatus:mocks.status,getAiProviders:mocks.providers}));
@@ -19,4 +19,17 @@ describe("Chinese BYOK task creation",()=>{
  it("respects an explicit global off switch without enabling the user or calling a model",async()=>{
   mocks.status.mockResolvedValue({globallyEnabled:false,enabled:false});render(<AiTaskComposer sessionId="session" onCreate={action=>action()}/>);await screen.findByRole("alert");expect(mocks.preferences).not.toHaveBeenCalled();expect(mocks.create).not.toHaveBeenCalled();
  });
+});
+
+it("keeps a delayed task creation bound to the session visible when submitted", async () => {
+  let submit!: () => Promise<import("../../../types/collaboration-task").TaskView>;
+  const onCreate = async (action: typeof submit) => { submit = action; };
+  const { rerender } = render(<AiTaskComposer sessionId="session-a" onCreate={onCreate} />);
+  await screen.findByText("我的模型");
+  fireEvent.change(screen.getByLabelText("执行目标"), { target: { value: "检查原服务器" } });
+  fireEvent.click(screen.getByRole("button", { name: "让 AI 规划" }));
+  expect(mocks.create).not.toHaveBeenCalled();
+  rerender(<AiTaskComposer sessionId="session-b" onCreate={onCreate} />);
+  await act(async () => { await submit(); });
+  expect(mocks.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ sessionId: "session-a", goal: "检查原服务器" }));
 });

@@ -798,9 +798,10 @@
         "56-linux-ssh-acceptance.md",
         "64-jump-combined-acceptance.md",
         "68-provider-response-bounds.md",
-        "103-workbench-session-isolation.md"
+        "103-workbench-session-isolation.md",
+        "104-ai-session-binding.md"
       ],
-      "remaining": "已修复并验证工作台跨 sessionId 迟到响应覆盖、接管锁继承和旧结果影响新标签问题；仍需实际多标签与服务端会话派发联动验证。"
+      "remaining": "界面延迟提交绑定、工作台跨会话隔离、服务端双模式并发命令及上下文隔离均有专项测试；仍需实际 Windows 多标签与远端副作用联动观察。"
     },
     {
       "id": "A04",
