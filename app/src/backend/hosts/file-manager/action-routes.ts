@@ -96,6 +96,7 @@ export function registerFileActionRoutes(
     let copyStream: import("ssh2").ClientChannel | undefined;
     const commandTimeout = setTimeout(() => {
       copyExpired = true;
+      cleanupCopy();
       copyStream?.destroy();
       fileLogger.error("Copy command timed out after 60 seconds", {
         sourcePath,
@@ -114,6 +115,27 @@ export function registerFileActionRoutes(
       }
     }, 60000);
 
+    const cleanupCopy = () => {
+      clearTimeout(commandTimeout);
+      req.off("aborted", cancelCopy);
+      res.off("close", closeCopy);
+    };
+    const cancelCopy = () => {
+      copyExpired = true;
+      cleanupCopy();
+      copyStream?.destroy();
+    };
+    const closeCopy = () => {
+      if (!res.writableEnded) cancelCopy();
+      else cleanupCopy();
+    };
+    req.once("aborted", cancelCopy);
+    res.once("close", closeCopy);
+    if (req.aborted || res.destroyed) {
+      cancelCopy();
+      return;
+    }
+
     execChannel(
       sshConn,
       copyCommand,
@@ -123,7 +145,7 @@ export function registerFileActionRoutes(
           return;
         }
         if (err) {
-          clearTimeout(commandTimeout);
+          cleanupCopy();
           fileLogger.error("SSH copyItem error:", err);
           if (!res.headersSent) {
             return res.status(500).json({ error: err.message });
@@ -145,7 +167,7 @@ export function registerFileActionRoutes(
         });
 
         stream.on("close", (code) => {
-          clearTimeout(commandTimeout);
+          cleanupCopy();
           if (copyExpired) return;
 
           if (code !== 0) {
@@ -232,7 +254,7 @@ export function registerFileActionRoutes(
         });
 
         stream.on("error", (streamErr) => {
-          clearTimeout(commandTimeout);
+          cleanupCopy();
           if (copyExpired) return;
           fileLogger.error("SSH copyItem stream error:", streamErr);
           if (!res.headersSent) {

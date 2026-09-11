@@ -21,6 +21,8 @@ vi.mock("../../../utils/logger.js", () => ({
   },
 }));
 beforeEach(() => vi.clearAllMocks());
+const requestEvents = { once: vi.fn(), off: vi.fn() };
+const responseEvents = { once: vi.fn(), off: vi.fn() };
 it.each([
   "silent-failure",
   "missing-exit",
@@ -64,6 +66,7 @@ it.each([
     json = vi.fn();
   await routes.get("/ssh/file_manager/ssh/copyItem")!(
     {
+      ...requestEvents,
       userId: "owner",
       body: {
         sessionId: "session",
@@ -71,7 +74,7 @@ it.each([
         targetDir: "/target",
       },
     } as never,
-    { status, json, headersSent: false } as never,
+    { ...responseEvents, status, json, headersSent: false } as never,
     vi.fn(),
   );
   expect(json).toHaveBeenCalledTimes(1);
@@ -108,8 +111,8 @@ it.each([
   const status = vi.fn().mockReturnThis(),
     json = vi.fn();
   await routes.get("/ssh/file_manager/ssh/copyItem")!(
-    { userId: "owner", body } as never,
-    { status, json, headersSent: false } as never,
+    { ...requestEvents, userId: "owner", body } as never,
+    { ...responseEvents, status, json, headersSent: false } as never,
     vi.fn(),
   );
   expect(status).toHaveBeenCalledWith(400);
@@ -142,6 +145,7 @@ it.each(["missing", "disconnected", "denied"])(
       json = vi.fn();
     await routes.get("/ssh/file_manager/ssh/copyItem")!(
       {
+        ...requestEvents,
         userId: "owner",
         body: {
           sessionId: "session",
@@ -149,7 +153,7 @@ it.each(["missing", "disconnected", "denied"])(
           targetDir: "/target",
         },
       } as never,
-      { status, json, headersSent: false } as never,
+      { ...responseEvents, status, json, headersSent: false } as never,
       vi.fn(),
     );
     expect(status).toHaveBeenCalledWith(state === "denied" ? 403 : 400);
@@ -194,6 +198,7 @@ it.each([false, true])(
         json = vi.fn();
       await routes.get("/ssh/file_manager/ssh/copyItem")!(
         {
+          ...requestEvents,
           userId: "owner",
           body: {
             sessionId: "session",
@@ -201,7 +206,7 @@ it.each([false, true])(
             targetDir: "/target",
           },
         } as never,
-        { status, json, headersSent: false } as never,
+        { ...responseEvents, status, json, headersSent: false } as never,
         vi.fn(),
       );
       await vi.advanceTimersByTimeAsync(60000);
@@ -216,5 +221,76 @@ it.each([false, true])(
     } finally {
       vi.useRealTimers();
     }
+  },
+);
+
+it.each(["request-aborted", "response-closed", "completed"])(
+  "cleans up copy lifecycle on %s",
+  async (outcome) => {
+    const routes = new Map<string, RequestHandler>();
+    registerFileActionRoutes(
+      {
+        post: (path: string, handler: RequestHandler) =>
+          routes.set(path, handler),
+      } as unknown as Express,
+      {
+        sshSessions: { session: { isConnected: true } as SSHSession },
+        scheduleSessionCleanup: vi.fn(),
+        verifySessionOwnership: () => true,
+      },
+    );
+    const request = Object.assign(new EventEmitter(), {
+      userId: "owner",
+      body: {
+        sessionId: "session",
+        sourcePath: "/source",
+        targetDir: "/target",
+      },
+    });
+    const response = Object.assign(new EventEmitter(), {
+      writableEnded: false,
+      headersSent: false,
+      destroyed: false,
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn(),
+    });
+    const stream = Object.assign(new EventEmitter(), {
+      stderr: new EventEmitter(),
+      destroy: vi.fn(),
+    });
+    let guard!: NonNullable<Parameters<typeof execChannel>[3]>;
+    let callback!: Parameters<typeof execChannel>[2];
+    vi.mocked(execChannel).mockImplementation(
+      (_session, _command, done, beforeOpen) => {
+        guard = beforeOpen!;
+        callback = done;
+        if (outcome !== "request-aborted") {
+          guard();
+          done(undefined, stream as never);
+        }
+      },
+    );
+    await routes.get("/ssh/file_manager/ssh/copyItem")!(
+      request as never,
+      response as never,
+      vi.fn(),
+    );
+    if (outcome === "completed") {
+      stream.emit("close", 0);
+      response.writableEnded = true;
+      response.emit("close");
+      expect(response.json).toHaveBeenCalledTimes(1);
+      expect(stream.destroy).not.toHaveBeenCalled();
+    } else {
+      if (outcome === "request-aborted") request.emit("aborted");
+      else response.emit("close");
+      expect(() => guard()).toThrow("COPY_NOT_DISPATCHED");
+      if (outcome === "request-aborted") callback(undefined, stream as never);
+      expect(stream.destroy).toHaveBeenCalledTimes(1);
+      stream.emit("close", 0);
+      expect(response.json).not.toHaveBeenCalled();
+    }
+    expect(request.listenerCount("aborted")).toBe(0);
+    expect(response.listenerCount("close")).toBe(0);
   },
 );
