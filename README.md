@@ -6,9 +6,9 @@
 
 ## Windows 开发预览下载
 
-[下载安装版 EXE](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.0-alpha.4/TandemSSH-0.1.0-alpha.4-x64.exe) · [下载免安装 ZIP](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.0-alpha.4/TandemSSH-0.1.0-alpha.4-x64.zip) · [发布说明与校验和](https://github.com/Zhqiankun/TandemSSH/releases/tag/v0.1.0-alpha.4)
+[下载安装版 EXE](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.0-alpha.5/TandemSSH-0.1.0-alpha.5-x64.exe) · [下载免安装 ZIP](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.0-alpha.5/TandemSSH-0.1.0-alpha.5-x64.zip) · [发布说明与校验和](https://github.com/Zhqiankun/TandemSSH/releases/tag/v0.1.0-alpha.5)
 
-当前为 Windows x64 的 0.1.0-alpha.4 开发预览，建议先在测试服务器体验。EXE 直接安装；ZIP 完整解压后运行 TandemSSH.exe。GitHub 自动附带的 Source code 是源码包。完整产品验收仍在进行，具体边界见[预览说明](docs/75-preview-release-notes.md)。
+当前为 Windows x64 的 0.1.0-alpha.5 开发预览，建议先在测试服务器体验。EXE 直接安装；ZIP 完整解压后运行 TandemSSH.exe。GitHub 自动附带的 Source code 是源码包。完整产品验收仍在进行，具体边界见[预览说明](docs/75-preview-release-notes.md)。
 
 ## 仓库与版本更新
 
