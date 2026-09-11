@@ -879,7 +879,7 @@
       "id": "A08",
       "requirement": "交还 AI",
       "acceptance": "读取人工新增记录，旧批准不复用",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/sessions/control.ts",
       "records": [
         "12-implementation.md",
@@ -891,9 +891,12 @@
         "68-provider-response-bounds.md",
         "98-handback-context-review.md",
         "99-ai-terminal-context.md",
-        "101-linux-lab-timing.md"
+        "101-linux-lab-timing.md",
+        "102-windows-ai-handback.md"
       ],
-      "remaining": "旧批准失效、新 cwd、人工介入提示和有界脱敏终端输出已通过核心及真实 Linux SSH 双模式验收；Windows 桌面操作与生产输出适配链的完整观察仍待完成。"
+      "remaining": "",
+      "verifiedAt": "2026-09-12",
+      "verification": "旧批准在接管及交还后不能复用；真实 Windows Electron→Alpine SSH 的自动/协作两模式中，人工键盘输入输出经生产缓冲脱敏后进入下一模型请求，新 pwd 成功，中文已完成状态可见且应用正常退出。"
     },
     {
       "id": "A09",
