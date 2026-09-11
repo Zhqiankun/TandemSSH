@@ -6,5 +6,12 @@ rename-item.ts 负责名称校验、目标路径、lstat 预检和标准重命�
 
 SFTP 预检与操作均有 10 秒等待上限；超时不表示撤销已经发出的重命名。普通权限错误保持 403。检查后目标竞态以标准 RENAME 的拒绝语义处理，不能声称对不遵守协议的服务器仍有同样保证。
 
-初轮文件服务 14 文件 / 125 项通过，报告 .cache/rename-no-overwrite-results.json；随后补充响应丢失测试，确认不重试也不误报冲突。路由级测试验证 409 且不启动 Shell。原 renameItem 的 Shell 成功标记用例已替换为新 SFTP 路由验证。暂无真实 OpenSSH 重命名冲突实机结果，B09 仍未整体完成；公开 alpha.5 不含此变更。
+初轮文件服务 14 文件 / 125 项通过，报告 .cache/rename-no-overwrite-results.json；随后补充响应丢失测试，确认不重试也不误报冲突。路由级测试验证 409 且不启动 Shell。原 renameItem 的 Shell 成功标记用例已替换为新 SFTP 路由验证。后续真实 OpenSSH 冲突结果见下，B09 的其他基础操作仍未整体完成；公开 alpha.5 不含此变更。
 最终两文件 21 项专项、翻译键检查和 tsc -b 通过；lint 无错误，FileManager 保留原 windowId 警告。
+
+## 真实 OpenSSH 验收
+
+2026-09-12，使用自有 Alpine 3.24.1 / OpenSSH，rename-acceptance.test.ts 两项通过，2.915 秒。已有普通目标、目录、断链均拒绝，源及目标内容保持；特殊中文/换行/元字符名称按字面重命名，没有额外命令文件；断链本身可重命名。第二项在客户端预检回调前向真实服务器创建目标，再返回旧的未找到状态，真实 SFTP RENAME 拒绝该冲突，双方内容不变。
+
+报告 .cache/rename-linux-results.json，VM f094590f-6f8d-47b2-94d6-0840f3b76436；只访问 linuxFixture 专用目录并清理。测试文件 ESLint 与 tsc -b 通过。此证据限该 OpenSSH 实现，不声称所有 SFTP 服务器同等兼容。
+测试后 VM 经 QMP 身份核对关闭；正常关机等待超时后 quit，forced=true，启动进程 exit=0。
