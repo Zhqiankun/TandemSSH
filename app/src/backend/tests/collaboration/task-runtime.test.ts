@@ -38,6 +38,7 @@ function fixture(
     };
     hold?: boolean;
     operationOutput?: string;
+    operationResult?: Awaited<PreparedCommand["completion"]>;
     contextResult?: Awaited<PreparedCommand["completion"]>;
     assertAvailable?: () => void;
     files?: FileExecutorPort;
@@ -91,11 +92,15 @@ function fixture(
           completion:
             options.hold && commands.length === 1
               ? completion.promise
-              : Promise.resolve({
-                  exitCode: 0,
-                  output: options.operationOutput ?? action.program + " output",
-                  cwd: action.program === "cd" ? "/srv/app/child" : action.cwd,
-                }),
+              : Promise.resolve(
+                  options.operationResult ?? {
+                    exitCode: 0,
+                    output:
+                      options.operationOutput ?? action.program + " output",
+                    cwd:
+                      action.program === "cd" ? "/srv/app/child" : action.cwd,
+                  },
+                ),
           dispose: () => {
             if (options.hold)
               completion.resolve({ exitCode: null, output: "interrupted" });
@@ -1130,6 +1135,84 @@ it.each([
       expect(path.dirname(resolved)).toBe(await fs.realpath(os.tmpdir()));
       expect(path.basename(resolved)).toMatch(
         /^tandem-audit-runtime-[A-Za-z0-9]+$/,
+      );
+      await fs.rm(resolved, { recursive: true, force: true });
+    }
+  },
+);
+
+it.each(["failed", "takeover"] as const)(
+  "roundtrips %s command outcomes without claiming success",
+  async (outcome) => {
+    const fs = await import("node:fs/promises"),
+      path = await import("node:path"),
+      os = await import("node:os");
+    const { AuditJournal } =
+      await import("../../collaboration/audit/journal.js");
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "tandem-audit-failure-"),
+    );
+    const journal = new AuditJournal(root, "user-a");
+    const f = fixture({
+      audit: journal,
+      hold: outcome === "takeover",
+      operationResult: {
+        exitCode: 2,
+        output: "permission denied",
+        cwd: "/srv/app",
+      },
+    });
+    try {
+      const task = await f.create("automatic", [], mcp, "failure-history");
+      await f.authorize(task, {
+        matches: [{ kind: "program", program: "pwd" }],
+      });
+      await f.runtime.submit(
+        mcp,
+        task.id,
+        { program: "pwd", args: [] },
+        "failure-command",
+      );
+      if (outcome === "takeover") {
+        await vi.waitFor(() => expect(f.writes).toContain("pwd"));
+        f.control.takeover();
+      }
+      await vi.waitFor(() =>
+        expect(f.runtime.get(human, task.id).operations[0].status).toBe(
+          outcome === "failed" ? "failed" : "unknown",
+        ),
+      );
+      let record:
+        import("../../../types/task-history.js").AuditHistoryItem | undefined;
+      await vi.waitFor(async () => {
+        record = (await journal.queryHistory({ taskId: task.id })).items.find(
+          (item) => item.type === "operation.completed",
+        );
+        expect(record).toBeTruthy();
+      });
+      expect(record).toMatchObject({
+        origin: "mcp",
+        hostId: 1,
+        hostName: "user@server:22",
+        status: outcome === "failed" ? "failed" : "unknown",
+      });
+      if (outcome === "failed")
+        expect(record).toMatchObject({
+          exitCode: 2,
+          outputPreview: "permission denied",
+        });
+      else {
+        expect(record!.exitCode).not.toBe(0);
+        expect(record!.error).toBeTruthy();
+      }
+      await f.runtime.cancel(human, task.id);
+    } finally {
+      f.disconnect();
+      await journal.queryHistory({});
+      const resolved = await fs.realpath(root);
+      expect(path.dirname(resolved)).toBe(await fs.realpath(os.tmpdir()));
+      expect(path.basename(resolved)).toMatch(
+        /^tandem-audit-failure-[A-Za-z0-9]+$/,
       );
       await fs.rm(resolved, { recursive: true, force: true });
     }

@@ -6101,6 +6101,7 @@
         "automatic": "Automatic",
         "collaborative": "Collaborative"
       },
+      "errorLabel": "Failure/interruption reason",
       "decisions": {
         "unknown": "Cannot determine automatically; manual review required",
         "allow": "Allow",

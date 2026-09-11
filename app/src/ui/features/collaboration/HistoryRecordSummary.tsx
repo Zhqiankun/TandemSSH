@@ -45,6 +45,14 @@ export function HistoryRecordSummary({ item }: { item: AuditHistoryItem }) {
           </span>
         )}
       </div>
+      {item.error && (
+        <p className="break-all text-destructive">
+          {t("tandem.history.errorLabel")}:{" "}
+          {t("tandem.collaboration.errors." + item.error, {
+            defaultValue: item.error,
+          })}
+        </p>
+      )}
       {item.cwd && (
         <p className="break-all">
           {t("tandem.history.directoryLabel")}: {item.cwd}

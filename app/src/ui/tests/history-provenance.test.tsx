@@ -70,3 +70,39 @@ it("shows a recorded unknown decision as manual review rather than omitting it",
   ).toBeInTheDocument();
   expect(screen.queryByText("策略判断: 允许")).not.toBeInTheDocument();
 });
+
+it("explains an unknown execution result in Chinese without showing a successful exit", async () => {
+  await i18n.changeLanguage("zh-CN");
+  render(
+    <HistoryRecordSummary
+      item={{
+        id: "interrupted",
+        at: 1,
+        type: "operation.completed",
+        detail: "token",
+        status: "unknown",
+        error: "RESULT_UNKNOWN",
+      }}
+    />,
+  );
+  expect(
+    screen.getByText("失败/中断原因: 结果未知，请人工核对后决定下一步。"),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("退出码: 0")).not.toBeInTheDocument();
+});
+it("renders an unrecognized recorded reason as escaped text", async () => {
+  await i18n.changeLanguage("zh-CN");
+  render(
+    <HistoryRecordSummary
+      item={{
+        id: "failure",
+        at: 1,
+        type: "operation.completed",
+        detail: "token",
+        error: "<script>error detail</script>",
+      }}
+    />,
+  );
+  expect(screen.getByText(/error detail/)).toBeInTheDocument();
+  expect(document.querySelector("script")).toBeNull();
+});

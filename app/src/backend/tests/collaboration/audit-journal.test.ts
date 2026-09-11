@@ -404,3 +404,24 @@ it("preserves a real unknown policy decision while omitting missing or invalid d
     items.find((item) => item.operationId === "invalid")?.policyOutcome,
   ).toBeUndefined();
 });
+
+it("projects bounded redacted failure reasons without inventing an exit code", async () => {
+  const f = await fixture();
+  await f.journal.record("operation.completed", {
+    id: "failed",
+    status: "unknown",
+    error: "API_KEY=fixture-error-secret\n" + "界".repeat(600),
+    exitCode: null,
+  });
+  const record = (await f.journal.queryHistory({})).items[0];
+  expect(record.status).toBe("unknown");
+  expect(record.exitCode).toBeUndefined();
+  expect(record.error).toBeTruthy();
+  expect(record.error).not.toContain("fixture-error-secret");
+  expect(record.error!.length).toBeLessThanOrEqual(512);
+  await f.journal.record("operation.completed", {
+    id: "old",
+    status: "failed",
+  });
+  expect((await f.journal.queryHistory({})).items[0].error).toBeUndefined();
+});

@@ -201,6 +201,7 @@ export class AuditHistoryReader {
           : undefined,
       exitCode: integer(data.exitCode),
       status: text(data.status ?? data.state, 80),
+      error: text(data.error, 512),
       operationId: record.type.startsWith("operation.")
         ? text(data.id, 128)
         : text(data.operationId, 128),

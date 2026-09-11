@@ -22,6 +22,7 @@ export interface AuditHistoryItem {
   outputTruncated?: boolean;
   exitCode?: number;
   status?: string;
+  error?: string;
   operationId?: string;
   actionType?: string;
   program?: string;
