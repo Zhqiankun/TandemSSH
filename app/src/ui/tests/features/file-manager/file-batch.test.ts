@@ -1,5 +1,8 @@
 import { expect, it, vi } from "vitest";
-import { runFileBatch } from "../../../features/file-manager/file-batch";
+import {
+  runFileBatch,
+  assertFileSession,
+} from "../../../features/file-manager/file-batch";
 it("keeps confirmed items and stops after a lost response without retrying", async () => {
   const changed: string[] = [],
     error = Error("response lost");
@@ -26,4 +29,22 @@ it("counts only acknowledged actions and handles empty batches", async () => {
   const action = vi.fn();
   expect(await runFileBatch([], action)).toEqual({ ok: true, completed: 0 });
   expect(action).not.toHaveBeenCalled();
+});
+it("stops later file actions after the selected connection changes", async () => {
+  let current = "original";
+  const writes: number[] = [];
+  const result = await runFileBatch([1, 2, 3], async (item) => {
+    assertFileSession("original", current);
+    writes.push(item);
+    current = "replacement";
+  });
+  expect(result).toMatchObject({
+    ok: false,
+    completed: 1,
+    error: expect.objectContaining({ message: "FILE_SESSION_CHANGED" }),
+  });
+  expect(writes).toEqual([1]);
+  expect(() => assertFileSession("original", null)).toThrow(
+    "FILE_SESSION_CHANGED",
+  );
 });

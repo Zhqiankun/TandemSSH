@@ -18,3 +18,10 @@ export async function runFileBatch<T>(
   }
   return { ok: true, completed };
 }
+
+export function assertFileSession(
+  expected: string,
+  current: string | null | undefined,
+): void {
+  if (!expected || expected !== current) throw Error("FILE_SESSION_CHANGED");
+}

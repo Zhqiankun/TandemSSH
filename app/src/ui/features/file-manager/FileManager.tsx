@@ -1,4 +1,4 @@
-import { runFileBatch } from "./file-batch";
+import { runFileBatch, assertFileSession } from "./file-batch";
 import { changeFileOwnership } from "@/api/file-ownership-api";
 import {
   UploadTreeDialog,
@@ -814,7 +814,11 @@ function FileManagerContent({
               current === resolvedPath ? previousPath : current,
             );
             if (!sudoDialogOpen) {
-              setPendingSudoOperation({ type: "navigate", path: resolvedPath });
+              setPendingSudoOperation({
+                type: "navigate",
+                sessionId: sshSessionId,
+                path: resolvedPath,
+              });
               setSudoDialogOpen(true);
             }
 
@@ -1220,6 +1224,7 @@ function FileManagerContent({
           if (axiosError.response?.data?.needsSudo) {
             setPendingSudoOperation({
               type: "delete",
+              sessionId: operationSession,
               files: files.slice(completed),
             });
             setSudoDialogOpen(true);
@@ -1302,20 +1307,27 @@ function FileManagerContent({
   async function handleSudoPasswordSubmit(password: string) {
     if (!sshSessionId || !pendingSudoOperation) return;
 
+    const operationSession = pendingSudoOperation.sessionId;
+    const assertCurrent = () =>
+      assertFileSession(operationSession, sshSessionIdRef.current);
     try {
-      await setSudoPassword(sshSessionId, password);
+      assertCurrent();
+      await setSudoPassword(operationSession, password);
+      assertCurrent();
       setSudoDialogOpen(false);
 
       if (pendingSudoOperation.type === "delete") {
         for (const file of pendingSudoOperation.files) {
+          assertCurrent();
           await deleteSSHItem(
-            sshSessionId,
+            operationSession,
             file.path,
             file.type === "directory",
             currentHost?.id,
             currentHost?.userId?.toString(),
           );
         }
+        assertCurrent();
         toast.success(
           t("fileManager.itemsDeletedSuccessfully", {
             count: pendingSudoOperation.files.length,
@@ -1326,6 +1338,7 @@ function FileManagerContent({
       } else if (pendingSudoOperation.type === "navigate") {
         const success = await loadDirectory(pendingSudoOperation.path);
         if (success) {
+          assertCurrent();
           setCurrentPath(pendingSudoOperation.path);
           setPendingSudoOperation(null);
         }
@@ -1334,6 +1347,15 @@ function FileManagerContent({
 
       setPendingSudoOperation(null);
     } catch (error: unknown) {
+      if (
+        sshSessionIdRef.current !== operationSession ||
+        (error instanceof Error && error.message === "FILE_SESSION_CHANGED")
+      ) {
+        setSudoDialogOpen(false);
+        setPendingSudoOperation(null);
+        toast.error(t("fileManager.sudoSessionChanged"));
+        return;
+      }
       const axiosError = error as {
         response?: { data?: { needsSudo?: boolean; sudoFailed?: boolean } };
         message?: string;
