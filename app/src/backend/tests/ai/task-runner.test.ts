@@ -389,24 +389,40 @@ describe("shared-session AI orchestration", () => {
       ),
     ).toBe(true);
   });
-  it("holds at a model budget until a human raises it and reauthorizes", async () => {
-    const f = fixture(normal),
-      created = await f.start("automatic", 2);
-    await f.authorize(created.task.id);
-    await vi.waitFor(() =>
-      expect(f.runtime.get(user, created.task.id).error).toBe(
-        "MODEL_BUDGET_EXCEEDED",
-      ),
-    );
-    expect(f.requests).toHaveLength(2);
-    f.coordinator.extendBudget("owner", created.run.id, 4);
-    await f.authorize(created.task.id);
-    await vi.waitFor(() =>
-      expect(f.coordinator.get("owner", created.run.id).phase).toBe(
-        "completed",
-      ),
-    );
-  });
+  it.each(["automatic", "collaborative"] as const)(
+    "holds at a model budget until a human raises it and reauthorizes in %s mode",
+    async (mode) => {
+      const f = fixture(normal),
+        created = await f.start(mode, 2);
+      await f.authorize(created.task.id);
+      if (mode === "collaborative") {
+        await vi.waitFor(() =>
+          expect(f.runtime.get(user, created.task.id).state).toBe(
+            "awaiting-approval",
+          ),
+        );
+        const op = f.runtime.get(user, created.task.id).operations[0];
+        await f.runtime.approve(user, created.task.id, op.id, op.digest, 1);
+      }
+      await vi.waitFor(() =>
+        expect(f.runtime.get(user, created.task.id).error).toBe(
+          "MODEL_BUDGET_EXCEEDED",
+        ),
+      );
+      expect(f.requests).toHaveLength(2);
+      expect(f.control.snapshot().controller.kind).toBe("human");
+      f.coordinator.extendBudget("owner", created.run.id, 4);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(f.requests).toHaveLength(2);
+      expect(f.control.snapshot().controller.kind).toBe("human");
+      await f.authorize(created.task.id);
+      await vi.waitFor(() =>
+        expect(f.coordinator.get("owner", created.run.id).phase).toBe(
+          "completed",
+        ),
+      );
+    },
+  );
 });
 
 it.each(["automatic", "collaborative"] as const)(

@@ -112,15 +112,18 @@
       "id": "R07",
       "requirement": "自带 API",
       "acceptance": "自定义接口地址、模型和 Key，直接使用用户选择的服务商",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/ai",
       "records": [
         "14-built-in-ai.md",
         "44-ai-task-recovery.md",
         "68-provider-response-bounds.md",
-        "69-chat-stream-bounds.md"
+        "69-chat-stream-bounds.md",
+        "110-byok-budget-review.md"
       ],
-      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+      "remaining": "",
+      "verifiedAt": "2026-09-12",
+      "verification": "自定义前缀 URL、Bearer Key、模型和流式工具请求经真实 HTTP 核对；Windows 生产任务链使用自配端点，配置读取按用户隔离并保持提供商 identity。"
     },
     {
       "id": "R08",
@@ -1167,9 +1170,10 @@
         "14-built-in-ai.md",
         "44-ai-task-recovery.md",
         "68-provider-response-bounds.md",
-        "69-chat-stream-bounds.md"
+        "69-chat-stream-bounds.md",
+        "110-byok-budget-review.md"
       ],
-      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+      "remaining": "自动/协作耗尽预算停止调用并归还控制权，增加预算仍须重新授权已验证；中文预算错误与恢复入口需完成对应界面观察。"
     },
     {
       "id": "A25",
