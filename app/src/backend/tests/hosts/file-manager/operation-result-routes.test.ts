@@ -4,6 +4,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { registerFileOperationRoutes } from "../../../hosts/file-manager/operation-routes.js";
 import {
   execChannel,
+  getSessionSftp,
   type SSHSession,
 } from "../../../hosts/file-manager/session.js";
 vi.mock("../../../hosts/file-manager/session.js", () => ({
@@ -27,7 +28,7 @@ vi.mock("../../../utils/permission-manager.js", () => ({
   PermissionManager: { getInstance: () => ({ isAdmin: async () => false }) },
 }));
 beforeEach(() => vi.clearAllMocks());
-it.each(["createFile", "createFolder", "renameItem", "moveItem"])(
+it.each(["createFile", "createFolder", "moveItem"])(
   "%s rejects a failure exit even when output contains SUCCESS",
   async (name) => {
     const routes = new Map<string, RequestHandler>();
@@ -123,3 +124,41 @@ it.each(["false", "true", 1, 0, null, {}])(
     }
   },
 );
+
+it("returns an explicit rename conflict without invoking a shell command", async () => {
+  const routes = new Map<string, RequestHandler>();
+  const register = (path: string, handler: RequestHandler) =>
+    routes.set(path, handler);
+  registerFileOperationRoutes(
+    {
+      get: register,
+      post: register,
+      put: register,
+      delete: register,
+    } as unknown as Express,
+    {
+      sshSessions: { session: { isConnected: true } as SSHSession },
+      verifySessionOwnership: () => true,
+    },
+  );
+  const rename = vi.fn();
+  vi.mocked(getSessionSftp).mockResolvedValue({
+    lstat: (_path: string, done: (error: null, attributes: object) => void) =>
+      done(null, {}),
+    rename,
+  } as never);
+  const status = vi.fn().mockReturnThis(),
+    json = vi.fn();
+  await routes.get("/ssh/file_manager/ssh/renameItem")!(
+    {
+      userId: "owner",
+      body: { sessionId: "session", oldPath: "/srv/source", newName: "target" },
+    } as never,
+    { status, json } as never,
+    vi.fn(),
+  );
+  expect(status).toHaveBeenCalledWith(409);
+  expect(json).toHaveBeenCalledWith({ error: "FILE_TARGET_EXISTS" });
+  expect(rename).not.toHaveBeenCalled();
+  expect(execChannel).not.toHaveBeenCalled();
+});

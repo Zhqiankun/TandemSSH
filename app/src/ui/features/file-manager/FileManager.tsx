@@ -2416,7 +2416,11 @@ function FileManagerContent({
       const axiosError = error as {
         response?: { status?: number; data?: { error?: string } };
       };
-      if (
+      if (axiosError.response?.data?.error === "RENAME_RESULT_UNKNOWN") {
+        toast.error(t("fileManager.renameResultUnknown"));
+      } else if (axiosError.response?.status === 409) {
+        toast.error(t("fileManager.renameTargetExists"));
+      } else if (
         axiosError.response?.status === 403 ||
         axiosError.response?.data?.error
           ?.toLowerCase()

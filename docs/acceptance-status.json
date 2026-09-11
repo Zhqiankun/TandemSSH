@@ -632,9 +632,10 @@
         "58-local-remote-file-panels.md",
         "59-windows-file-attributes.md",
         "94-trash-link-retention.md",
-        "119-file-delete-partial-results.md"
+        "119-file-delete-partial-results.md",
+        "121-rename-no-overwrite.md"
       ],
-      "remaining": "回收站断链已有真实 SFTP 验证；批量删除部分确认计数和永久删除后备错误处理已补齐，仍需新建/重命名/移动/复制及完整批量操作桌面归并验收。"
+      "remaining": "批量删除部分结果、权限确认生命周期和重命名无覆盖冲突已补齐；重命名改为标准 SFTP，需真实 OpenSSH 冲突验证。新建/移动/复制及完整批量桌面链仍未全部验收。"
     },
     {
       "id": "B10",

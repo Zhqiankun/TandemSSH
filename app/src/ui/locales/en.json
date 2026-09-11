@@ -2384,7 +2384,9 @@
       "replacedMatches": "replaced $ matches"
     },
     "batchDeletePartial": "Confirmed {{completed}} items deleted or moved to trash; {{remaining}} items are unconfirmed or not attempted. Refresh before retrying.",
-    "sudoSessionChanged": "The connection changed. The pending privileged operation was cancelled; refresh and start it again."
+    "sudoSessionChanged": "The connection changed. The pending privileged operation was cancelled; refresh and start it again.",
+    "renameTargetExists": "A file or folder with that name already exists. Choose another name; nothing was overwritten.",
+    "renameResultUnknown": "The rename result is unconfirmed. Refresh the directory before trying again."
   },
   "transfer": {
     "copyToHost": "Copy to host…",

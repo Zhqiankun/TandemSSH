@@ -1,3 +1,4 @@
+import { renameFileItem } from "./rename-item.js";
 import type { Express } from "express";
 import type { AuthenticatedRequest } from "../../../types/index.js";
 import { fileLogger } from "../../utils/logger.js";
@@ -721,7 +722,12 @@ export function registerFileOperationRoutes(
       return res.status(403).json({ error: "Session access denied" });
     }
 
-    if (!oldPath || !newName) {
+    if (
+      typeof oldPath !== "string" ||
+      typeof newName !== "string" ||
+      !oldPath ||
+      !newName
+    ) {
       return res
         .status(400)
         .json({ error: "Old path and new name are required" });
@@ -738,104 +744,32 @@ export function registerFileOperationRoutes(
       from: oldPath,
       to: newPath,
     });
-    const escapedOldPath = oldPath.replace(/'/g, "'\"'\"'");
-    const escapedNewPath = newPath.replace(/'/g, "'\"'\"'");
-
-    const renameCommand = `mv -- '${escapedOldPath}' '${escapedNewPath}' && echo "SUCCESS" && exit 0`;
-
-    execChannel(sshConn, renameCommand, (err, stream) => {
-      if (err) {
-        fileLogger.error("SSH renameItem error:", err);
-        if (!res.headersSent) {
-          return res.status(500).json({ error: err.message });
-        }
-        return;
-      }
-
-      let outputData = "";
-      let errorData = "";
-
-      stream.on("data", (chunk: Buffer) => {
-        outputData += chunk.toString();
+    try {
+      const renamedPath = await renameFileItem(
+        await getSessionSftp(sshConn),
+        oldPath,
+        newName,
+      );
+      res.json({
+        message: "Item renamed successfully",
+        oldPath,
+        newPath: renamedPath,
       });
-
-      stream.stderr.on("data", (chunk: Buffer) => {
-        errorData += chunk.toString();
-
-        if (chunk.toString().includes("Permission denied")) {
-          fileLogger.error(`Permission denied renaming: ${oldPath}`);
-          if (!res.headersSent) {
-            return res.status(403).json({
-              error: `Permission denied: Cannot rename ${oldPath}. Check file permissions.`,
-            });
-          }
-          return;
-        }
-      });
-
-      stream.on("close", (code) => {
-        if (fileCommandSucceeded(code, outputData)) {
-          fileLogger.success("Item renamed successfully", {
-            operation: "file_rename_success",
-            sessionId,
-            userId,
-            from: oldPath,
-            to: newPath,
-          });
-          if (!res.headersSent) {
-            res.json({
-              message: "Item renamed successfully",
-              oldPath,
-              newPath,
-              toast: {
-                type: "success",
-                message: `Item renamed: ${oldPath} -> ${newPath}`,
-              },
-            });
-          }
-          return;
-        }
-
-        if (code !== 0) {
-          fileLogger.error(
-            `SSH renameItem command failed with code ${code}: ${errorData.replace(/\n/g, " ").trim()}`,
-          );
-          if (!res.headersSent) {
-            return res.status(500).json({
-              error: `Command failed: ${errorData}`,
-              toast: { type: "error", message: `Rename failed: ${errorData}` },
-            });
-          }
-          return;
-        }
-
-        fileLogger.success("Item renamed successfully", {
-          operation: "file_rename_success",
-          sessionId,
-          userId,
-          from: oldPath,
-          to: newPath,
-        });
-        if (!res.headersSent) {
-          res.json({
-            message: "Item renamed successfully",
-            oldPath,
-            newPath,
-            toast: {
-              type: "success",
-              message: `Item renamed: ${oldPath} -> ${newPath}`,
-            },
-          });
-        }
-      });
-
-      stream.on("error", (streamErr) => {
-        fileLogger.error("SSH renameItem stream error:", streamErr);
-        if (!res.headersSent) {
-          res.status(500).json({ error: `Stream error: ${streamErr.message}` });
-        }
-      });
-    });
+    } catch (error) {
+      const code = (error as { code?: number }).code;
+      const message = (error as Error).message;
+      res
+        .status(
+          message === "FILE_TARGET_EXISTS"
+            ? 409
+            : message === "INVALID_RENAME_PATH"
+              ? 400
+              : code === 3
+                ? 403
+                : 500,
+        )
+        .json({ error: message });
+    }
   });
 
   /**

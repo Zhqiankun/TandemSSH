@@ -2384,7 +2384,9 @@
       "replacedMatches": "已替换 $ 处匹配"
     },
     "batchDeletePartial": "已确认 {{completed}} 项删除或移至回收站；其余 {{remaining}} 项结果未确认或尚未执行。请刷新核对后再重试。",
-    "sudoSessionChanged": "连接已变化，已取消待确认的权限操作。请刷新后重新发起。"
+    "sudoSessionChanged": "连接已变化，已取消待确认的权限操作。请刷新后重新发起。",
+    "renameTargetExists": "同名文件或目录已存在，请使用其他名称；未覆盖目标。",
+    "renameResultUnknown": "重命名结果尚未确认，请刷新目录核对后再操作。"
   },
   "transfer": {
     "copyToHost": "复制到主机…",
