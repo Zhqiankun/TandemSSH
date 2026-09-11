@@ -58,9 +58,12 @@ export class SystemWorkflowSecretStore {
   }
   async use(
     reference: WorkflowSecretReference,
+    assertAuthorized: () => void,
     consume: (secret: Uint8Array) => Promise<void>,
   ): Promise<void> {
-    const entry = new AsyncEntry(SERVICE, account(reference));
+    const key = account(reference);
+    assertAuthorized();
+    const entry = new AsyncEntry(SERVICE, key);
     let raw: Uint8Array | number[] | undefined;
     try {
       raw = (await entry.getSecret()) as Uint8Array | number[] | undefined;
@@ -83,6 +86,7 @@ export class SystemWorkflowSecretStore {
         secret = Uint8Array.from(raw);
       } else secret = raw;
       if (!validSecret(secret)) throw Error("INVALID_WORKFLOW_SECRET");
+      assertAuthorized();
       await consume(secret);
     } finally {
       secret?.fill(0);

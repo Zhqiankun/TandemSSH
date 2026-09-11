@@ -18,9 +18,13 @@ it("rejects malformed references before accessing the credential store", async (
     { userId: "a\nb" },
   ]) {
     await expect(
-      store.use({ ...reference(), ...invalid }, async () => {
-        throw Error("must not run");
-      }),
+      store.use(
+        { ...reference(), ...invalid },
+        () => {},
+        async () => {
+          throw Error("must not run");
+        },
+      ),
     ).rejects.toThrow("INVALID_WORKFLOW_SECRET_REFERENCE");
   }
 });
@@ -33,10 +37,14 @@ it.runIf(process.platform === "win32")(
     let borrowed: Uint8Array | undefined;
     try {
       await store.write(ref, secret);
-      await store.use(ref, async (bytes) => {
-        expect(Buffer.from(bytes).equals(secret)).toBe(true);
-        borrowed = bytes;
-      });
+      await store.use(
+        ref,
+        () => {},
+        async (bytes) => {
+          expect(Buffer.from(bytes).equals(secret)).toBe(true);
+          borrowed = bytes;
+        },
+      );
       expect(borrowed!.every((byte) => byte === 0)).toBe(true);
       expect(secret.some((byte) => byte !== 0)).toBe(true);
       for (const change of [
@@ -45,13 +53,21 @@ it.runIf(process.platform === "win32")(
         { secretId: randomUUID() },
       ])
         await expect(
-          store.use({ ...ref, ...change }, async () => {}),
+          store.use(
+            { ...ref, ...change },
+            () => {},
+            async () => {},
+          ),
         ).rejects.toThrow("WORKFLOW_SECRET_NOT_FOUND");
       await expect(
-        store.use(ref, async (bytes) => {
-          borrowed = bytes;
-          throw Error("consumer failed");
-        }),
+        store.use(
+          ref,
+          () => {},
+          async (bytes) => {
+            borrowed = bytes;
+            throw Error("consumer failed");
+          },
+        ),
       ).rejects.toThrow("consumer failed");
       expect(borrowed!.every((byte) => byte === 0)).toBe(true);
       await expect(store.write(ref, new Uint8Array(0))).rejects.toThrow(
@@ -60,13 +76,21 @@ it.runIf(process.platform === "win32")(
       await expect(
         store.write(ref, new Uint8Array(MAX_WORKFLOW_SECRET_BYTES + 1)),
       ).rejects.toThrow("INVALID_WORKFLOW_SECRET");
-      await store.use(ref, async (bytes) => {
-        expect(Buffer.from(bytes).equals(secret)).toBe(true);
-      });
-      expect(await store.remove(ref)).toBe(true);
-      await expect(store.use(ref, async () => {})).rejects.toThrow(
-        "WORKFLOW_SECRET_NOT_FOUND",
+      await store.use(
+        ref,
+        () => {},
+        async (bytes) => {
+          expect(Buffer.from(bytes).equals(secret)).toBe(true);
+        },
       );
+      expect(await store.remove(ref)).toBe(true);
+      await expect(
+        store.use(
+          ref,
+          () => {},
+          async () => {},
+        ),
+      ).rejects.toThrow("WORKFLOW_SECRET_NOT_FOUND");
     } finally {
       await store.remove(ref);
       secret.fill(0);
