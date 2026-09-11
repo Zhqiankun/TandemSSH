@@ -1,3 +1,4 @@
+import { estimateTransfer } from "../transfer-estimate";
 import { DownloadBatchRecoveryDialog } from "./DownloadBatchRecoveryDialog";
 import { DownloadRecoveryDialog } from "./DownloadRecoveryDialog";
 import { downloadRecoveryApi } from "@/api/download-recovery-api";
@@ -22,6 +23,10 @@ function DownloadRow({
 }) {
   const { t } = useTranslation(),
     [overwrite, setOverwrite] = useState(false);
+  const estimate =
+    job.state === "downloading"
+      ? estimateTransfer(job.size, job.writtenBytes, job.speed)
+      : undefined;
   const action = (work: () => unknown | Promise<unknown>) => {
     void Promise.resolve()
       .then(work)
@@ -61,15 +66,7 @@ function DownloadRow({
               bytes: job.writtenBytes,
               total: job.size ?? "—",
             })}
-        {job.speed && job.state === "downloading"
-          ? " · " +
-            t("tandem.upload.speed", {
-              speed: Math.round(job.speed / 1024),
-              seconds: Math.ceil(
-                ((job.size ?? 0) - job.writtenBytes) / job.speed,
-              ),
-            })
-          : ""}
+        {estimate ? " · " + t("tandem.upload.speed", estimate) : ""}
       </p>
       {job.local?.temporaryPath && (
         <p className="select-text break-all">

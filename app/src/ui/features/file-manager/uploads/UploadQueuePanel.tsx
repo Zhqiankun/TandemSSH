@@ -1,3 +1,4 @@
+import { estimateTransfer } from "../transfer-estimate";
 import { UploadBatchRecoveryDialog } from "./UploadBatchRecoveryDialog";
 import { UploadRecoveryDialog } from "./UploadRecoveryDialog";
 import { uploadRecoveryApi } from "@/api/upload-recovery-api";
@@ -28,6 +29,10 @@ function UploadRow({
       : job.state === "completed"
         ? 100
         : 0;
+  const estimate =
+    job.state === "uploading"
+      ? estimateTransfer(job.size, done, job.speed)
+      : undefined;
   const error = job.error
     ? t("tandem.upload.errors." + job.error, {
         defaultValue: t("tandem.collaboration.errors." + job.error, {
@@ -72,16 +77,7 @@ function UploadRow({
               bytes: done,
               total: job.size,
             })}
-            {job.speed && job.state === "uploading"
-              ? " · " +
-                t("tandem.upload.speed", {
-                  speed: Math.round(job.speed / 1024),
-                  seconds: Math.max(
-                    0,
-                    Math.ceil((job.size - done) / job.speed),
-                  ),
-                })
-              : ""}
+            {estimate ? " · " + t("tandem.upload.speed", estimate) : ""}
           </p>
         </>
       )}
