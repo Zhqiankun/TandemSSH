@@ -27,6 +27,10 @@ export interface AuditHistoryItem {
   actionType?: string;
   program?: string;
   path?: string;
+  fileTransferDirection?: "upload" | "download";
+  fileDirectoryPhase?: "preview" | "confirmed" | "entry";
+  fileEntryState?:
+    "created" | "merged" | "skipped" | "succeeded" | "failed" | "unknown";
   fileBytes?: number;
   fileCommitMayHaveOccurred?: boolean;
   detail: string;

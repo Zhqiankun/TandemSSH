@@ -6104,6 +6104,23 @@
       "errorLabel": "失败/中断原因",
       "actionLabel": "操作",
       "fileOperation": "文件操作",
+      "transferDirection": "传输方向",
+      "directoryPhase": "目录阶段",
+      "entryResult": "条目结果",
+      "transferDirections": { "upload": "上传", "download": "下载" },
+      "directoryPhases": {
+        "preview": "预览",
+        "confirmed": "清单已确认",
+        "entry": "条目执行"
+      },
+      "entryStates": {
+        "created": "已创建",
+        "merged": "已合并",
+        "skipped": "已跳过",
+        "succeeded": "成功",
+        "failed": "失败",
+        "unknown": "结果未知"
+      },
       "decisions": {
         "unknown": "无法自动判定，需人工审查",
         "allow": "允许",

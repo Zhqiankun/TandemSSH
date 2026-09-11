@@ -33,6 +33,26 @@ export function HistoryRecordSummary({ item }: { item: AuditHistoryItem }) {
             )}
           </span>
         )}
+        {item.fileTransferDirection && (
+          <span>
+            {t("tandem.history.transferDirection")}:{" "}
+            {t(
+              "tandem.history.transferDirections." + item.fileTransferDirection,
+            )}
+          </span>
+        )}
+        {item.fileDirectoryPhase && (
+          <span>
+            {t("tandem.history.directoryPhase")}:{" "}
+            {t("tandem.history.directoryPhases." + item.fileDirectoryPhase)}
+          </span>
+        )}
+        {item.fileEntryState && (
+          <span>
+            {t("tandem.history.entryResult")}:{" "}
+            {t("tandem.history.entryStates." + item.fileEntryState)}
+          </span>
+        )}
         {item.mode && (
           <span>
             {t("tandem.history.modeLabel")}:{" "}

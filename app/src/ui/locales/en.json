@@ -6104,6 +6104,23 @@
       "errorLabel": "Failure/interruption reason",
       "actionLabel": "Operation",
       "fileOperation": "File operation",
+      "transferDirection": "Transfer direction",
+      "directoryPhase": "Directory phase",
+      "entryResult": "Entry result",
+      "transferDirections": { "upload": "Upload", "download": "Download" },
+      "directoryPhases": {
+        "preview": "Preview",
+        "confirmed": "Manifest confirmed",
+        "entry": "Entry execution"
+      },
+      "entryStates": {
+        "created": "Created",
+        "merged": "Merged",
+        "skipped": "Skipped",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "unknown": "Unknown result"
+      },
       "decisions": {
         "unknown": "Cannot determine automatically; manual review required",
         "allow": "Allow",

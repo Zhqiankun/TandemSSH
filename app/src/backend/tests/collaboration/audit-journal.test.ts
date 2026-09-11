@@ -458,3 +458,75 @@ it("projects only bounded file result summaries without file bodies", async () =
   expect(invalid.fileBytes).toBeUndefined();
   expect(invalid.fileCommitMayHaveOccurred).toBeUndefined();
 });
+
+it.each(["upload", "download"])(
+  "preserves %s directory phases and entry outcomes",
+  async (direction) => {
+    const f = await fixture();
+    for (const phase of ["preview", "confirmed"]) {
+      await f.journal.record("operation.completed", {
+        id: phase,
+        action: {
+          type:
+            phase === "preview"
+              ? "file.directory.preview"
+              : "file.directory.confirm",
+          path: "/srv",
+        },
+        status: "succeeded",
+        fileResult: {
+          directoryTransfer: { direction, phase, entryState: "skipped" },
+        },
+      });
+    }
+    for (const entryState of [
+      "created",
+      "merged",
+      "skipped",
+      "succeeded",
+      "failed",
+      "unknown",
+    ]) {
+      await f.journal.record("operation.completed", {
+        id: entryState,
+        action: { type: "file.directory.entry", path: "/srv/item" },
+        status: "succeeded",
+        fileResult: {
+          directoryTransfer: { direction, phase: "entry", entryState },
+        },
+      });
+    }
+    const items = (await f.journal.queryHistory({ limit: 50 })).items;
+    expect(items).toHaveLength(8);
+    for (const item of items) {
+      expect(item.fileTransferDirection).toBe(direction);
+      expect(item.exitCode).toBeUndefined();
+      if (["preview", "confirmed"].includes(item.operationId!)) {
+        expect(item.fileDirectoryPhase).toBe(item.operationId);
+        expect(item.fileEntryState).toBeUndefined();
+      } else
+        expect(item).toMatchObject({
+          fileDirectoryPhase: "entry",
+          fileEntryState: item.operationId,
+        });
+    }
+  },
+);
+it("omits invalid directory enums instead of implying a successful transfer", async () => {
+  const f = await fixture();
+  await f.journal.record("operation.completed", {
+    id: "invalid-directory",
+    action: { type: "file.directory.entry", path: "/srv" },
+    fileResult: {
+      directoryTransfer: {
+        direction: "elsewhere",
+        phase: "entry",
+        entryState: "done",
+      },
+    },
+  });
+  const item = (await f.journal.queryHistory({})).items[0];
+  expect(item.operationId).toBe("invalid-directory");
+  expect(item.fileTransferDirection).toBeUndefined();
+  expect(item.fileEntryState).toBeUndefined();
+});

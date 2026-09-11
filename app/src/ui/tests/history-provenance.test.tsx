@@ -144,3 +144,26 @@ it("labels unrecognized legacy file action types generically", async () => {
   );
   expect(screen.getByText("操作: 文件操作")).toBeInTheDocument();
 });
+
+it("distinguishes skipped directory entries from successful copies in Chinese", async () => {
+  await i18n.changeLanguage("zh-CN");
+  render(
+    <HistoryRecordSummary
+      item={{
+        id: "skipped",
+        at: 1,
+        type: "operation.completed",
+        detail: "token",
+        actionType: "file.directory.entry",
+        status: "succeeded",
+        fileTransferDirection: "download",
+        fileDirectoryPhase: "entry",
+        fileEntryState: "skipped",
+      }}
+    />,
+  );
+  expect(screen.getByText("传输方向: 下载")).toBeInTheDocument();
+  expect(screen.getByText("目录阶段: 条目执行")).toBeInTheDocument();
+  expect(screen.getByText("条目结果: 已跳过")).toBeInTheDocument();
+  expect(screen.queryByText("条目结果: 成功")).not.toBeInTheDocument();
+});

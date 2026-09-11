@@ -158,6 +158,11 @@ export class AuditHistoryReader {
       fileResult =
         typeof action.type === "string" && action.type.startsWith("file.")
           ? object(data.fileResult)
+          : {},
+      directoryResult =
+        typeof action.type === "string" &&
+        action.type.startsWith("file.directory.")
+          ? object(fileResult.directoryTransfer)
           : {};
     return {
       id: record.id,
@@ -212,6 +217,29 @@ export class AuditHistoryReader {
       actionType: text(action.type, 80),
       program: text(action.program, 256),
       path: text(action.path, 1024),
+      fileTransferDirection: choice(
+        directoryResult.direction ??
+          (action.type === "file.upload" || action.type === "file.download"
+            ? object(fileResult.transfer).direction
+            : undefined),
+        ["upload", "download"] as const,
+      ),
+      fileDirectoryPhase: choice(directoryResult.phase, [
+        "preview",
+        "confirmed",
+        "entry",
+      ] as const),
+      fileEntryState:
+        directoryResult.phase === "entry"
+          ? choice(directoryResult.entryState, [
+              "created",
+              "merged",
+              "skipped",
+              "succeeded",
+              "failed",
+              "unknown",
+            ] as const)
+          : undefined,
       fileBytes: nonnegative(
         fileResult.bytes ?? object(fileResult.transfer).bytes,
       ),
