@@ -10,3 +10,14 @@
 
 这些是 SFTP 夹具测试和路由调用测试。下一步需在真实 OpenSSH 验证已有文件、目录、断链等目标拒绝及完整桌面新建体验；不把 B09 标记完成，也不改写已公开 alpha.6 的源码标签。
 最终 tsc -b 类型检查通过。
+
+## 真实 OpenSSH 验收通过
+
+2026-09-12，隔离 Alpine 3.24.1 / OpenSSH VM ebe8720e-0013-4e8f-81d3-8b6c012fec1d，非 root 用户 alpine（UID1000）。新增 src/backend/tests/linux/create-acceptance.test.ts，调用生产 createFileItem 和真实 SFTP。
+
+- 含中文、引号、命令替换字样、换行的文件名正常创建空文件；没有产生额外 injected 路径。目录正常创建。
+- 文件/目录两种新建操作均拒绝已有文件、已有目录、指向文件的链接、断开链接，共八种目标组合；原文件完整 stat 与内容、目录子文件内容和链接类型保持，断链目标未被创建。
+- 在测试目录移除写权限后，文件/目录创建均返回 OpenSSH 权限拒绝码3，未产生目标；finally 恢复权限以清理。
+- 并发执行两个同名独占文件创建，实际只有一个成功，另一个 FILE_TARGET_EXISTS，最终文件为空。
+
+1 项综合实机场景通过，执行1.37秒，原始报告 .cache/create-linux-results.json。ESLint 通过；此前 tsc -b 通过，随后仅补入同一夹具上的权限场景。测试使用自己创建的 UUID 目录并在 finally 清理。此项证明真实 SFTP 行为，完整桌面新建、批量 UI 异常及其他 B09 子项仍需继续验收。
