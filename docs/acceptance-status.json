@@ -495,9 +495,10 @@
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
         "59-windows-file-attributes.md",
-        "87-file-time-localization.md"
+        "87-file-time-localization.md",
+        "117-local-file-time.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": "本地/远端双面板已有实机记录；本地日期现跟随应用语言，导航、搜索并发、属性和版本化选择有专项。排序、多选与完整路径操作的桌面验收仍需逐项归并。"
     },
     {
       "id": "B05",

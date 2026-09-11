@@ -94,7 +94,7 @@ async function fixture(overrides: Partial<DesktopLocalBrowserApi> = {}) {
       />
     </I18nextProvider>,
   );
-  return { ...view, api, onUpload, onTargetChange };
+  return { ...view, api, onUpload, onTargetChange, i18n };
 }
 it("shows Chinese navigation, properties and a version-bound upload selection", async () => {
   const f = await fixture();
@@ -232,4 +232,33 @@ it("shows Windows attribute limitations and selected hidden/system/read-only fla
   expect(screen.getByLabelText("选中项属性")).toHaveTextContent(
     "隐藏 · 系统 · 只读属性",
   );
+});
+
+it("formats local millisecond timestamps with the application language and handles invalid values", async () => {
+  const modifiedAt = Date.UTC(2026, 8, 11, 12, 34, 56);
+  const f = await fixture({
+    list: vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        ...page,
+        entries: [
+          { ...page.entries[1], modifiedAt },
+          {
+            ...page.entries[1],
+            name: "invalid.txt",
+            relativePath: "invalid.txt",
+            modifiedAt: NaN,
+          },
+        ],
+      },
+    })),
+  });
+  fireEvent.click(screen.getAllByRole("button", { name: "选择目录" })[0]);
+  await screen.findByText(/2026\/09\/\d{2}/);
+  expect(screen.queryByText(/Invalid Date/)).toBeNull();
+  expect(screen.getAllByRole("row")[2].textContent).toContain("—");
+  await act(async () => {
+    await f.i18n.changeLanguage("en");
+  });
+  await screen.findByText(/09\/\d{2}\/2026/);
 });

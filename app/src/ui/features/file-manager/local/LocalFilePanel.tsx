@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
+import { createFileModifiedFormatter } from "../file-manager-utils";
 import { Button } from "@/components/button";
 import type {
   LocalBrowserEntry,
@@ -42,7 +43,11 @@ export function LocalFilePanel({
   canUpload: boolean;
   targetLabel: string;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const formatModified = useMemo(
+    () => createFileModifiedFormatter(i18n.resolvedLanguage ?? i18n.language),
+    [i18n.resolvedLanguage, i18n.language],
+  );
   const api = window.electronAPI?.localBrowser;
   const [root, setRoot] = useState<LocalBrowserRoot | null>(null);
   const [relative, setRelative] = useState("");
@@ -446,9 +451,9 @@ export function LocalFilePanel({
                       {entry.kind === "directory" ? "—" : bytes(entry.size)}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted-foreground">
-                      {entry.modifiedAt
-                        ? new Date(entry.modifiedAt).toLocaleString()
-                        : "—"}
+                      {formatModified({
+                        modifiedTimestamp: entry.modifiedAt / 1000,
+                      })}
                     </td>
                   </tr>
                 ))}
