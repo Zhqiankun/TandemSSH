@@ -24,10 +24,6 @@ function call<T>(
   });
 }
 
-function stat(sftp: SFTPWrapper, target: string) {
-  return call<Stats>((done) => sftp.stat(target, done));
-}
-
 function lstat(sftp: SFTPWrapper, target: string) {
   return call<Stats>((done) => sftp.lstat(target, done));
 }
@@ -62,10 +58,12 @@ function rmdir(sftp: SFTPWrapper, target: string) {
 
 async function exists(sftp: SFTPWrapper, target: string) {
   try {
-    await stat(sftp, target);
+    await lstat(sftp, target);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === 2 || code === "ENOENT") return false;
+    throw error;
   }
 }
 

@@ -13,13 +13,17 @@ import {
 
 const temporaryDirectories: string[] = [];
 
-// Windows only allows symlink creation with elevation or Developer Mode, so the
-// symlink safety test is skipped where the OS refuses to create one at all.
+// Junctions exercise directory-link traversal on Windows without requiring Developer Mode.
+const directoryLinkType = process.platform === "win32" ? "junction" : "dir";
 const canCreateSymlinks = (() => {
   const probe = fs.mkdtempSync(path.join(os.tmpdir(), "termix-symlink-probe-"));
   try {
     fs.mkdirSync(path.join(probe, "target"));
-    fs.symlinkSync(path.join(probe, "target"), path.join(probe, "link"), "dir");
+    fs.symlinkSync(
+      path.join(probe, "target"),
+      path.join(probe, "link"),
+      directoryLinkType,
+    );
     return true;
   } catch {
     return false;
@@ -178,7 +182,7 @@ describe("file manager trash safety", () => {
       const link = path.join(home, "link");
       await fs.promises.mkdir(target);
       await fs.promises.writeFile(path.join(target, "keep.txt"), "keep");
-      await fs.promises.symlink(target, link, "dir");
+      await fs.promises.symlink(target, link, directoryLinkType);
 
       const trashed = await moveToTrash(sftp, link);
       await permanentlyDeleteTrashItem(sftp, trashed.id);
@@ -232,4 +236,87 @@ describe("file manager trash safety", () => {
       fs.existsSync(path.join(home, ".termix-trash", "files", trashed.id)),
     ).toBe(false);
   });
+});
+
+it.skipIf(!canCreateSymlinks)(
+  "keeps a dangling directory link visible and restores the link itself",
+  async () => {
+    const { home, sftp } = await fixture();
+    const target = path.join(home, "gone"),
+      link = path.join(home, "dangling");
+    await fs.promises.mkdir(target);
+    await fs.promises.symlink(target, link, directoryLinkType);
+    const originalTarget = await fs.promises.readlink(link);
+    await fs.promises.rmdir(target);
+    const item = await moveToTrash(sftp, link);
+    expect(await listTrash(sftp, 7)).toEqual([item]);
+    await restoreTrashItem(sftp, item.id);
+    expect((await fs.promises.lstat(link)).isSymbolicLink()).toBe(true);
+    expect(await fs.promises.readlink(link)).toBe(originalTarget);
+    expect(fs.existsSync(target)).toBe(false);
+  },
+);
+it.skipIf(!canCreateSymlinks)(
+  "permanently removes dangling links rather than leaving orphaned trash entries",
+  async () => {
+    const { home, sftp } = await fixture();
+    const target = path.join(home, "gone"),
+      link = path.join(home, "dangling");
+    await fs.promises.mkdir(target);
+    await fs.promises.symlink(target, link, directoryLinkType);
+    await fs.promises.rmdir(target);
+    const item = await moveToTrash(sftp, link);
+    await permanentlyDeleteTrashItem(sftp, item.id);
+    await expect(
+      fs.promises.lstat(path.join(home, ".termix-trash/files", item.id)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await listTrash(sftp, 7)).toEqual([]);
+  },
+);
+it.skipIf(!canCreateSymlinks)(
+  "refuses to restore over an existing dangling link",
+  async () => {
+    const { home, sftp } = await fixture();
+    const original = path.join(home, "original"),
+      target = path.join(home, "gone");
+    await fs.promises.writeFile(original, "important");
+    const item = await moveToTrash(sftp, original);
+    await fs.promises.mkdir(target);
+    await fs.promises.symlink(target, original, directoryLinkType);
+    await fs.promises.rmdir(target);
+    await expect(restoreTrashItem(sftp, item.id)).rejects.toThrow(
+      "already exists",
+    );
+    expect((await fs.promises.lstat(original)).isSymbolicLink()).toBe(true);
+    expect(
+      await fs.promises.readFile(
+        path.join(home, ".termix-trash/files", item.id),
+        "utf8",
+      ),
+    ).toBe("important");
+  },
+);
+it("does not treat permission denial as a missing restore destination", async () => {
+  const { home, sftp } = await fixture();
+  const original = path.join(home, "original");
+  await fs.promises.writeFile(original, "important");
+  const item = await moveToTrash(sftp, original);
+  const base = sftp.lstat.bind(sftp);
+  sftp.lstat = (target, callback) => {
+    if (target === original)
+      callback(
+        Object.assign(Error("permission denied"), { code: 3 }),
+        undefined as never,
+      );
+    else base(target, callback);
+  };
+  await expect(restoreTrashItem(sftp, item.id)).rejects.toThrow(
+    "permission denied",
+  );
+  expect(
+    await fs.promises.readFile(
+      path.join(home, ".termix-trash/files", item.id),
+      "utf8",
+    ),
+  ).toBe("important");
 });
