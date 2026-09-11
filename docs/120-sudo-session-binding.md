@@ -57,3 +57,8 @@ deleteItem 原以 truthiness 判断 permanent，字符串 "false" 也可能进�
 
 POSIX buildDeleteCommand 使用 rm -f -- / rm -rf --，避免连字符开头的名称变成命令选项；Windows 继续使用 -LiteralPath。没有执行真实删除或改变用户确认流程。新增参数化路由与命令边界测试，文件服务 13 文件 / 115 项通过，报告 .cache/file-delete-input-results.json；ESLint 通过。
 删除输入边界修复的 tsc -b 类型检查通过。
+
+## 创建与移动命令的选项边界
+
+与删除同组的 touch、mkdir -p、mv 命令也补上 --，路径继续使用原有单引号转义。四个实际路由测试直接核对构造出的命令均有选项终止符，相关 16 项通过。本次只处理连字符路径被解释为参数的风险，不声称 mv 目标冲突或所有平台兼容性已完成验收。
+创建与移动选项边界修复的 ESLint 和 tsc -b 类型检查通过。

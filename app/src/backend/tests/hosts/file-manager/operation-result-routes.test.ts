@@ -77,6 +77,9 @@ it.each(["createFile", "createFolder", "renameItem", "moveItem"])(
       { status, json, headersSent: false } as never,
       vi.fn(),
     );
+    expect(vi.mocked(execChannel).mock.calls[0][1]).toMatch(
+      /^(touch|mkdir -p|mv) -- /,
+    );
     expect(status).toHaveBeenCalledWith(500);
     expect(json).not.toHaveBeenCalledWith(
       expect.objectContaining({

@@ -214,7 +214,7 @@ export function registerFileOperationRoutes(
       : filePath + "/" + fileName;
     const escapedPath = fullPath.replace(/'/g, "'\"'\"'");
 
-    const createCommand = `touch '${escapedPath}' && echo "SUCCESS" && exit 0`;
+    const createCommand = `touch -- '${escapedPath}' && echo "SUCCESS" && exit 0`;
 
     execChannel(sshConn, createCommand, (err, stream) => {
       if (err) {
@@ -359,7 +359,7 @@ export function registerFileOperationRoutes(
     });
     const escapedPath = fullPath.replace(/'/g, "'\"'\"'");
 
-    const createCommand = `mkdir -p '${escapedPath}' && echo "SUCCESS" && exit 0`;
+    const createCommand = `mkdir -p -- '${escapedPath}' && echo "SUCCESS" && exit 0`;
 
     execChannel(sshConn, createCommand, (err, stream) => {
       if (err) {
@@ -741,7 +741,7 @@ export function registerFileOperationRoutes(
     const escapedOldPath = oldPath.replace(/'/g, "'\"'\"'");
     const escapedNewPath = newPath.replace(/'/g, "'\"'\"'");
 
-    const renameCommand = `mv '${escapedOldPath}' '${escapedNewPath}' && echo "SUCCESS" && exit 0`;
+    const renameCommand = `mv -- '${escapedOldPath}' '${escapedNewPath}' && echo "SUCCESS" && exit 0`;
 
     execChannel(sshConn, renameCommand, (err, stream) => {
       if (err) {
@@ -899,7 +899,7 @@ export function registerFileOperationRoutes(
     const escapedOldPath = oldPath.replace(/'/g, "'\"'\"'");
     const escapedNewPath = newPath.replace(/'/g, "'\"'\"'");
 
-    const moveCommand = `mv '${escapedOldPath}' '${escapedNewPath}' && echo "SUCCESS" && exit 0`;
+    const moveCommand = `mv -- '${escapedOldPath}' '${escapedNewPath}' && echo "SUCCESS" && exit 0`;
 
     const commandTimeout = setTimeout(() => {
       if (!res.headersSent) {
