@@ -2382,7 +2382,8 @@
       "onLine": "所在行",
       "replacedLine": "已替换第 $ 行的匹配",
       "replacedMatches": "已替换 $ 处匹配"
-    }
+    },
+    "batchDeletePartial": "已确认 {{completed}} 项删除或移至回收站；其余 {{remaining}} 项结果未确认或尚未执行。请刷新核对后再重试。"
   },
   "transfer": {
     "copyToHost": "复制到主机…",

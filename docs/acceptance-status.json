@@ -631,9 +631,10 @@
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
         "59-windows-file-attributes.md",
-        "94-trash-link-retention.md"
+        "94-trash-link-retention.md",
+        "119-file-delete-partial-results.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": "回收站断链已有真实 SFTP 验证；批量删除部分确认计数和永久删除后备错误处理已补齐，仍需新建/重命名/移动/复制及完整批量操作桌面归并验收。"
     },
     {
       "id": "B10",

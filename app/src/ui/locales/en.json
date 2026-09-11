@@ -2382,7 +2382,8 @@
       "onLine": "on line",
       "replacedLine": "replaced match on line $",
       "replacedMatches": "replaced $ matches"
-    }
+    },
+    "batchDeletePartial": "Confirmed {{completed}} items deleted or moved to trash; {{remaining}} items are unconfirmed or not attempted. Refresh before retrying."
   },
   "transfer": {
     "copyToHost": "Copy to host…",

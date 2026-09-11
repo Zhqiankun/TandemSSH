@@ -1,3 +1,4 @@
+import { runFileBatch } from "./file-batch";
 import { changeFileOwnership } from "@/api/file-ownership-api";
 import {
   UploadTreeDialog,
@@ -1177,16 +1178,17 @@ function FileManagerContent({
         try {
           await ensureSSHConnection();
 
-          for (const file of files) {
-            await deleteSSHItem(
-              sshSessionId,
+          const batch = await runFileBatch(files, (file) =>
+            deleteSSHItem(
+              operationSession,
               file.path,
               file.type === "directory",
               currentHost?.id,
               currentHost?.userId?.toString(),
-            );
-            completed += 1;
-          }
+            ),
+          );
+          completed = batch.completed;
+          if (batch.ok === false) throw batch.error;
 
           toast.success(
             t("fileManager.itemsMovedToTrash", { count: files.length }),
@@ -1228,25 +1230,48 @@ function FileManagerContent({
               ?.trashUnavailable &&
             window.confirm(t("fileManager.trashUnavailableConfirm"))
           ) {
-            for (const file of files.slice(completed)) {
-              await deleteSSHItem(
-                sshSessionId,
-                file.path,
-                file.type === "directory",
-                currentHost?.id,
-                currentHost?.userId?.toString(),
-                true,
+            const permanent = await runFileBatch(
+              files.slice(completed),
+              (file) =>
+                deleteSSHItem(
+                  operationSession,
+                  file.path,
+                  file.type === "directory",
+                  currentHost?.id,
+                  currentHost?.userId?.toString(),
+                  true,
+                ),
+            );
+            if (permanent.ok) {
+              toast.success(
+                t("fileManager.itemsDeletedSuccessfully", {
+                  count: permanent.completed,
+                }),
+              );
+            } else {
+              toast.error(
+                t("fileManager.batchDeletePartial", {
+                  completed: completed + permanent.completed,
+                  remaining: files.length - completed - permanent.completed,
+                }),
               );
             }
-            toast.success(
-              t("fileManager.itemsDeletedSuccessfully", {
-                count: files.length - completed,
-              }),
-            );
-            handleRefreshDirectory();
+            if (
+              sshSessionIdRef.current === operationSession &&
+              currentPathRef.current === operationPath
+            )
+              handleRefreshDirectory();
+            else invalidateCachedFileList(operationSession, operationPath);
             return;
           }
-          if (
+          if (completed > 0)
+            toast.error(
+              t("fileManager.batchDeletePartial", {
+                completed,
+                remaining: files.length - completed,
+              }),
+            );
+          else if (
             axiosError.response?.status === 403 ||
             axiosError.response?.data?.error
               ?.toLowerCase()
