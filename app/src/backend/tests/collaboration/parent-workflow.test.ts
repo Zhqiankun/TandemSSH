@@ -732,3 +732,59 @@ it.each(["automatic", "collaborative"] as const)(
     ]);
   },
 );
+
+it.each(["automatic", "collaborative"] as const)(
+  "starts one standalone workflow for concurrent retries in %s mode",
+  async (mode) => {
+    const f = fixture(),
+      saved = await f.saved();
+    const preview = f.library.preview(actor, {
+      workflowId: saved.id,
+      sessionId: "session",
+      parameters: {},
+    });
+    const [first, duplicate] = await Promise.all([
+      f.library.start(actor, preview.id, "same-start", mode),
+      f.library.start(actor, preview.id, "same-start", mode),
+    ]);
+    expect(duplicate.id).toBe(first.id);
+    expect(f.runtime.list(human)).toHaveLength(1);
+    expect(f.writes).toEqual([]);
+    await f.authorize(first.id);
+    if (mode === "collaborative") {
+      for (let i = 0; i < 2; i++) {
+        await vi.waitFor(() => {
+          const task = f.runtime.get(actor, first.id);
+          expect(task.state).toBe("awaiting-approval");
+          expect(task.operations).toHaveLength(i + 1);
+        });
+        const op = f.runtime.get(actor, first.id).operations[i];
+        await f.runtime.approve(human, first.id, op.id, op.digest, 1);
+      }
+    }
+    await vi.waitFor(() =>
+      expect(
+        f.runtime.get(actor, first.id).operations.map((op) => op.status),
+      ).toEqual(["succeeded", "succeeded"]),
+    );
+    expect(
+      (await f.library.start(actor, preview.id, "same-start", mode)).id,
+    ).toBe(first.id);
+    await expect(
+      f.library.start(actor, preview.id, "different-start", mode),
+    ).rejects.toThrow("WORKFLOW_PREVIEW_USED");
+    await expect(
+      f.library.start(
+        actor,
+        preview.id,
+        "same-start",
+        mode === "automatic" ? "collaborative" : "automatic",
+      ),
+    ).rejects.toThrow("WORKFLOW_PREVIEW_USED");
+    expect(f.commands.map((c) => c.program)).toEqual(["pwd", "printf"]);
+    expect(f.writes.filter((value) => value !== "context")).toEqual([
+      "pwd",
+      "printf",
+    ]);
+  },
+);

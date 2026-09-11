@@ -56,12 +56,17 @@ it.each(["automatic", "collaborative"] as const)(
         parentTaskId: id,
         parameters: {},
         fileBindings: bindings,
-      }),
-      run = await call<{ id: string }>("run_workflow", {
-        taskId: id,
-        previewId: preview.id,
-        requestId: randomUUID(),
       });
+    const runInput = {
+      taskId: id,
+      previewId: preview.id,
+      requestId: randomUUID(),
+    };
+    const [run, repeatedRun] = await Promise.all([
+      call<{ id: string }>("run_workflow", runInput),
+      call<{ id: string }>("run_workflow", runInput),
+    ]);
+    expect(repeatedRun.id).toBe(run.id);
     const approve = async () => {
       await vi.waitFor(
         () =>
@@ -94,6 +99,18 @@ it.each(["automatic", "collaborative"] as const)(
       },
     );
     expect(result.operations).toHaveLength(11);
+    expect((await call<{ id: string }>("run_workflow", runInput)).id).toBe(
+      run.id,
+    );
+    expect(f.runtime.get(f.human, id).workflowRuns).toHaveLength(1);
+    const consumed = await client.callTool({
+      name: "run_workflow",
+      arguments: { ...runInput, requestId: randomUUID() },
+    });
+    expect(consumed.isError).toBe(true);
+    expect(consumed.structuredContent).toMatchObject({
+      error: { code: "WORKFLOW_PREVIEW_USED" },
+    });
     expect(result.operations[5].actionType).toBe("terminal.command");
     expect(f.runtime.state(f.actor, id).state).toBe("ready");
     expect(f.control.snapshot()).toMatchObject({

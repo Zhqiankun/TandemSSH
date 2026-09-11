@@ -1020,9 +1020,10 @@
         "68-provider-response-bounds.md",
         "155-mcp-pending-retry.md",
         "156-mcp-transfer-retries.md",
-        "157-mcp-file-edit-retries.md"
+        "157-mcp-file-edit-retries.md",
+        "158-workflow-request-retries.md"
       ],
-      "remaining": "命令、单文件/目录传输以及目录查看、属性、读取、补丁/完整写入的并发与完成后重试已验证；流程启动/父任务附加等请求入口仍需核对。"
+      "remaining": "正式MCP schema的14个requestId入口已对应并发/重复/冲突证据；内置AI任务创建的独立请求缓存仍需验证。"
     },
     {
       "id": "A14",
