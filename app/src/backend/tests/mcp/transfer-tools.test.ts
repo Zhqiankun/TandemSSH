@@ -65,8 +65,12 @@ it.each(["automatic", "collaborative"] as const)(
           localGrantId: grant.id,
           localVersion: grant.version,
         };
-      const submitted = await call(direction + "_file", args),
-        operationId = submitted.operationId as string;
+      const [submitted, concurrentRetry] = await Promise.all([
+        call(direction + "_file", args),
+        call(direction + "_file", args),
+      ]);
+      const operationId = submitted.operationId as string;
+      expect(concurrentRetry.operationId).toBe(operationId);
       if (mode === "collaborative") {
         await vi.waitFor(() =>
           expect(f.runtime.operation(f.human, taskId, operationId).status).toBe(
@@ -122,6 +126,19 @@ it.each(["automatic", "collaborative"] as const)(
       expect((await call(direction + "_file", args)).operationId).toBe(
         operationId,
       );
+      const changed = await client.callTool({
+        name: direction + "_file",
+        arguments: { ...args, path: "/srv/changed.bin" },
+      });
+      expect(changed.isError).toBe(true);
+      expect(changed.structuredContent).toMatchObject({
+        error: { code: "REQUEST_CONFLICT" },
+      });
+      expect(
+        f.runtime
+          .get(f.human, taskId)
+          .operations.filter((op) => op.action.type === "file." + direction),
+      ).toHaveLength(1);
       await call("release_transfer", { taskId, operationId });
       expect(
         (await call("get_transfer_status", { taskId, operationId })).status,

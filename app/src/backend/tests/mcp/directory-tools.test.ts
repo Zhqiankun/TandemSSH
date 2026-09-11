@@ -102,10 +102,11 @@ it.each([
       localGrantId: grant.id,
       localVersion: grant.version,
     };
-    const submitted = await call<{ operationId: string }>(
-      "preview_directory_transfer",
-      request,
-    );
+    const [submitted, repeatedPreview] = await Promise.all([
+      call<{ operationId: string }>("preview_directory_transfer", request),
+      call<{ operationId: string }>("preview_directory_transfer", request),
+    ]);
+    expect(repeatedPreview.operationId).toBe(submitted.operationId);
     async function approveNext() {
       await vi.waitFor(
         () =>
@@ -159,7 +160,11 @@ it.each([
       choices: page.items.map((e) => ({ id: e.id, action: "create" })),
       requestId: randomUUID(),
     };
-    const run = await call<DirectoryRunView>("run_directory_transfer", args);
+    const [run, concurrentRun] = await Promise.all([
+      call<DirectoryRunView>("run_directory_transfer", args),
+      call<DirectoryRunView>("run_directory_transfer", args),
+    ]);
+    expect(concurrentRun.id).toBe(run.id);
     expect(
       (await call<DirectoryRunView>("run_directory_transfer", args)).id,
     ).toBe(run.id);

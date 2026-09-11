@@ -1018,9 +1018,10 @@
         "56-linux-ssh-acceptance.md",
         "64-jump-combined-acceptance.md",
         "68-provider-response-bounds.md",
-        "155-mcp-pending-retry.md"
+        "155-mcp-pending-retry.md",
+        "156-mcp-transfer-retries.md"
       ],
-      "remaining": "自动/协作MCP命令并发重复、完成后重复、改参数复用及登记时接管已验证；文件/目录等其他带requestId入口仍需逐项核对。"
+      "remaining": "命令、双向单文件传输、目录预览与目录运行的并发/完成后重复、参数冲突已验证；文件查看/编辑提交和流程等其他带requestId入口仍需核对。"
     },
     {
       "id": "A14",
