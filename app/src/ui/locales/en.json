@@ -6049,7 +6049,7 @@
         "task.archived": "Task archived",
         "task.cancelled": "Task cancelled",
         "operation.proposed": "Operation proposed",
-        "operation.intent": "Execution started",
+        "operation.intent": "Preparing execution",
         "operation.result": "Operation result",
         "operation.approval": "Human approval",
         "workflow.completed": "Workflow completed",

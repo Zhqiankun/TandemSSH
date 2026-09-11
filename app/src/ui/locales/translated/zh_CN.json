@@ -6049,7 +6049,7 @@
         "task.archived": "归档任务",
         "task.cancelled": "取消任务",
         "operation.proposed": "操作提议",
-        "operation.intent": "开始执行",
+        "operation.intent": "准备执行",
         "operation.result": "执行结果",
         "operation.approval": "人工批准",
         "workflow.completed": "流程完成",
