@@ -90,3 +90,29 @@ it("maps native failure without exposing its message or starting consumption", a
   ).rejects.toThrow("WORKFLOW_SECRET_STORE_UNAVAILABLE");
   expect(consume).not.toHaveBeenCalled();
 });
+it("copies write input before awaiting native persistence and clears the copy afterward", async () => {
+  let finish!: () => void;
+  native.write.mockReturnValue(
+    new Promise<void>((resolve) => {
+      finish = resolve;
+    }),
+  );
+  const input = Uint8Array.from([65, 66]);
+  const pending = new SystemWorkflowSecretStore().write(reference, input);
+  const persisted = native.write.mock.calls[0][0] as Uint8Array;
+  input.fill(90);
+  expect([...persisted]).toEqual([65, 66]);
+  finish();
+  await pending;
+  expect([...persisted]).toEqual([0, 0]);
+  expect([...input]).toEqual([90, 90]);
+});
+it("clears the native write copy on failure without exposing store details", async () => {
+  native.write.mockRejectedValue(Error("native secret details"));
+  const input = Uint8Array.from([65, 66]);
+  await expect(
+    new SystemWorkflowSecretStore().write(reference, input),
+  ).rejects.toThrow("WORKFLOW_SECRET_STORE_UNAVAILABLE");
+  expect([...(native.write.mock.calls[0][0] as Uint8Array)]).toEqual([0, 0]);
+  expect([...input]).toEqual([65, 66]);
+});
