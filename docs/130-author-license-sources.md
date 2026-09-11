@@ -9,3 +9,7 @@
 base32.js 的原仓库 API 返回 301，明确给出 repositories/30839087 对应提交 ac54140633c50df34172d276a21339e873a9c9af 的树入口。连接器拒绝该数字仓库端点；匿名 HTTP 请求 403，网页入口 429。均为只读检索失败，没有使用凭据提取或绕过。lazy-val 固定 npm gitHead 的树仅找到 package.json、readme.md，仍无独立声明文件。
 
 后续需查明可追溯的历史文本或按原版权来源保留完整声明；前端资源、原生捆绑库仍是独立未完成范围。当前只更新证据，不据此声称 R01 完成。
+
+## base32.js 仓库迁移已定位
+
+正常 HTTPS 访问旧 GitHub 仓库跟随重定向后得到 https://github.com/speakeasyjs/base32.js 。连接器能够读取此规范仓库路径下的固定提交 ac54140633c50df34172d276a21339e873a9c9af；该提交 package.json 的 name=base32.js、version=0.0.1、license=MIT 与 npm 元数据一致。递归树及 README、base32.js 已读取，未找到独立 LICENSE/COPYING 文件，README 也没有许可全文。后续不再重复使用已失败的旧 API/数字仓库入口；该项剩余问题是许可全文来源，已不是无法定位仓库。
