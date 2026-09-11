@@ -291,6 +291,15 @@ describe("shared-session AI orchestration", () => {
       ),
     );
     expect(f.writes).not.toContain("printf stale");
+    expect(f.writes.filter((value) => value === "context")).toHaveLength(2);
+    expect(f.requests[2].system).toContain('"cwd":"/srv/manual"');
+    expect(
+      f.requests[2].messages.some(
+        (message) =>
+          message.role === "user" &&
+          message.content.includes("人工已介入并重新授权"),
+      ),
+    ).toBe(true);
     expect(f.runtime.get(user, created.task.id).operations[0].action.cwd).toBe(
       "/srv/manual",
     );

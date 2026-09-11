@@ -168,13 +168,26 @@ describe("task runtime: real orchestration contracts", () => {
     await vi.waitFor(() =>
       expect(f.runtime.get(human, task.id).state).toBe("awaiting-approval"),
     );
+    const old = f.runtime.get(human, task.id).operations[0];
     f.control.takeover();
+    await expect(
+      f.runtime.approve(human, task.id, old.id, old.digest, 1),
+    ).rejects.toThrow("STALE_APPROVAL");
     await f.authorize(f.runtime.get(human, task.id), scope);
+    const afterHandback = [...f.writes];
+    await expect(
+      f.runtime.approve(human, task.id, old.id, old.digest, 1),
+    ).rejects.toThrow("STALE_APPROVAL");
+    expect(f.writes).toEqual(afterHandback);
     await f.runtime.submit(mcp, task.id, { program: "pwd", args: [] }, "after");
     await vi.waitFor(() =>
       expect(f.runtime.get(human, task.id).state).toBe("awaiting-approval"),
     );
     const op = f.runtime.get(human, task.id).operations[1];
+    await expect(
+      f.runtime.approve(human, task.id, old.id, old.digest, 1),
+    ).rejects.toThrow();
+    expect(f.writes).toEqual(afterHandback);
     await f.runtime.approve(human, task.id, op.id, op.digest, 1);
     await vi.waitFor(() =>
       expect(f.runtime.get(human, task.id).state).toBe("ready"),
