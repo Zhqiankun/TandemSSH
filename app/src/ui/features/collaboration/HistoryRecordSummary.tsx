@@ -1,5 +1,16 @@
 import { useTranslation } from "react-i18next";
 import type { AuditHistoryItem } from "@/types/task-history";
+const fileActions = new Set([
+  "file.read",
+  "file.write",
+  "file.list",
+  "file.stat",
+  "file.upload",
+  "file.download",
+  "file.directory.preview",
+  "file.directory.confirm",
+  "file.directory.entry",
+]);
 export function HistoryRecordSummary({ item }: { item: AuditHistoryItem }) {
   const { t } = useTranslation();
   return (
@@ -9,6 +20,19 @@ export function HistoryRecordSummary({ item }: { item: AuditHistoryItem }) {
           {t("tandem.history.sourceLabel")}:{" "}
           {t("tandem.history.origins." + (item.origin ?? "unknown"))}
         </span>
+        {item.actionType?.startsWith("file.") && (
+          <span>
+            {t("tandem.history.actionLabel")}:{" "}
+            {t(
+              fileActions.has(item.actionType)
+                ? "tandem.collaboration.fileActions." + item.actionType.slice(5)
+                : "tandem.history.fileOperation",
+              {
+                defaultValue: t("tandem.history.fileOperation"),
+              },
+            )}
+          </span>
+        )}
         {item.mode && (
           <span>
             {t("tandem.history.modeLabel")}:{" "}
@@ -45,6 +69,14 @@ export function HistoryRecordSummary({ item }: { item: AuditHistoryItem }) {
           </span>
         )}
       </div>
+      {item.fileBytes !== undefined && (
+        <p>{t("tandem.fileScope.bytes", { bytes: item.fileBytes })}</p>
+      )}
+      {item.fileCommitMayHaveOccurred && (
+        <p className="text-destructive">
+          {t("tandem.fileScope.unknownResult")}
+        </p>
+      )}
       {item.error && (
         <p className="break-all text-destructive">
           {t("tandem.history.errorLabel")}:{" "}

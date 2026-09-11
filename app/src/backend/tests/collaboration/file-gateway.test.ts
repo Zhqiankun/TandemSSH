@@ -510,3 +510,60 @@ it("stops later file chunks after a policy revision change", async () => {
   expect(chunks).toEqual(["first"]);
   expect(f.writes).toEqual([]);
 });
+
+it.each(["automatic", "collaborative"] as const)(
+  "persists file read/write results in %s mode without terminal output",
+  async (mode) => {
+    const fs = await import("node:fs/promises"),
+      path = await import("node:path"),
+      os = await import("node:os");
+    const { AuditJournal } =
+      await import("../../collaboration/audit/journal.js");
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "tandem-file-audit-"));
+    const journal = new AuditJournal(root, "fixture-owner");
+    try {
+      for (const action of [read, write]) {
+        const f = fixture(mode, undefined, (event) => journal.append(event));
+        try {
+          f.grant();
+          const op = await f.gateway.propose(f.context(action.type), action);
+          if (mode === "collaborative") {
+            await expect(f.gateway.dispatch(op.id)).rejects.toThrow(
+              "APPROVAL_REQUIRED",
+            );
+            f.gateway.approveOnce(op.id, op.digest, 1);
+          }
+          expect((await f.gateway.dispatch(op.id)).status).toBe("succeeded");
+          const history = (await journal.queryHistory({ limit: 50 })).items;
+          const result = history.find(
+            (item) =>
+              item.type === "operation.completed" && item.operationId === op.id,
+          );
+          expect(result).toMatchObject({
+            origin: "mcp",
+            mode,
+            status: "succeeded",
+            path: "/srv/config",
+            actionType: action.type,
+            fileBytes: 100,
+            policyRevision: 1,
+          });
+          expect(result!.exitCode).toBeUndefined();
+          expect(result!.outputPreview).toBeUndefined();
+          expect(f.writes).toEqual([]);
+          expect(f.io).toEqual([action.type]);
+        } finally {
+          f.control.close();
+        }
+      }
+    } finally {
+      await journal.queryHistory({});
+      const resolved = await fs.realpath(root);
+      expect(path.dirname(resolved)).toBe(await fs.realpath(os.tmpdir()));
+      expect(path.basename(resolved)).toMatch(
+        /^tandem-file-audit-[A-Za-z0-9]+$/,
+      );
+      await fs.rm(resolved, { recursive: true, force: true });
+    }
+  },
+);

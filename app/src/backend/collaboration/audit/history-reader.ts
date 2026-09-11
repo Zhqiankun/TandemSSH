@@ -154,7 +154,11 @@ export class AuditHistoryReader {
   ): AuditHistoryItem {
     const data = object(record.data),
       context = object(data.context),
-      action = object(data.action);
+      action = object(data.action),
+      fileResult =
+        typeof action.type === "string" && action.type.startsWith("file.")
+          ? object(data.fileResult)
+          : {};
     return {
       id: record.id,
       at: record.at,
@@ -208,6 +212,11 @@ export class AuditHistoryReader {
       actionType: text(action.type, 80),
       program: text(action.program, 256),
       path: text(action.path, 1024),
+      fileBytes: nonnegative(
+        fileResult.bytes ?? object(fileResult.transfer).bytes,
+      ),
+      fileCommitMayHaveOccurred:
+        fileResult.commitMayHaveOccurred === true ? true : undefined,
       detail: encode({
         v: 1,
         scope: this.scope,

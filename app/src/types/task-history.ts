@@ -27,6 +27,8 @@ export interface AuditHistoryItem {
   actionType?: string;
   program?: string;
   path?: string;
+  fileBytes?: number;
+  fileCommitMayHaveOccurred?: boolean;
   detail: string;
 }
 export interface AuditHistoryPage {

@@ -106,3 +106,41 @@ it("renders an unrecognized recorded reason as escaped text", async () => {
   expect(screen.getByText(/error detail/)).toBeInTheDocument();
   expect(document.querySelector("script")).toBeNull();
 });
+
+it("distinguishes file writes and uncertain commits without inventing terminal output", async () => {
+  await i18n.changeLanguage("zh-CN");
+  render(
+    <HistoryRecordSummary
+      item={{
+        id: "file",
+        at: 1,
+        type: "operation.completed",
+        detail: "token",
+        actionType: "file.write",
+        status: "unknown",
+        fileBytes: 27,
+        fileCommitMayHaveOccurred: true,
+      }}
+    />,
+  );
+  expect(screen.getByText("操作: 保存文件")).toBeInTheDocument();
+  expect(screen.getByText("已处理 27 字节")).toBeInTheDocument();
+  expect(screen.getByText(/文件操作结果尚未确认/)).toBeInTheDocument();
+  expect(screen.queryByText("退出码: 0")).not.toBeInTheDocument();
+});
+
+it("labels unrecognized legacy file action types generically", async () => {
+  await i18n.changeLanguage("zh-CN");
+  render(
+    <HistoryRecordSummary
+      item={{
+        id: "legacy-file",
+        at: 1,
+        type: "operation.completed",
+        detail: "token",
+        actionType: "file.directory",
+      }}
+    />,
+  );
+  expect(screen.getByText("操作: 文件操作")).toBeInTheDocument();
+});

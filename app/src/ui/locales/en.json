@@ -6102,6 +6102,8 @@
         "collaborative": "Collaborative"
       },
       "errorLabel": "Failure/interruption reason",
+      "actionLabel": "Operation",
+      "fileOperation": "File operation",
       "decisions": {
         "unknown": "Cannot determine automatically; manual review required",
         "allow": "Allow",

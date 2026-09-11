@@ -425,3 +425,36 @@ it("projects bounded redacted failure reasons without inventing an exit code", a
   });
   expect((await f.journal.queryHistory({})).items[0].error).toBeUndefined();
 });
+
+it("projects only bounded file result summaries without file bodies", async () => {
+  const f = await fixture();
+  await f.journal.record("operation.completed", {
+    id: "write",
+    action: { type: "file.write", path: "/srv/config" },
+    status: "unknown",
+    fileResult: {
+      bytes: 27,
+      commitMayHaveOccurred: true,
+      content: "not-a-history-body",
+    },
+  });
+  const item = (await f.journal.queryHistory({})).items[0];
+  expect(item).toMatchObject({
+    actionType: "file.write",
+    path: "/srv/config",
+    status: "unknown",
+    fileBytes: 27,
+    fileCommitMayHaveOccurred: true,
+  });
+  expect(item.exitCode).toBeUndefined();
+  expect(JSON.stringify(item)).not.toContain("not-a-history-body");
+  await f.journal.record("operation.completed", {
+    id: "invalid",
+    action: { type: "file.upload", path: "/srv/file" },
+    fileResult: { transfer: { bytes: -1 }, commitMayHaveOccurred: "true" },
+  });
+  const invalid = (await f.journal.queryHistory({})).items[0];
+  expect(invalid.operationId).toBe("invalid");
+  expect(invalid.fileBytes).toBeUndefined();
+  expect(invalid.fileCommitMayHaveOccurred).toBeUndefined();
+});
