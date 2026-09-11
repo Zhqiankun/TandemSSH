@@ -47,6 +47,7 @@ export async function moveFileItem(
   sftp: SFTPWrapper,
   oldPath: string,
   target: string,
+  fallback?: (source: string, target: string) => Promise<void>,
 ): Promise<string> {
   if (
     [oldPath, target].some(
@@ -66,7 +67,8 @@ export async function moveFileItem(
     if (!missing(error)) throw error;
   }
   // Standard SFTP v3 RENAME refuses an existing destination. Do not substitute
-  // ext_openssh_rename (overwrite) or a shell mv fallback after a failure.
+  // ext_openssh_rename (overwrite). A caller may supply a separately guarded
+  // fallback only after a definite failure and a confirmed missing target.
   try {
     await request<void>(
       (done) => sftp.rename(oldPath, target, done),
@@ -80,7 +82,11 @@ export async function moveFileItem(
     if (code !== 4) throw error;
     try {
       await request((done) => sftp.lstat(target, done), "FILE_READ_TIMEOUT");
-    } catch {
+    } catch (lookupError) {
+      if (missing(lookupError) && fallback) {
+        await fallback(oldPath, target);
+        return target;
+      }
       throw error;
     }
     throw Error("FILE_TARGET_EXISTS");

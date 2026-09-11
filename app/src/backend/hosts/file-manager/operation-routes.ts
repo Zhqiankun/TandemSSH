@@ -1,3 +1,4 @@
+import { moveWithNoClobber } from "./move-command.js";
 import { renameFileItem, moveFileItem } from "./rename-item.js";
 import type { Express } from "express";
 import type { AuthenticatedRequest } from "../../../types/index.js";
@@ -831,10 +832,12 @@ export function registerFileOperationRoutes(
     sshConn.lastActive = Date.now();
 
     try {
+      const sftp = await getSessionSftp(sshConn);
       const movedPath = await moveFileItem(
-        await getSessionSftp(sshConn),
+        sftp,
         oldPath,
         newPath,
+        (source, target) => moveWithNoClobber(sshConn, sftp, source, target),
       );
       res.json({
         message: "Item moved successfully",
