@@ -7,7 +7,10 @@ import {
   getSessionSftp,
   type SSHSession,
 } from "./session.js";
-import { buildDeleteCommand } from "./operation-commands.js";
+import {
+  buildDeleteCommand,
+  deleteResultSucceeded,
+} from "./operation-commands.js";
 import {
   emptyTrash,
   listTrash,
@@ -551,11 +554,7 @@ export function registerFileOperationRoutes(
         if (useSudo && sshConn.sudoPassword) {
           execWithSudo(sshConn, deleteCommand, sshConn.sudoPassword).then(
             (result) => {
-              if (
-                result.code === 0 ||
-                (!result.stderr.includes("Permission denied") &&
-                  !result.stdout.includes("Permission denied"))
-              ) {
+              if (deleteResultSucceeded(result.code)) {
                 res.json({
                   message: "Item deleted successfully",
                   path: itemPath,
@@ -569,6 +568,10 @@ export function registerFileOperationRoutes(
                   error: `Delete failed: ${result.stderr || result.stdout}`,
                 });
               }
+              resolve();
+            },
+            () => {
+              res.status(500).json({ error: "SUDO_DELETE_FAILED" });
               resolve();
             },
           );
@@ -613,7 +616,7 @@ export function registerFileOperationRoutes(
               return;
             }
 
-            if (outputData.includes("SUCCESS")) {
+            if (deleteResultSucceeded(code, outputData)) {
               fileLogger.success("Item deleted successfully", {
                 operation: "file_delete_success",
                 sessionId,

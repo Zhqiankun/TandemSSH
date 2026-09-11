@@ -64,7 +64,7 @@ export function execWithSudo(
   session: SSHSession,
   command: string,
   sudoPassword: string,
-): Promise<{ stdout: string; stderr: string; code: number }> {
+): Promise<{ stdout: string; stderr: string; code: number | null }> {
   return execWithSudoBuffer(session, command, sudoPassword).then((result) => ({
     stdout: result.stdout.toString("utf8"),
     stderr: result.stderr,
@@ -76,7 +76,7 @@ export function execWithSudoBuffer(
   session: SSHSession,
   command: string,
   sudoPassword: string,
-): Promise<{ stdout: Buffer; stderr: string; code: number }> {
+): Promise<{ stdout: Buffer; stderr: string; code: number | null }> {
   return new Promise((resolve) => {
     const escapedPassword = sudoPassword.replace(/'/g, "'\"'\"'");
     const sudoCommand = `echo '${escapedPassword}' | sudo -S ${command} 2>&1`;
@@ -106,7 +106,7 @@ export function execWithSudoBuffer(
         if (sudoPromptMatch) {
           stdout = stdout.subarray(Buffer.byteLength(sudoPromptMatch[0]));
         }
-        resolve({ stdout, stderr, code: code || 0 });
+        resolve({ stdout, stderr, code: Number.isInteger(code) ? code : null });
       });
 
       stream.on("error", (streamErr: Error) => {

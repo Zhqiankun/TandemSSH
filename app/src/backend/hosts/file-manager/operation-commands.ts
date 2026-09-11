@@ -37,3 +37,14 @@ export function buildDeleteCommand(
     commandWithSuccess: `${command} && echo "SUCCESS"`,
   };
 }
+
+export function deleteResultSucceeded(
+  code: number | null | undefined,
+  output?: string,
+): boolean {
+  return (
+    code === 0 &&
+    (output === undefined ||
+      output.split(/\r?\n/).some((line) => line.trim() === "SUCCESS"))
+  );
+}

@@ -34,3 +34,10 @@
 
 相关批量计数、待操作取消和密码重试 7 项通过；这些是依赖契约回归，尚未构成真实 sudo 永久删除整链验证。
 最终删除模式接线的 tsc -b 与 7 项专项复测通过；lint 无错误，保留原 windowId 警告。
+
+## 服务端删除成功必须有确定退出状态
+
+后端检查发现两处误报：sudo 删除原用“code===0 或输出不含 Permission denied”，非权限类失败可能返回成功；execWithSudoBuffer 又将缺失退出码通过 code||0 转为 0。现保留缺失状态为 null，删除结果必须 code===0；普通带标记删除还要求独立 SUCCESS 行，而非任意包含该单词的输出。sudo Promise 拒绝时返回明确失败响应并结束等待。
+
+该修复限定结果真实性，不改变删除确认、命令权限或 SSH 通道。operation-commands 统一构造和判断删除协议，session 保留执行事实，route 组织响应。两个专项文件 10 项通过，包括 undefined/null/nonzero 状态；扩大到 file-manager 服务目录 12 文件 / 104 项通过，报告 .cache/file-manager-delete-status-results.json。模拟的是 SSH 通道事件，未执行真实删除。
+服务端结果修复的 ESLint 和 tsc -b 类型检查通过。

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildDeleteCommand } from "../../../hosts/file-manager/operation-commands.js";
+import {
+  buildDeleteCommand,
+  deleteResultSucceeded,
+} from "../../../hosts/file-manager/operation-commands.js";
 
 describe("buildDeleteCommand", () => {
   it("builds a PowerShell 5.1 compatible delete command for Windows files", () => {
@@ -42,4 +45,14 @@ describe("buildDeleteCommand", () => {
       `${command.command} && echo "SUCCESS"`,
     );
   });
+});
+
+it("requires an actual zero exit and, for framed deletes, a standalone success marker", () => {
+  for (const code of [null, undefined, 1, 126, 127]) {
+    expect(deleteResultSucceeded(code)).toBe(false);
+    expect(deleteResultSucceeded(code, "SUCCESS\n")).toBe(false);
+  }
+  expect(deleteResultSucceeded(0)).toBe(true);
+  expect(deleteResultSucceeded(0, "SUCCESS\r\n")).toBe(true);
+  expect(deleteResultSucceeded(0, "not SUCCESS")).toBe(false);
 });
