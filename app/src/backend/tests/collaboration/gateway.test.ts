@@ -630,3 +630,50 @@ it("bounds both individual and cumulative directory manifests without consuming 
     f.control.close();
   }
 });
+
+it.each(["agent", "workflow", "mcp", "command-panel"] as const)(
+  "enforces every deny scope for %s in both controlled modes",
+  async (origin) => {
+    for (const mode of ["automatic", "collaborative"] as const) {
+      for (const scope of [
+        { type: "global" },
+        { type: "group", id: "production" },
+        { type: "host", id: "host-1" },
+        { type: "task", id: "task-1" },
+      ] as const) {
+        const f = fixture({ mode });
+        f.grant();
+        f.policy.sets.push({
+          id: "blocking-" + scope.type,
+          scope,
+          strictAllowlist: false,
+          rules: [
+            {
+              id: "deny",
+              effect: "deny",
+              match: { kind: "program", program: "df" },
+              reason: "不可绕过",
+            },
+          ],
+        });
+        const context = { ...f.context("scope-" + scope.type), origin };
+        const operation = await f.gateway.propose(context, action());
+        expect(operation.decision.outcome).toBe("deny");
+        expect(operation.decision.matchedRules).toContain(
+          "blocking-" + scope.type + "/deny",
+        );
+        expect(() =>
+          f.gateway.approveOnce(
+            operation.id,
+            operation.digest,
+            operation.decision.revision,
+          ),
+        ).toThrow("POLICY_DENIED");
+        await expect(f.gateway.dispatch(operation.id)).rejects.toThrow(
+          "POLICY_DENIED",
+        );
+        expect(f.writes).toEqual([]);
+      }
+    }
+  },
+);

@@ -5291,6 +5291,7 @@
       "save": "Save and apply rules",
       "saved": "Rules saved; prior grants revoked.",
       "failed": "Could not complete the operation. Check input or reload current rules.",
+      "reasonSet": "Rule set: {{id}}",
       "reasons": {
         "POLICY_ALLOWLIST_MISS": "No allowlist match in this scope",
         "OPAQUE_COMMAND_IN_STRICT_MODE": "Strict mode denies opaque scripts or interpreters",

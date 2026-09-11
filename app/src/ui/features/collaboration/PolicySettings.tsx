@@ -528,7 +528,22 @@ export function PolicyEditor({
             <code>{displayCommand(trial.action)}</code>
             <p>
               {trial.decision.reasons
-                .map((reason) => policyReason(reason, t))
+                .map((reason) =>
+                  policyReason(reason, t, (id) => {
+                    const set = sets.find((set) => set.id === id);
+                    if (!set) return id;
+                    const scope = set.scope;
+                    const label = w("scope." + scope.type);
+                    if (scope.type === "global") return label;
+                    const name =
+                      scope.type === "host"
+                        ? (targets.find(
+                            (target) => String(target.id) === scope.id,
+                          )?.name ?? scope.id)
+                        : scope.id;
+                    return label + " · " + name;
+                  }),
+                )
                 .join(" · ")}
             </p>
             <small>

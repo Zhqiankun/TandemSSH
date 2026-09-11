@@ -5291,6 +5291,7 @@
       "save": "保存并应用规则",
       "saved": "规则已保存，旧授权已失效。",
       "failed": "操作失败，请检查输入或重新读取最新规则。",
+      "reasonSet": "规则集：{{id}}",
       "reasons": {
         "POLICY_ALLOWLIST_MISS": "未命中该范围的白名单",
         "OPAQUE_COMMAND_IN_STRICT_MODE": "严格模式禁止无法判定行为的脚本或解释器",

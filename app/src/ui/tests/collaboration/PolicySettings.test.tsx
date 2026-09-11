@@ -163,3 +163,37 @@ it("edits file path rules without changing the command rules", async () => {
   });
   expect(set.rules[0].match.program).toBe("rm");
 });
+
+it("explains which applicable rule set rejected an allowlist trial", async () => {
+  api.read.mockResolvedValue({
+    revision: 2,
+    sets: [
+      {
+        id: "group-prod",
+        scope: { type: "group", id: "prod" },
+        strictAllowlist: true,
+        rules: [],
+      },
+      {
+        id: "host-one",
+        scope: { type: "host", id: "1" },
+        strictAllowlist: true,
+        rules: [],
+      },
+    ],
+  });
+  render(<PolicyEditor sessionId="session" hostId={1} />);
+  await screen.findByDisplayValue("prod");
+  fireEvent.change(screen.getByLabelText("试算命令（仅一条）"), {
+    target: { value: "df -h" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "只试算，不执行" }));
+  await screen.findByText("规则拒绝");
+  expect(
+    screen.getByText(/未命中该范围的白名单.*规则集：分组 · prod/),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(/未命中该范围的白名单.*规则集：主机 · Fixture/),
+  ).toBeTruthy();
+  expect(api.save).not.toHaveBeenCalled();
+});
