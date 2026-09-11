@@ -6,13 +6,13 @@
 
 ## Windows 开发预览下载
 
-[下载安装版 EXE](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.0-alpha.6/TandemSSH-0.1.0-alpha.6-x64.exe) · [下载免安装 ZIP](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.0-alpha.6/TandemSSH-0.1.0-alpha.6-x64.zip) · [发布说明与校验和](https://github.com/Zhqiankun/TandemSSH/releases/tag/v0.1.0-alpha.6)
+[下载安装版 EXE](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.0-alpha.7/TandemSSH-0.1.0-alpha.7-x64.exe) · [下载免安装 ZIP](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.0-alpha.7/TandemSSH-0.1.0-alpha.7-x64.zip) · [发布说明与校验和](https://github.com/Zhqiankun/TandemSSH/releases/tag/v0.1.0-alpha.7)
 
-当前为 Windows x64 的 0.1.0-alpha.6 开发预览，建议先在测试服务器体验。EXE 直接安装；ZIP 完整解压后运行 TandemSSH.exe。GitHub 自动附带的 Source code 是源码包。完整产品验收仍在进行，具体边界见[预览说明](docs/75-preview-release-notes.md)。
+当前为 Windows x64 的 0.1.0-alpha.7 开发预览，建议先在测试服务器体验。EXE 直接安装；ZIP 完整解压后运行 TandemSSH.exe。GitHub 自动附带的 Source code 是源码包。完整产品验收仍在进行，具体边界见[预览说明](docs/75-preview-release-notes.md)。
 
 ## 仓库与版本更新
 
-源码仓库：[Zhqiankun/TandemSSH](https://github.com/Zhqiankun/TandemSSH)。当前为开发预览，完整功能清单仍在实施。标准 Windows 构建、安装、中文启动及卸载保留数据已通过 CI；已公开 alpha.6 Release（包含目录复制/移动/撤销、冲突保护、编辑器汉化和 AI 交互修复，保留 20 分钟更新检查），真实 NSIS 跨版本升级和数据保留已在隔离 CI 环境验证；完整历史迁移和公开稳定更新渠道仍待验收。
+源码仓库：[Zhqiankun/TandemSSH](https://github.com/Zhqiankun/TandemSSH)。当前为开发预览，完整功能清单仍在实施。标准 Windows 构建、安装、中文启动及卸载保留数据已通过 CI；已公开 alpha.7 Release（包含独占新建、文件错误反馈、规则范围解释和完整命令历史摘要，保留 20 分钟更新检查），真实 NSIS 跨版本升级和数据保留已在隔离 CI 环境验证；完整历史迁移和公开稳定更新渠道仍待验收。
 
 桌面仪表盘的版本区域提供“检查更新 / 更新版本”：检查版本、下载进度、取消下载和重启安装。在线安装适用于 Windows 安装版；免安装版可打开发布页下载新版。安装前会要求保存草稿并结束连接。更新源固定为本仓库，不会安装上游 Termix 的发行包。
 
@@ -20,7 +20,7 @@ alpha.1 起支持预览版内置更新：启动检查，运行期间每 20 分�
 
 普通推送/PR 运行 [CI](https://github.com/Zhqiankun/TandemSSH/actions/workflows/ci.yml)；稳定与 alpha 版本标签推送运行 [Release](https://github.com/Zhqiankun/TandemSSH/actions/workflows/release.yml)，生成 NSIS、ZIP、更新清单和校验和。详细发布方式与实际验证见[版本发布文档](docs/25-github-releases.md)。
 
-保留的 alpha.4 开发目录客户端已通过真实 GitHub 源检测到 alpha.6；公开安装包已实际下载并通过更新清单校验，发布及验证范围见 [alpha.6 发行记录](docs/134-alpha6-release.md)。
+保留的 alpha.4 开发目录客户端已通过真实 GitHub 源检测到 alpha.7；公开安装包已实际下载并通过更新清单校验，发布及验证范围见 [alpha.7 发行记录](docs/154-alpha7-release.md)。
 
 ## 配置备份与恢复
 
