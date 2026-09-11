@@ -2397,7 +2397,11 @@ function FileManagerContent({
       const axiosError = error as {
         response?: { status?: number; data?: { error?: string } };
       };
-      if (
+      if (axiosError.response?.data?.error === "FILE_TARGET_EXISTS") {
+        toast.error(t("fileManager.createTargetExists"));
+      } else if (axiosError.response?.data?.error === "CREATE_RESULT_UNKNOWN") {
+        toast.error(t("fileManager.createResultUnknown"));
+      } else if (
         axiosError.response?.status === 403 ||
         axiosError.response?.data?.error
           ?.toLowerCase()

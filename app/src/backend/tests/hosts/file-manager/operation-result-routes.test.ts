@@ -1,4 +1,4 @@
-import { EventEmitter } from "node:events";
+import { createFileItem } from "../../../hosts/file-manager/create-item.js";
 import type { Express, RequestHandler } from "express";
 import { beforeEach, expect, it, vi } from "vitest";
 import { registerFileOperationRoutes } from "../../../hosts/file-manager/operation-routes.js";
@@ -27,9 +27,18 @@ vi.mock("../../../database/repositories/factory.js", () => ({
 vi.mock("../../../utils/permission-manager.js", () => ({
   PermissionManager: { getInstance: () => ({ isAdmin: async () => false }) },
 }));
+vi.mock(
+  "../../../hosts/file-manager/create-item.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../hosts/file-manager/create-item.js")
+    >()),
+    createFileItem: vi.fn(),
+  }),
+);
 beforeEach(() => vi.clearAllMocks());
 it.each(["createFile", "createFolder"])(
-  "%s rejects a failure exit even when output contains SUCCESS",
+  "%s maps SFTP conflicts and permission failures",
   async (name) => {
     const routes = new Map<string, RequestHandler>();
     const register = (path: string, handler: RequestHandler) =>
@@ -47,46 +56,31 @@ it.each(["createFile", "createFolder"])(
         verifySessionOwnership: () => true,
       },
     );
-    const stream = Object.assign(new EventEmitter(), {
-      stderr: new EventEmitter(),
-    });
-    vi.mocked(execChannel).mockImplementation(
-      (_session, _command, callback) => {
-        callback(undefined, stream as never);
-        stream.emit("data", Buffer.from("SUCCESS\n"));
-        stream.stderr.emit("data", Buffer.from("failure"));
-        stream.emit("close", 1);
-      },
-    );
-    const status = vi.fn().mockReturnThis(),
-      json = vi.fn();
-    const handler = routes.get("/ssh/file_manager/ssh/" + name);
-    expect(handler).toBeDefined();
-    await handler!(
-      {
-        userId: "owner",
-        body: {
-          sessionId: "session",
-          path: "/srv",
-          fileName: "file",
-          folderName: "folder",
-          oldPath: "/srv/old",
-          newName: "new",
-          newPath: "/srv/new",
-        },
-      } as never,
-      { status, json, headersSent: false } as never,
-      vi.fn(),
-    );
-    expect(vi.mocked(execChannel).mock.calls[0][1]).toMatch(
-      /^(touch|mkdir -p|mv) -- /,
-    );
-    expect(status).toHaveBeenCalledWith(500);
-    expect(json).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        toast: expect.objectContaining({ type: "success" }),
-      }),
-    );
+    vi.mocked(getSessionSftp).mockResolvedValue({} as never);
+    for (const [error, statusCode] of [
+      [Error("FILE_TARGET_EXISTS"), 409],
+      [Object.assign(Error("denied"), { code: 3 }), 403],
+      [Error("CREATE_RESULT_UNKNOWN"), 500],
+    ] as const) {
+      vi.mocked(createFileItem).mockRejectedValueOnce(error);
+      const status = vi.fn().mockReturnThis(),
+        json = vi.fn();
+      await routes.get("/ssh/file_manager/ssh/" + name)!(
+        {
+          userId: "owner",
+          body: {
+            sessionId: "session",
+            path: "/target",
+            fileName: "name",
+            folderName: "name",
+          },
+        } as never,
+        { status, json } as never,
+        vi.fn(),
+      );
+      expect(status).toHaveBeenCalledWith(statusCode);
+      expect(execChannel).not.toHaveBeenCalled();
+    }
   },
 );
 it.each(["false", "true", 1, 0, null, {}])(

@@ -2384,6 +2384,8 @@
       "replacedMatches": "replaced $ matches"
     },
     "batchDeletePartial": "Confirmed {{completed}} items deleted or moved to trash; {{remaining}} items are unconfirmed or not attempted. Refresh before retrying.",
+    "createTargetExists": "A file, folder or link with this name already exists. Choose another name.",
+    "createResultUnknown": "The create result is unknown. Refresh the directory before retrying.",
     "copyResultUnknown": "The copy result is unknown. Some files may already exist at the destination. Refresh and inspect them before retrying.",
     "copyRequestInvalid": "The copy request is invalid. Refresh the file list and select the source and destination again.",
     "undoSessionChanged": "The connection changed. Undo stopped; operations already sent may have completed. Refresh the files before continuing.",
