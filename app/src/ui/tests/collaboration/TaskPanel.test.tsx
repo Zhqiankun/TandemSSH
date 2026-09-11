@@ -84,7 +84,7 @@ beforeEach(async () => {
         completion:
           heldCommand?.promise ??
           Promise.resolve({
-            exitCode: 0,
+            exitCode: action.program === "false" ? 1 : 0,
             output: "执行输出 " + action.program,
             cwd: "/srv",
           }),
@@ -429,3 +429,45 @@ it.each([false, true])(
     expect(document.body.textContent).not.toContain("已完成");
   },
 );
+
+it("shows a Chinese failure and does not send step three after step two fails", async () => {
+  const parent = await runtime.create(actor, {
+    sessionId: "session",
+    requestId: "failure-parent",
+    title: "失败停止验收",
+    mode: "automatic",
+  });
+  await runtime.attachWorkflow(actor, parent.id, {
+    requestId: "failure-flow",
+    name: "第二步失败",
+    workflow: {
+      id: "failure-template",
+      revision: 1,
+      version: "1.0.0",
+      shellState: "explicit-cwd",
+    },
+    commands: [
+      { program: "pwd", args: [] },
+      { program: "false", args: [] },
+      { program: "printf", args: ["must-not-run"] },
+    ],
+    expectedControl: control.snapshot(),
+  });
+  render(
+    <TaskPanel
+      sessionId="session"
+      focusTaskId={parent.id}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByText("流程：第二步失败");
+  authorize();
+  await screen.findByText("命令失败，后续步骤已暂停。");
+  expect(
+    runtime.get(actor, parent.id).operations.map((op) => op.status),
+  ).toEqual(["succeeded", "failed"]);
+  expect(writes.filter((value) => value !== "context")).toEqual([
+    "pwd",
+    "false",
+  ]);
+});

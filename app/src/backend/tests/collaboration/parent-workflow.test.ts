@@ -549,3 +549,105 @@ describe("authorization group change races", () => {
     expect(f.control.snapshot().controller.kind).toBe("human");
   });
 });
+
+it.each(["automatic", "collaborative"] as const)(
+  "stops before step three after step two fails in %s mode",
+  async (mode) => {
+    const f = fixture();
+    f.definition.steps[1].action = {
+      type: "command",
+      program: "false",
+      args: [],
+    };
+    f.definition.steps.push({
+      id: "three",
+      name: "不得执行",
+      action: { type: "command", program: "printf", args: ["must-not-run"] },
+    });
+    const saved = await f.saved(),
+      task = await f.create(mode);
+    await f.authorize(task.id);
+    const run = await f.library.run(
+      actor,
+      task.id,
+      f.preview(saved.id, task.id).id,
+      "second-step-fails",
+    );
+    if (mode === "collaborative") {
+      for (let i = 0; i < 2; i++) {
+        await vi.waitFor(() => {
+          const view = f.runtime.get(actor, task.id);
+          expect(view.state).toBe("awaiting-approval");
+          expect(view.operations).toHaveLength(i + 1);
+        });
+        const op = f.runtime.get(actor, task.id).operations[i];
+        await f.runtime.approve(human, task.id, op.id, op.digest, 1);
+      }
+    }
+    await vi.waitFor(() =>
+      expect(f.runtime.workflowRun(actor, task.id, run.id).state).toBe(
+        "paused-error",
+      ),
+    );
+    const view = f.runtime.get(actor, task.id);
+    expect(view.operations).toHaveLength(2);
+    expect(view.operations[1]).toMatchObject({ status: "failed", exitCode: 1 });
+    expect(f.runtime.workflowRun(actor, task.id, run.id).error).toBeTruthy();
+    expect(f.commands.map((c) => c.program)).toEqual(["pwd", "false"]);
+    expect(f.writes.filter((value) => value !== "context")).toEqual([
+      "pwd",
+      "false",
+    ]);
+  },
+);
+it("keeps the running workflow snapshot and uses an edit only on its next run", async () => {
+  const f = fixture({ holdProgram: "pwd" });
+  const saved = await f.saved(),
+    task = await f.create();
+  await f.authorize(task.id);
+  const first = await f.library.run(
+    actor,
+    task.id,
+    f.preview(saved.id, task.id).id,
+    "first-snapshot",
+  );
+  await vi.waitFor(() => expect(f.writes).toContain("pwd"));
+  const changed = structuredClone(f.definition);
+  changed.version = "2.0.0";
+  changed.steps[1].action = {
+    type: "command",
+    program: "printf",
+    args: ["new-version"],
+  };
+  const updated = await f.library.save("owner", {
+    id: saved.id,
+    expectedRevision: saved.revision,
+    definition: changed,
+    allowedHostIds: [1],
+  });
+  f.heldResult.resolve({ exitCode: 0, output: "/srv", cwd: "/srv" });
+  await vi.waitFor(() =>
+    expect(f.runtime.workflowRun(actor, task.id, first.id).state).toBe(
+      "completed",
+    ),
+  );
+  expect(f.commands[1].args).toEqual(["%s", "hello"]);
+  expect(
+    f.runtime.workflowRun(actor, task.id, first.id).workflow.revision,
+  ).toBe(saved.revision);
+  const second = await f.library.run(
+    actor,
+    task.id,
+    f.preview(saved.id, task.id).id,
+    "next-snapshot",
+  );
+  await vi.waitFor(() =>
+    expect(f.runtime.workflowRun(actor, task.id, second.id).state).toBe(
+      "completed",
+    ),
+  );
+  expect(f.commands[3].args).toEqual(["new-version"]);
+  expect(
+    f.runtime.workflowRun(actor, task.id, second.id).workflow.revision,
+  ).toBe(updated.revision);
+});
