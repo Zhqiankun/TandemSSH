@@ -6121,6 +6121,7 @@
         "failed": "Failed",
         "unknown": "Unknown result"
       },
+      "commandPreviewOnly": "Command preview is shortened. Open details for the recorded arguments.",
       "decisions": {
         "unknown": "Cannot determine automatically; manual review required",
         "allow": "Allow",

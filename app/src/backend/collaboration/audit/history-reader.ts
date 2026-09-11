@@ -1,3 +1,4 @@
+import { displayCommand } from "../../../domain/commands/display-command.js";
 import fs from "node:fs/promises";
 import {
   AUDIT_EXPORT_LIMITS,
@@ -164,6 +165,21 @@ export class AuditHistoryReader {
         action.type.startsWith("file.directory.")
           ? object(fileResult.directoryTransfer)
           : {};
+    const safeAction = object(redact(action));
+    const command =
+      action.type === "terminal.command" &&
+      typeof safeAction.program === "string" &&
+      Array.isArray(safeAction.args) &&
+      safeAction.args.length <= 256 &&
+      safeAction.args.every((arg) => typeof arg === "string")
+        ? redactString(
+            displayCommand({
+              program: safeAction.program,
+              args: safeAction.args,
+            }),
+          )
+        : undefined;
+    const commandPreview = text(command, 512);
     return {
       id: record.id,
       at: record.at,
@@ -216,6 +232,11 @@ export class AuditHistoryReader {
         : text(data.operationId, 128),
       actionType: text(action.type, 80),
       program: text(action.program, 256),
+      commandPreview,
+      commandTruncated:
+        command !== undefined
+          ? commandPreview!.length < command.length
+          : undefined,
       path: text(action.path, 1024),
       fileTransferDirection: choice(
         directoryResult.direction ??

@@ -206,10 +206,15 @@ function HistoryBrowser({ initialTaskId }: { initialTaskId?: string }) {
                 </div>
                 {item.title && <p className="break-all">{item.title}</p>}
                 <HistoryRecordSummary item={item} />
-                {(item.program || item.path) && (
+                {(item.commandPreview || item.program || item.path) && (
                   <code className="block break-all">
-                    {item.program ?? item.path}
+                    {item.commandPreview ?? item.program ?? item.path}
                   </code>
+                )}
+                {item.commandTruncated && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("tandem.history.commandPreviewOnly")}
+                  </p>
                 )}
                 {item.status && (
                   <p>

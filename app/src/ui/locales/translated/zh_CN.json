@@ -6121,6 +6121,7 @@
         "failed": "失败",
         "unknown": "结果未知"
       },
+      "commandPreviewOnly": "命令摘要已截短，请查看详情中的记录参数。",
       "decisions": {
         "unknown": "无法自动判定，需人工审查",
         "allow": "允许",

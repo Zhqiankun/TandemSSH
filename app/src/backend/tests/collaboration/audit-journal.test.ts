@@ -530,3 +530,49 @@ it("omits invalid directory enums instead of implying a successful transfer", as
   expect(item.fileTransferDirection).toBeUndefined();
   expect(item.fileEntryState).toBeUndefined();
 });
+
+it("shows quoted command arguments only after redaction and marks shortened previews", async () => {
+  const f = await fixture();
+  await f.journal.record("operation.completed", {
+    id: "command",
+    action: {
+      type: "terminal.command",
+      program: "tool",
+      args: [
+        "with spaces",
+        "$(touch nope)",
+        "a'b",
+        "--password",
+        "fixture-command-secret",
+      ],
+      cwd: "/srv",
+    },
+  });
+  const item = (await f.journal.queryHistory({})).items[0];
+  expect(item.commandPreview).toContain(
+    "tool 'with spaces' '$(touch nope)' 'a'\\''b'",
+  );
+  expect(item.commandPreview).not.toContain("fixture-command-secret");
+  expect(item.commandTruncated).toBe(false);
+  await f.journal.record("operation.completed", {
+    id: "long",
+    action: {
+      type: "terminal.command",
+      program: "printf",
+      args: ["界".repeat(600) + "🛶"],
+      cwd: "/srv",
+    },
+  });
+  const long = (await f.journal.queryHistory({})).items[0];
+  expect(long.commandTruncated).toBe(true);
+  expect(long.commandPreview!.length).toBeLessThanOrEqual(512);
+  expect(/[\uD800-\uDBFF]$/.test(long.commandPreview!)).toBe(false);
+  await f.journal.record("operation.completed", {
+    id: "legacy-command",
+    action: { type: "terminal.command", program: "pwd" },
+  });
+  const legacy = (await f.journal.queryHistory({})).items[0];
+  expect(legacy.program).toBe("pwd");
+  expect(legacy.commandPreview).toBeUndefined();
+  expect(legacy.commandTruncated).toBeUndefined();
+});

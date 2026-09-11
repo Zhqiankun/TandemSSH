@@ -26,6 +26,8 @@ export interface AuditHistoryItem {
   operationId?: string;
   actionType?: string;
   program?: string;
+  commandPreview?: string;
+  commandTruncated?: boolean;
   path?: string;
   fileTransferDirection?: "upload" | "download";
   fileDirectoryPhase?: "preview" | "confirmed" | "entry";
