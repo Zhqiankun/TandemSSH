@@ -1878,6 +1878,10 @@ function FileManagerContent({
           if (axiosError.response?.data?.error === "INVALID_COPY_REQUEST") {
             toast.error(t("fileManager.copyRequestInvalid"));
           } else if (
+            axiosError.response?.data?.error === "COPY_RESULT_UNKNOWN"
+          ) {
+            toast.error(t("fileManager.copyResultUnknown"));
+          } else if (
             axiosError.response?.status === 403 ||
             axiosError.response?.data?.error
               ?.toLowerCase()

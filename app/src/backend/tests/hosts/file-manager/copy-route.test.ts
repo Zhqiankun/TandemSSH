@@ -156,3 +156,65 @@ it.each(["missing", "disconnected", "denied"])(
     expect(execChannel).not.toHaveBeenCalled();
   },
 );
+
+it.each([false, true])(
+  "expires queued or open copy channels (opened=%s)",
+  async (opened) => {
+    vi.useFakeTimers();
+    try {
+      const routes = new Map<string, RequestHandler>();
+      registerFileActionRoutes(
+        {
+          post: (path: string, handler: RequestHandler) =>
+            routes.set(path, handler),
+        } as unknown as Express,
+        {
+          sshSessions: { session: { isConnected: true } as SSHSession },
+          scheduleSessionCleanup: vi.fn(),
+          verifySessionOwnership: () => true,
+        },
+      );
+      const stream = Object.assign(new EventEmitter(), {
+        stderr: new EventEmitter(),
+        destroy: vi.fn(),
+      });
+      let complete!: Parameters<typeof execChannel>[2];
+      let beforeOpen!: NonNullable<Parameters<typeof execChannel>[3]>;
+      vi.mocked(execChannel).mockImplementation(
+        (_session, _command, callback, guard) => {
+          complete = callback;
+          beforeOpen = guard!;
+          if (opened) {
+            beforeOpen();
+            callback(undefined, stream as never);
+          }
+        },
+      );
+      const status = vi.fn().mockReturnThis(),
+        json = vi.fn();
+      await routes.get("/ssh/file_manager/ssh/copyItem")!(
+        {
+          userId: "owner",
+          body: {
+            sessionId: "session",
+            sourcePath: "/source",
+            targetDir: "/target",
+          },
+        } as never,
+        { status, json, headersSent: false } as never,
+        vi.fn(),
+      );
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(status).toHaveBeenCalledWith(500);
+      expect(json.mock.calls[0][0].error).toBe("COPY_RESULT_UNKNOWN");
+      expect(() => beforeOpen()).toThrow("COPY_NOT_DISPATCHED");
+      if (!opened) complete(undefined, stream as never);
+      expect(stream.destroy).toHaveBeenCalledTimes(1);
+      stream.emit("data", Buffer.from("COPY_SUCCESS"));
+      stream.emit("close", 0);
+      expect(json).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);

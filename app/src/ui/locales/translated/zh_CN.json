@@ -2384,6 +2384,7 @@
       "replacedMatches": "已替换 $ 处匹配"
     },
     "batchDeletePartial": "已确认 {{completed}} 项删除或移至回收站；其余 {{remaining}} 项结果未确认或尚未执行。请刷新核对后再重试。",
+    "copyResultUnknown": "无法确认复制结果，目标目录可能已有部分文件。请刷新并检查后再重试。",
     "copyRequestInvalid": "复制请求无效。请刷新文件列表，重新选择源文件和目标目录。",
     "undoSessionChanged": "连接已变化，撤销已停止；已发出的操作可能已经完成。请刷新文件列表后再继续。",
     "sudoSessionChanged": "连接已变化，已取消待确认的权限操作。请刷新后重新发起。",
