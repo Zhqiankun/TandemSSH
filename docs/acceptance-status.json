@@ -152,9 +152,10 @@
         "31-workflow-files.md",
         "36-workflow-directory-steps.md",
         "43-task-execution-recovery.md",
-        "45-parent-workflow-recovery.md"
+        "45-parent-workflow-recovery.md",
+        "113-workflow-policy-review.md"
       ],
-      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+      "remaining": "普通串行流程、参数、快照及人工/AI/MCP 调用已核对；08 文档的 secret-ref 安全传输仍未实现，当前明确拒绝而不使用明文参数。"
     },
     {
       "id": "R10",
@@ -1201,7 +1202,7 @@
       "id": "A26",
       "requirement": "人工点击运行被拒绝命令的流程",
       "acceptance": "workflow 入口仍受硬规则限制，不伪装为自由人工输入",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/workflows",
       "records": [
         "15-saved-workflows.md",
@@ -1210,9 +1211,12 @@
         "31-workflow-files.md",
         "36-workflow-directory-steps.md",
         "43-task-execution-recovery.md",
-        "45-parent-workflow-recovery.md"
+        "45-parent-workflow-recovery.md",
+        "113-workflow-policy-review.md"
       ],
-      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+      "remaining": "",
+      "verifiedAt": "2026-09-12",
+      "verification": "中文人工流程预览命中硬拒绝时不能创建任务；过期策略预览由真实服务拒绝且无写入，父任务运行同样拒绝已知 deny。"
     },
     {
       "id": "A27",

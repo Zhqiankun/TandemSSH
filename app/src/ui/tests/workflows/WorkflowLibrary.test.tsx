@@ -52,6 +52,7 @@ const template: WorkflowDefinition = {
     },
   ],
 };
+let policy: import("../../../types/collaboration-operations").CommandPolicySnapshot;
 let library: Library,
   runtime: TaskRuntime,
   control: SessionControl,
@@ -76,7 +77,7 @@ beforeEach(async () => {
     },
     () => {},
   );
-  const policy = { revision: 1, sets: [] };
+  policy = { revision: 1, sets: [] };
   const session = {
     id: "session",
     userId: "owner",
@@ -346,4 +347,48 @@ describe("export download lifecycle", () => {
       vi.unstubAllGlobals();
     }
   });
+});
+
+it("keeps a human-started workflow subject to a hard deny rule", async () => {
+  policy.sets = [
+    {
+      id: "deny",
+      scope: { type: "global" },
+      strictAllowlist: false,
+      rules: [
+        {
+          id: "deny-printf",
+          effect: "deny",
+          match: { kind: "program", program: "printf" },
+          reason: "禁止该命令",
+        },
+      ],
+    },
+  ];
+  await open();
+  fireEvent.click(screen.getByRole("button", { name: "参数与运行" }));
+  fireEvent.click(screen.getByRole("button", { name: "生成运行预览" }));
+  const start = await screen.findByRole("button", {
+    name: "创建任务并前往授权",
+  });
+  expect(start.hasAttribute("disabled")).toBe(true);
+  fireEvent.click(start);
+  expect(api.start).not.toHaveBeenCalled();
+  expect(runtime.list(actor)).toEqual([]);
+  expect(writes).toEqual([]);
+});
+it("rejects a human start when the policy changed after the displayed preview", async () => {
+  await open();
+  fireEvent.click(screen.getByRole("button", { name: "参数与运行" }));
+  fireEvent.click(screen.getByRole("button", { name: "生成运行预览" }));
+  const start = await screen.findByRole("button", {
+    name: "创建任务并前往授权",
+  });
+  policy.revision++;
+  fireEvent.click(start);
+  await waitFor(() => expect(api.start).toHaveBeenCalledTimes(1));
+  await screen.findByRole("alert");
+  expect(created).not.toHaveBeenCalled();
+  expect(runtime.list(actor)).toEqual([]);
+  expect(writes).toEqual([]);
 });
