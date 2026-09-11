@@ -53,11 +53,18 @@ export function registerFileActionRoutes(
    *         description: Failed to copy item.
    */
   app.post("/ssh/file_manager/ssh/copyItem", async (req, res) => {
-    const { sessionId, sourcePath, targetDir, hostId } = req.body;
+    const { sessionId, sourcePath, targetDir, hostId } = req.body ?? {};
     const userId = (req as AuthenticatedRequest).userId;
 
-    if (!sessionId || !sourcePath || !targetDir) {
-      return res.status(400).json({ error: "Missing required parameters" });
+    if (
+      [sessionId, sourcePath, targetDir].some(
+        (value) =>
+          typeof value !== "string" ||
+          value.length === 0 ||
+          value.includes("\0"),
+      )
+    ) {
+      return res.status(400).json({ error: "INVALID_COPY_REQUEST" });
     }
 
     const sshConn = sshSessions[sessionId];

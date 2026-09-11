@@ -23,6 +23,7 @@ vi.mock("../../../utils/logger.js", () => ({
 beforeEach(() => vi.clearAllMocks());
 it.each([
   "silent-failure",
+  "missing-exit",
   "silent-success",
   "stream-error",
   "multiple-output",
@@ -53,7 +54,10 @@ it.each([
         stream.emit("data", Buffer.from("one"));
         stream.emit("data", Buffer.from("COPY_SUCCESS"));
       }
-      stream.emit("close", mode === "silent-failure" ? 1 : 0);
+      stream.emit(
+        "close",
+        mode === "missing-exit" ? undefined : mode === "silent-failure" ? 1 : 0,
+      );
     }
   });
   const status = vi.fn().mockReturnThis(),
@@ -71,7 +75,84 @@ it.each([
     vi.fn(),
   );
   expect(json).toHaveBeenCalledTimes(1);
-  if (mode === "silent-failure" || mode === "stream-error")
+  if (
+    mode === "silent-failure" ||
+    mode === "stream-error" ||
+    mode === "missing-exit"
+  )
     expect(status).toHaveBeenCalledWith(500);
   else expect(json.mock.calls[0][0]).toHaveProperty("uniqueName");
 });
+
+it.each([
+  undefined,
+  {},
+  { sessionId: "session", sourcePath: [], targetDir: "/target" },
+  { sessionId: "session", sourcePath: "/source", targetDir: {} },
+  { sessionId: 42, sourcePath: "/source", targetDir: "/target" },
+  { sessionId: "session", sourcePath: "/source\0extra", targetDir: "/target" },
+  { sessionId: "session", sourcePath: "/source", targetDir: "" },
+])("rejects malformed copy input before opening SSH: %j", async (body) => {
+  const routes = new Map<string, RequestHandler>();
+  registerFileActionRoutes(
+    {
+      post: (path: string, handler: RequestHandler) =>
+        routes.set(path, handler),
+    } as unknown as Express,
+    {
+      sshSessions: { session: { isConnected: true } as SSHSession },
+      scheduleSessionCleanup: vi.fn(),
+      verifySessionOwnership: () => true,
+    },
+  );
+  const status = vi.fn().mockReturnThis(),
+    json = vi.fn();
+  await routes.get("/ssh/file_manager/ssh/copyItem")!(
+    { userId: "owner", body } as never,
+    { status, json, headersSent: false } as never,
+    vi.fn(),
+  );
+  expect(status).toHaveBeenCalledWith(400);
+  expect(json).toHaveBeenCalledWith({ error: "INVALID_COPY_REQUEST" });
+  expect(execChannel).not.toHaveBeenCalled();
+});
+it.each(["missing", "disconnected", "denied"])(
+  "does not execute a copy for a %s session",
+  async (state) => {
+    const routes = new Map<string, RequestHandler>();
+    registerFileActionRoutes(
+      {
+        post: (path: string, handler: RequestHandler) =>
+          routes.set(path, handler),
+      } as unknown as Express,
+      {
+        sshSessions:
+          state === "missing"
+            ? {}
+            : {
+                session: {
+                  isConnected: state !== "disconnected",
+                } as SSHSession,
+              },
+        scheduleSessionCleanup: vi.fn(),
+        verifySessionOwnership: () => state !== "denied",
+      },
+    );
+    const status = vi.fn().mockReturnThis(),
+      json = vi.fn();
+    await routes.get("/ssh/file_manager/ssh/copyItem")!(
+      {
+        userId: "owner",
+        body: {
+          sessionId: "session",
+          sourcePath: "/source",
+          targetDir: "/target",
+        },
+      } as never,
+      { status, json, headersSent: false } as never,
+      vi.fn(),
+    );
+    expect(status).toHaveBeenCalledWith(state === "denied" ? 403 : 400);
+    expect(execChannel).not.toHaveBeenCalled();
+  },
+);

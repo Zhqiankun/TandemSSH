@@ -1875,7 +1875,9 @@ function FileManagerContent({
           const axiosError = error as {
             response?: { status?: number; data?: { error?: string } };
           };
-          if (
+          if (axiosError.response?.data?.error === "INVALID_COPY_REQUEST") {
+            toast.error(t("fileManager.copyRequestInvalid"));
+          } else if (
             axiosError.response?.status === 403 ||
             axiosError.response?.data?.error
               ?.toLowerCase()
