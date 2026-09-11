@@ -83,7 +83,7 @@ export function registerFileActionRoutes(
     const escapedSource = sourcePath.replace(/'/g, "'\"'\"'");
     const escapedTarget = targetPath.replace(/'/g, "'\"'\"'");
 
-    const copyCommand = `cp '${escapedSource}' '${escapedTarget}' && echo "COPY_SUCCESS"`;
+    const copyCommand = `cp -R -- '${escapedSource}' '${escapedTarget}' && echo "COPY_SUCCESS"`;
 
     const commandTimeout = setTimeout(() => {
       fileLogger.error("Copy command timed out after 60 seconds", {
@@ -119,106 +119,104 @@ export function registerFileActionRoutes(
       stream.on("data", (data: Buffer) => {
         const output = data.toString();
         stdoutData += output;
-        stream.stderr.on("data", (data: Buffer) => {
-          const output = data.toString();
-          errorData += output;
-        });
+      });
+      stream.stderr.on("data", (data: Buffer) => {
+        const output = data.toString();
+        errorData += output;
+      });
 
-        stream.on("close", (code) => {
-          clearTimeout(commandTimeout);
+      stream.on("close", (code) => {
+        clearTimeout(commandTimeout);
 
-          if (code !== 0) {
-            const fullErrorInfo =
-              errorData || stdoutData || "No error message available";
-            fileLogger.error(`SSH copyItem command failed with code ${code}`, {
-              operation: "file_copy_failed",
-              sessionId,
-              sourcePath,
-              targetPath,
-              command: copyCommand,
-              exitCode: code,
-              errorData,
-              stdoutData,
-              fullErrorInfo,
+        if (code !== 0) {
+          const fullErrorInfo =
+            errorData || stdoutData || "No error message available";
+          fileLogger.error(`SSH copyItem command failed with code ${code}`, {
+            operation: "file_copy_failed",
+            sessionId,
+            sourcePath,
+            targetPath,
+            command: copyCommand,
+            exitCode: code,
+            errorData,
+            stdoutData,
+            fullErrorInfo,
+          });
+          if (!res.headersSent) {
+            return res.status(500).json({
+              error: `Copy failed: ${fullErrorInfo}`,
+              toast: {
+                type: "error",
+                message: `Copy failed: ${fullErrorInfo}`,
+              },
+              debug: {
+                sourcePath,
+                targetPath,
+                exitCode: code,
+                command: copyCommand,
+              },
             });
-            if (!res.headersSent) {
-              return res.status(500).json({
-                error: `Copy failed: ${fullErrorInfo}`,
-                toast: {
-                  type: "error",
-                  message: `Copy failed: ${fullErrorInfo}`,
-                },
-                debug: {
-                  sourcePath,
-                  targetPath,
-                  exitCode: code,
-                  command: copyCommand,
-                },
-              });
-            }
-            return;
           }
+          return;
+        }
 
-          const copySuccessful =
-            stdoutData.includes("COPY_SUCCESS") || code === 0;
+        const copySuccessful =
+          stdoutData.includes("COPY_SUCCESS") || code === 0;
 
-          if (copySuccessful) {
-            fileLogger.success("Item copied successfully", {
-              operation: "file_copy",
-              sessionId,
+        if (copySuccessful) {
+          fileLogger.success("Item copied successfully", {
+            operation: "file_copy",
+            sessionId,
+            sourcePath,
+            targetPath,
+            uniqueName,
+            hostId,
+            userId,
+          });
+
+          if (!res.headersSent) {
+            res.json({
+              message: "Item copied successfully",
               sourcePath,
               targetPath,
               uniqueName,
-              hostId,
-              userId,
+              toast: {
+                type: "success",
+                message: `Successfully copied to: ${uniqueName}`,
+              },
             });
+          }
+        } else {
+          fileLogger.warn("Copy completed but without success confirmation", {
+            operation: "file_copy_uncertain",
+            sessionId,
+            sourcePath,
+            targetPath,
+            code,
+            stdoutData: stdoutData.substring(0, 200),
+          });
 
-            if (!res.headersSent) {
-              res.json({
-                message: "Item copied successfully",
-                sourcePath,
-                targetPath,
-                uniqueName,
-                toast: {
-                  type: "success",
-                  message: `Successfully copied to: ${uniqueName}`,
-                },
-              });
-            }
-          } else {
-            fileLogger.warn("Copy completed but without success confirmation", {
-              operation: "file_copy_uncertain",
-              sessionId,
+          if (!res.headersSent) {
+            res.json({
+              message: "Copy may have completed",
               sourcePath,
               targetPath,
-              code,
-              stdoutData: stdoutData.substring(0, 200),
+              uniqueName,
+              toast: {
+                type: "warning",
+                message: `Copy completed but verification uncertain for: ${uniqueName}`,
+              },
             });
-
-            if (!res.headersSent) {
-              res.json({
-                message: "Copy may have completed",
-                sourcePath,
-                targetPath,
-                uniqueName,
-                toast: {
-                  type: "warning",
-                  message: `Copy completed but verification uncertain for: ${uniqueName}`,
-                },
-              });
-            }
           }
-        });
+        }
+      });
 
-        stream.on("error", (streamErr) => {
-          clearTimeout(commandTimeout);
-          fileLogger.error("SSH copyItem stream error:", streamErr);
-          if (!res.headersSent) {
-            res
-              .status(500)
-              .json({ error: `Stream error: ${streamErr.message}` });
-          }
-        });
+      stream.on("error", (streamErr) => {
+        clearTimeout(commandTimeout);
+        fileLogger.error("SSH copyItem stream error:", streamErr);
+        if (!res.headersSent) {
+          res.status(500).json({ error: `Stream error: ${streamErr.message}` });
+        }
       });
     });
   });
