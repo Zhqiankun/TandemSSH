@@ -9,6 +9,7 @@ export function useTaskWorkbench(sessionId: string) {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [error, setError] = useState<string>();
   const errorScope = useRef(0);
+  const sessionScope = useRef(0);
   const clearActionError = useCallback(() => {
     errorScope.current++;
     setError(undefined);
@@ -37,6 +38,14 @@ export function useTaskWorkbench(sessionId: string) {
   );
   useEffect(() => {
     alive.current = true;
+    sessionScope.current++;
+    errorScope.current++;
+    setSnapshot(undefined);
+    setError(undefined);
+    setConnectionError(undefined);
+    setBusy(false);
+    takingOver.current = false;
+    setTakeoverPending(false);
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     const controller = new AbortController();
@@ -54,11 +63,14 @@ export function useTaskWorkbench(sessionId: string) {
   }, [refresh]);
   const run = async (action: () => Promise<TaskView>) => {
     const scope = errorScope.current;
+    const sessionVersion = sessionScope.current;
+    const current = () =>
+      alive.current && sessionVersion === sessionScope.current;
     setBusy(true);
     setError(undefined);
     try {
       const task = await action();
-      if (alive.current)
+      if (current())
         setSnapshot((previous) =>
           previous
             ? {
@@ -70,53 +82,61 @@ export function useTaskWorkbench(sessionId: string) {
               }
             : previous,
         );
-      await refresh();
-      return task;
+      if (current()) await refresh();
+      return current() ? task : undefined;
     } catch (error) {
-      if (alive.current && scope === errorScope.current)
+      if (current() && scope === errorScope.current)
         setError(collaborationErrorCode(error));
       return undefined;
     } finally {
-      if (alive.current) setBusy(false);
+      if (current()) setBusy(false);
     }
   };
   const archive = async (id: string) => {
     const scope = errorScope.current;
+    const sessionVersion = sessionScope.current;
+    const current = () =>
+      alive.current && sessionVersion === sessionScope.current;
     setBusy(true);
     setError(undefined);
     try {
       await collaborationApi.archive(id);
-      if (alive.current)
+      if (current())
         setSnapshot((previous) =>
           previous
             ? { ...previous, tasks: previous.tasks.filter((t) => t.id !== id) }
             : previous,
         );
-      await refresh();
-      return true;
+      if (current()) await refresh();
+      return current();
     } catch (error) {
-      if (alive.current && scope === errorScope.current)
+      if (current() && scope === errorScope.current)
         setError(collaborationErrorCode(error));
       return false;
     } finally {
-      if (alive.current) setBusy(false);
+      if (current()) setBusy(false);
     }
   };
   // Takeover stays available while an authorization or command request is pending.
   const takeover = async () => {
     if (takingOver.current) return;
     const scope = errorScope.current;
+    const sessionVersion = sessionScope.current;
+    const current = () =>
+      alive.current && sessionVersion === sessionScope.current;
     takingOver.current = true;
     setTakeoverPending(true);
     try {
       await collaborationApi.takeover(sessionId);
-      await refresh();
+      if (current()) await refresh();
     } catch (error) {
-      if (alive.current && scope === errorScope.current)
+      if (current() && scope === errorScope.current)
         setError(collaborationErrorCode(error));
     } finally {
-      takingOver.current = false;
-      if (alive.current) setTakeoverPending(false);
+      if (current()) {
+        takingOver.current = false;
+        setTakeoverPending(false);
+      }
     }
   };
   return {

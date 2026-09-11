@@ -797,9 +797,10 @@
         "43-task-execution-recovery.md",
         "56-linux-ssh-acceptance.md",
         "64-jump-combined-acceptance.md",
-        "68-provider-response-bounds.md"
+        "68-provider-response-bounds.md",
+        "103-workbench-session-isolation.md"
       ],
-      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+      "remaining": "已修复并验证工作台跨 sessionId 迟到响应覆盖、接管锁继承和旧结果影响新标签问题；仍需实际多标签与服务端会话派发联动验证。"
     },
     {
       "id": "A04",
