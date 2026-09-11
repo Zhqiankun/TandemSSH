@@ -1,3 +1,7 @@
+import {
+  fileActionReceipt,
+  type SuccessfulFileAction,
+} from "./file-operation-history";
 import { usePendingSudoOperation } from "./hooks/use-pending-sudo-operation";
 import { runFileBatch, assertFileSession } from "./file-batch";
 import { changeFileOwnership } from "@/api/file-ownership-api";
@@ -1805,6 +1809,7 @@ function FileManagerContent({
 
       let successCount = 0;
       const copiedItems: string[] = [];
+      const completedActions: SuccessfulFileAction[] = [];
 
       for (const file of files) {
         try {
@@ -1817,6 +1822,13 @@ function FileManagerContent({
               currentHost?.userId?.toString(),
             );
             copiedItems.push(result.uniqueName || file.name);
+            completedActions.push(
+              fileActionReceipt(
+                file.path,
+                currentPath,
+                result.uniqueName || file.name,
+              ),
+            );
             successCount++;
           } else {
             const targetPath = currentPath.endsWith("/")
@@ -1830,6 +1842,9 @@ function FileManagerContent({
                 targetPath,
                 currentHost?.id,
                 currentHost?.userId?.toString(),
+              );
+              completedActions.push(
+                fileActionReceipt(file.path, currentPath, file.name),
               );
               successCount++;
             }
@@ -1863,13 +1878,7 @@ function FileManagerContent({
 
       if (successCount > 0) {
         if (operation === "copy") {
-          const copiedFiles = files
-            .slice(0, successCount)
-            .map((file, index) => ({
-              originalPath: file.path,
-              targetPath: `${currentPath}/${copiedItems[index] || file.name}`,
-              targetName: copiedItems[index] || file.name,
-            }));
+          const copiedFiles = completedActions;
 
           const undoAction: UndoAction = {
             type: "copy",
@@ -1883,16 +1892,7 @@ function FileManagerContent({
           };
           setUndoHistory((prev) => [...prev.slice(-9), undoAction]);
         } else if (operation === "cut") {
-          const movedFiles = files.slice(0, successCount).map((file) => {
-            const targetPath = currentPath.endsWith("/")
-              ? `${currentPath}${file.name}`
-              : `${currentPath}/${file.name}`;
-            return {
-              originalPath: file.path,
-              targetPath: targetPath,
-              targetName: file.name,
-            };
-          });
+          const movedFiles = completedActions;
 
           const undoAction: UndoAction = {
             type: "cut",
@@ -2762,7 +2762,7 @@ function FileManagerContent({
       await ensureSSHConnection();
 
       let successCount = 0;
-      const movedItems: string[] = [];
+      const completedActions: SuccessfulFileAction[] = [];
 
       for (const file of draggedFiles) {
         try {
@@ -2778,7 +2778,9 @@ function FileManagerContent({
               currentHost?.id,
               currentHost?.userId?.toString(),
             );
-            movedItems.push(file.name);
+            completedActions.push(
+              fileActionReceipt(file.path, targetFolder.path, file.name),
+            );
             successCount++;
           }
         } catch (error: unknown) {
@@ -2792,16 +2794,7 @@ function FileManagerContent({
       }
 
       if (successCount > 0) {
-        const movedFiles = draggedFiles.slice(0, successCount).map((file) => {
-          const targetPath = targetFolder.path.endsWith("/")
-            ? `${targetFolder.path}${file.name}`
-            : `${targetFolder.path}/${file.name}`;
-          return {
-            originalPath: file.path,
-            targetPath: targetPath,
-            targetName: file.name,
-          };
-        });
+        const movedFiles = completedActions;
 
         const undoAction: UndoAction = {
           type: "cut",
