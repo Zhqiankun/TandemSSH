@@ -124,6 +124,7 @@ alpha.2 客户端已通过真实 GitHub 源检测到 alpha.3；发布及验证�
 | [执行历史来源与目标](docs/79-history-provenance.md) | 中文来源、主机/会话、策略判断、退出码与脱敏输出摘要 |
 | [Unix 权限编辑](docs/80-unix-permissions.md) | 目录权限解析、中文特殊权限位、完整八进制传递与输入保护 |
 | [文件时间汉化](docs/87-file-time-localization.md) | 列表与编辑器随界面语言显示修改时间，保留原始时间戳与旧值回退 |
+| [随包依赖声明](docs/88-packaged-dependency-notices.md) | 实际 npm 包版本/许可证字段/原文摘要、声明汇编和待核对项 |
 
 ## 产品主线
 

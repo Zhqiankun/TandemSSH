@@ -14,6 +14,7 @@ async function probe(root) {
       root,
     );
   if (notices.length !== 4) throw Error("Distribution notices incomplete");
+  require("./distribution-dependencies.cjs").verifyDependencyNotices(root);
   const load = createRequire(
     path.join(
       root,

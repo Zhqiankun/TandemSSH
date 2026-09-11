@@ -14,9 +14,10 @@
         "10-open-source-base.md",
         "11-m0-validation.md",
         "25-github-releases.md",
-        "46-online-update-acceptance.md"
+        "46-online-update-acceptance.md",
+        "88-packaged-dependency-notices.md"
       ],
-      "remaining": "已公开 0.1.0-alpha.0 Windows 安装/免安装预览包并通过云端真实安装升级；稳定更新渠道、历史版本迁移及完整发行依赖/资源许可清单仍未完成。"
+      "remaining": "已公开 alpha.3；实际随包 npm 清单与声明汇编已接入构建并验证 341 个包，其中 14 项需核对上游/代码头部原文；前端打包依赖、字体图标和原生捆绑库声明仍需完成。"
     },
     {
       "id": "R02",
