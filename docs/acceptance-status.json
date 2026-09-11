@@ -890,9 +890,10 @@
         "64-jump-combined-acceptance.md",
         "68-provider-response-bounds.md",
         "98-handback-context-review.md",
-        "99-ai-terminal-context.md"
+        "99-ai-terminal-context.md",
+        "101-linux-lab-timing.md"
       ],
-      "remaining": "旧批准失效、新 cwd、人工介入提示和有界脱敏终端输出已接入并通过核心回归；仍需实际 Windows/SSH 交还场景验证。"
+      "remaining": "旧批准失效、新 cwd、人工介入提示和有界脱敏终端输出已通过核心及真实 Linux SSH 双模式验收；Windows 桌面操作与生产输出适配链的完整观察仍待完成。"
     },
     {
       "id": "A09",

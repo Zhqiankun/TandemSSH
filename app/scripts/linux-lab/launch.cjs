@@ -147,7 +147,12 @@ async function freePort() {
     "-machine",
     "pc",
     "-accel",
-    "tcg,thread=multi",
+    process.env.TANDEM_LINUX_ICOUNT === "1"
+      ? "tcg,thread=single"
+      : "tcg,thread=multi",
+    ...(process.env.TANDEM_LINUX_ICOUNT === "1"
+      ? ["-icount", "shift=auto"]
+      : []),
     "-cpu",
     "max",
     "-smp",
@@ -207,6 +212,8 @@ async function freePort() {
     privateKey: path.join(dir, "client.pem"),
     hostFingerprint: hostKey.fingerprint,
     root: remoteRoot,
+    timing:
+      process.env.TANDEM_LINUX_ICOUNT === "1" ? "icount-auto" : "tcg-multi",
     qemuVersion: "11.1.0",
     alpineVersion: "3.24.1",
   };
