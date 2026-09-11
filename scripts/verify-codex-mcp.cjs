@@ -144,6 +144,13 @@ function rpc(method, params) {
     name: tool.name,
     title: tool.title,
   }));
+  const expectedVersion = JSON.parse(
+    fs.readFileSync(path.join(workspace, "app/package.json"), "utf8"),
+  ).version;
+  if (row?.serverInfo?.version !== expectedVersion)
+    throw Error(
+      "Codex MCP server version does not match the application build",
+    );
   const result = {
     configurationValidated: true,
     serverName: row?.name,

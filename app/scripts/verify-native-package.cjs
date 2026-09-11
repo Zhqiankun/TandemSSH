@@ -15,6 +15,23 @@ async function probe(root) {
     );
   if (notices.length !== 4) throw Error("Distribution notices incomplete");
   require("./distribution-dependencies.cjs").verifyDependencyNotices(root);
+  const { extractFile } = await import("@electron/asar");
+  const applicationMetadata = JSON.parse(
+    extractFile(path.join(root, "resources/app.asar"), "package.json").toString(
+      "utf8",
+    ),
+  );
+  const backendMetadata = JSON.parse(
+    fs.readFileSync(
+      path.join(root, "resources/app.asar.unpacked/dist/backend/package.json"),
+      "utf8",
+    ),
+  );
+  if (
+    backendMetadata.name !== "tandemssh-backend" ||
+    backendMetadata.version !== applicationMetadata.version
+  )
+    throw Error("Packaged MCP version differs from application version");
   const load = createRequire(
     path.join(
       root,

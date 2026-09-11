@@ -1,3 +1,4 @@
+import { readMcpVersion } from "./version.js";
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -15,12 +16,13 @@ async function main() {
   const reference = z
     .object({ profileId: z.string().uuid(), clientId: z.string().uuid() })
     .parse({ profileId: values.profile, clientId: values.client });
+  const version = readMcpVersion();
   const client = await LocalBridgeClient.connect(
     localBridgeEndpoint(reference.profileId),
     reference,
     new SystemPairingSecretStore(),
   );
-  const server = createTandemMcpServer(client);
+  const server = createTandemMcpServer(client, version);
   server.server.onclose = () => client.close();
   const shutdown = () => {
     client.close();
@@ -37,6 +39,13 @@ async function main() {
   }
 }
 main().catch((error) => {
+  if (error instanceof Error && error.message === "MCP_VERSION_UNAVAILABLE") {
+    process.stderr.write(
+      "同舟 SSH MCP 版本信息缺失或无效，请重新构建或安装完整版本。\n",
+    );
+    process.exitCode = 1;
+    return;
+  }
   process.stderr.write(
     "同舟 SSH MCP 启动失败（" +
       publicError(error) +

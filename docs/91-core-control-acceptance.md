@@ -19,3 +19,5 @@
 当前安装的 Codex CLI（7ac07f4ce733f89a）与实际打包 MCP stdio 再次验证，2 文件 / 3 项通过：桌面授权前拒绝执行、授权后受限命令、断开失权及文件传输。配置由参数临时覆盖，配对使用测试 UUID 并清理，未改日常配置、未调用付费模型。Codex 实际发现 38 个工具，configurationValidated=true，记录 .cache/codex-mcp-integration.json；日志 .cache/core-codex-mcp-tests.log。serverInfo 仍显示早期 0.1.0-alpha.0 版本标识，这是待修正元数据，不将工具发现成功解释为版本标识正确。
 
 此前 Windows/真实 Alpine 的原始结果也已重读：56 的 linux-desktop-result.json 有自动/协作、同 Shell 环境和 cwd、实际文件、人工接管/交还记录；77 的 history-export-revocation-result.json 有撤销后新请求拒绝、人工仍可输入和禁止文件不存在。本轮未重新启动 Linux VM，不把旧记录称为本轮实机重跑。当前 107 项多数使用可控传输/模型夹具，以便稳定制造竞态；它们不证明模型推理质量或所有远端环境。
+
+后续已修正 MCP 旧版本标识，根包版本成为唯一来源；实际 Codex 报告与开发包版本一致，升级夹具也通过包级版本比对。见 [92](92-mcp-build-version.md)。公开旧包的标识不会因此自动改写。

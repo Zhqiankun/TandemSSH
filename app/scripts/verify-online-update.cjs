@@ -129,6 +129,32 @@ async function main() {
     to: "electron",
     filter: ["upgrade-observer.cjs"],
   });
+  const backendMetadataRoot = path.join(source, "backend-metadata");
+  fs.mkdirSync(backendMetadataRoot);
+  const backendMetadata = JSON.parse(
+    fs.readFileSync(path.join(appRoot, "dist/backend/package.json"), "utf8"),
+  );
+  if (
+    backendMetadata.name !== "tandemssh-backend" ||
+    backendMetadata.version !== oldVersion
+  )
+    throw Error("Upgrade fixture backend version mismatch");
+  fs.writeFileSync(
+    path.join(backendMetadataRoot, "package.json"),
+    JSON.stringify({ ...backendMetadata, version: newVersion }, null, 2) + "\n",
+  );
+  config.files.push("!dist/backend/package.json");
+  config.files.push({
+    from: backendMetadataRoot,
+    to: "dist/backend",
+    filter: ["package.json"],
+  });
+  // Mirror fixture metadata into the physical backend directory used by stdio.
+  config.extraResources.push({
+    from: backendMetadataRoot,
+    to: "app.asar.unpacked/dist/backend",
+    filter: ["package.json"],
+  });
   const configFile = path.join(owned, "update-fixture-builder.json");
   fs.writeFileSync(configFile, JSON.stringify(config));
   await run(

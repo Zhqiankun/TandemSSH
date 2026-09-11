@@ -182,6 +182,10 @@ describe.runIf(process.platform === "win32" && fs.existsSync(entry))(
         version: "1.0.0",
       });
       await client.connect(transport);
+      expect(client.getServerVersion()?.version).toBe(
+        JSON.parse(fs.readFileSync(path.join(appRoot, "package.json"), "utf8"))
+          .version,
+      );
       closers.push(() => client.close());
       const tools = await client.listTools();
       if (process.env.TANDEM_TEST_CODEX) {
