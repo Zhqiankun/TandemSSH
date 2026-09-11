@@ -1,4 +1,6 @@
 import React, { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { EditorState } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import {
@@ -80,6 +82,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     { fileName, value, placeholder, onChange, onFocus, onBlur, fontSize = 14 },
     ref,
   ) {
+    const { t } = useTranslation();
     const editorRef = useRef<{ view?: EditorView } | null>(null);
 
     const extensions = useMemo(() => {
@@ -87,6 +90,32 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
 
       return [
         ...(languageExtension ? [languageExtension] : []),
+        EditorState.phrases.of(
+          Object.fromEntries(
+            [
+              ["Find", "find"],
+              ["Replace", "replaceField"],
+              ["next", "next"],
+              ["previous", "previous"],
+              ["all", "all"],
+              ["match case", "matchCase"],
+              ["regexp", "regexp"],
+              ["by word", "wholeWord"],
+              ["replace", "replace"],
+              ["replace all", "replaceAll"],
+              ["close", "close"],
+              ["Go to line", "goToLine"],
+              ["go", "go"],
+              ["current match", "currentMatch"],
+              ["on line", "onLine"],
+              ["replaced match on line $", "replacedLine"],
+              ["replaced $ matches", "replacedMatches"],
+            ].map(([phrase, key]) => [
+              phrase,
+              t("fileManager.editorSearch." + key),
+            ]),
+          ),
+        ),
         history(),
         search(),
         autocompletion(),
@@ -121,7 +150,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
           },
         }),
       ];
-    }, [fileName, fontSize]);
+    }, [fileName, fontSize, t]);
 
     useImperativeHandle(
       ref,

@@ -2363,7 +2363,26 @@
     "ownershipHint": "Requires permission on the server. Uses numeric IDs and changes a selected link itself. Special mode bits may be cleared by the server.",
     "ownershipFailed": "Change failed or could not be confirmed. Refresh the file properties before trying again.",
     "saveOwnership": "Save owner and group",
-    "ownershipSaved": "Owner and group updated"
+    "ownershipSaved": "Owner and group updated",
+    "editorSearch": {
+      "find": "Find",
+      "replaceField": "Replace",
+      "next": "next",
+      "previous": "previous",
+      "all": "all",
+      "matchCase": "match case",
+      "regexp": "regexp",
+      "wholeWord": "by word",
+      "replace": "replace",
+      "replaceAll": "replace all",
+      "close": "close",
+      "goToLine": "Go to line",
+      "go": "go",
+      "currentMatch": "current match",
+      "onLine": "on line",
+      "replacedLine": "replaced match on line $",
+      "replacedMatches": "replaced $ matches"
+    }
   },
   "transfer": {
     "copyToHost": "Copy to host…",

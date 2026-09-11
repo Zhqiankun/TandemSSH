@@ -601,9 +601,10 @@
         "58-local-remote-file-panels.md",
         "59-windows-file-attributes.md",
         "85-editor-window-bounds.md",
-        "87-file-time-localization.md"
+        "87-file-time-localization.md",
+        "116-editor-search-localization.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": "搜索替换面板已汉化，真实 CodeMirror 替换/撤销/重做及保存草稿回归通过；多文件标签、行号/高亮、编码换行和保存/另存的完整桌面链仍需逐项归并。"
     },
     {
       "id": "B09",
