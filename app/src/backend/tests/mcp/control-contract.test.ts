@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createTandemMcpServer } from "../../mcp/server";
@@ -42,7 +42,52 @@ it.each(["automatic", "collaborative"] as const)(
     expect(started.isError).not.toBe(true);
     const taskId = (started.structuredContent!.result as { id: string }).id;
     await f.authorize(taskId);
+    const proposed = await client.callTool({
+      name: "run_command",
+      arguments: {
+        taskId,
+        requestId: "before-takeover",
+        program: "pwd",
+        args: [],
+      },
+    });
+    expect(proposed.isError).not.toBe(true);
+    const operationId = (
+      proposed.structuredContent!.result as { operation: { id: string } }
+    ).operation.id;
+    await vi.waitFor(() =>
+      expect(f.runtime.operation(f.human, taskId, operationId).status).toBe(
+        mode === "automatic" ? "succeeded" : "awaiting-approval",
+      ),
+    );
     f.control.humanInput(Buffer.from("manual\r"));
+    const expectedStatus =
+      mode === "automatic" ? "succeeded" : "cancelled-before-send";
+    await vi.waitFor(() =>
+      expect(f.runtime.operation(f.human, taskId, operationId).status).toBe(
+        expectedStatus,
+      ),
+    );
+    for (const name of ["get_operation", "wait_operation"]) {
+      const observed = await client.callTool({
+        name,
+        arguments: {
+          taskId,
+          operationId,
+          ...(name === "wait_operation" ? { timeoutMs: 0 } : {}),
+        },
+      });
+      expect(observed.isError).not.toBe(true);
+      expect(observed.structuredContent).toMatchObject({
+        result: {
+          id: operationId,
+          status: expectedStatus,
+        },
+      });
+    }
+    expect(f.writes.filter((value) => value === "pwd")).toHaveLength(
+      mode === "automatic" ? 1 : 0,
+    );
     const before = [...f.writes];
     const result = await client.callTool({
       name: "run_command",

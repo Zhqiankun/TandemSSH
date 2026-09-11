@@ -8,3 +8,8 @@ TaskPanel 测试夹具允许保持真实 TaskRuntime 的首个命令完成通知
 
 alpha.5 发布同时进行：Release run 34627135287 已完成依赖安装，进入 Validate source。旧 alpha.4 开发客户端已经保留于 .cache/alpha5-release-tracking.json 的 previousClientRoot，并准备 .cache/run-public-alpha5-update.cjs；公开附件尚未验证，未运行新版本发现检查。
 本轮 tsc -b 类型检查通过。
+
+## MCP 操作结果读取补充
+
+后续扩展 control-contract.test.ts 两种模式：自动 pwd 成功后接管，get_operation / wait_operation 仍返回同一个操作的 succeeded；协作 pwd 等待批准时接管，两接口均返回 cancelled-before-send。实际写入分别为 1 / 0 次，接管后的新请求继续返回控制权错误且无新增写入。两项 SDK→Core→TaskRuntime 集成通过。此测试区分已经完成和从未发送，不把它冒充已派发但仍在执行时的真实 SSH 验收。
+补充 MCP 用例的 ESLint 与 tsc -b 通过。
