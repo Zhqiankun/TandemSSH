@@ -19,6 +19,7 @@ interface FileItem {
   path: string;
   size?: number;
   modified?: string;
+  modifiedTimestamp?: number;
   permissions?: string;
   owner?: string;
   group?: string;
@@ -109,6 +110,7 @@ export function FileWindow({
     path: info?.path ?? file.path,
     name: (info?.path ?? file.path).split("/").pop() || file.name,
     size: info?.size ?? file.size,
+    modifiedTimestamp: info?.mtime ?? file.modifiedTimestamp,
   };
   const currentWindow = windows.find((w) => w.id === windowId);
   const download = async () => {

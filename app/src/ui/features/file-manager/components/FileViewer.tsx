@@ -1,6 +1,14 @@
+import { createFileModifiedFormatter } from "../file-manager-utils";
 import { LocalizedText } from "@/i18n/LocalizedText";
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
+import React, {
+  Suspense,
+  lazy,
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+} from "react";
 import { cn } from "@/lib/utils.ts";
 import { useTranslation } from "react-i18next";
 import {
@@ -67,6 +75,7 @@ interface FileItem {
   path: string;
   size?: number;
   modified?: string;
+  modifiedTimestamp?: number;
   permissions?: string;
   owner?: string;
   group?: string;
@@ -233,7 +242,12 @@ export function FileViewer({
   onChooseExternalEditor,
   onMediaDimensionsChange,
 }: FileViewerProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const language = i18n.resolvedLanguage ?? i18n.language ?? "zh-CN";
+  const formatModified = useMemo(
+    () => createFileModifiedFormatter(language),
+    [language],
+  );
   const [editedContent, setEditedContent] = useState(content);
   const [, setOriginalContent] = useState(savedContent || content);
   const [hasChanges, setHasChanges] = useState(false);
@@ -371,9 +385,9 @@ export function FileViewer({
               <h3 className="font-medium text-foreground">{file.name}</h3>
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
                 <span>{formatFileSize(file.size, t)}</span>
-                {file.modified && (
+                {(file.modified || file.modifiedTimestamp !== undefined) && (
                   <span>
-                    {t("fileManager.modified")}: {file.modified}
+                    {t("fileManager.modified")}: {formatModified(file)}
                   </span>
                 )}
                 <span

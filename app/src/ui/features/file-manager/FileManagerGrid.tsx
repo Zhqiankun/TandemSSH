@@ -31,7 +31,10 @@ import {
 import { useTranslation } from "react-i18next";
 import type { FileItem } from "@/types/index";
 import type { CreateIntent } from "./file-manager-types.ts";
-import { formatFileSize } from "./file-manager-utils.ts";
+import {
+  formatFileSize,
+  createFileModifiedFormatter,
+} from "./file-manager-utils.ts";
 
 interface DragState {
   type: "none" | "internal" | "external";
@@ -192,7 +195,12 @@ export function FileManagerGrid({
   sortOrder,
   onSortChange,
 }: FileManagerGridProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const language = i18n.resolvedLanguage ?? i18n.language ?? "zh-CN";
+  const formatModified = useMemo(
+    () => createFileModifiedFormatter(language),
+    [language],
+  );
   const gridRef = useRef<HTMLDivElement>(null);
   const [editingName, setEditingName] = useState("");
   const [gridCols, setGridCols] = useState(4);
@@ -1201,7 +1209,7 @@ export function FileManagerGrid({
                         </div>
 
                         <span className="text-[10px] text-muted-foreground pointer-events-none">
-                          {file.modified || "—"}
+                          {formatModified(file)}
                         </span>
 
                         <span className="text-[10px] text-muted-foreground truncate hidden md:block pointer-events-none">
