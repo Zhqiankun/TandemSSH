@@ -150,6 +150,75 @@ async function* normal(_request: ChatRequest, index: number) {
   else yield call("finish_task", { summary: "已根据实际结果完成目录检查。" });
 }
 describe("shared-session AI orchestration", () => {
+  it.each(["automatic", "collaborative"] as const)(
+    "%s creation retries reuse one run before and after execution",
+    async (mode) => {
+      const f = fixture(normal);
+      const input = {
+        sessionId: "session",
+        requestId: "run",
+        providerId: 1,
+        model: "test-model",
+        goal: "检查目录并报告",
+        mode,
+        maxTurns: 10,
+      };
+      const first = f.coordinator.create("owner", input);
+      const concurrent = f.coordinator.create("owner", { ...input });
+      expect(concurrent).toBe(first);
+      const created = await first;
+      expect(await concurrent).toEqual(created);
+      await vi.waitFor(() =>
+        expect(f.coordinator.get("owner", created.run.id).phase).toBe(
+          "awaiting-authorization",
+        ),
+      );
+      expect(await f.start(mode)).toEqual(created);
+      for (const change of [
+        { goal: "执行不同目标" },
+        {
+          mode:
+            mode === "automatic"
+              ? ("collaborative" as const)
+              : ("automatic" as const),
+        },
+        { providerId: 2 },
+        { model: "another-model" },
+        { sessionId: "another-session" },
+        { maxTurns: 11 },
+      ]) {
+        await expect(
+          f.coordinator.create("owner", { ...input, ...change }),
+        ).rejects.toThrow("REQUEST_CONFLICT");
+      }
+      expect(f.coordinator.list("owner")).toHaveLength(1);
+      expect(f.requests).toHaveLength(1);
+      expect(f.writes).toEqual([]);
+      await f.authorize(created.task.id);
+      if (mode === "collaborative") {
+        await vi.waitFor(() =>
+          expect(f.runtime.get(user, created.task.id).state).toBe(
+            "awaiting-approval",
+          ),
+        );
+        expect(await f.start(mode)).toEqual(created);
+        expect(f.requests).toHaveLength(2);
+        expect(f.writes).toEqual(["context"]);
+        const op = f.runtime.get(user, created.task.id).operations[0];
+        await f.runtime.approve(user, created.task.id, op.id, op.digest, 1);
+      }
+      await vi.waitFor(() =>
+        expect(f.coordinator.get("owner", created.run.id).phase).toBe(
+          "completed",
+        ),
+      );
+      expect(await f.start(mode)).toEqual(created);
+      expect(f.coordinator.list("owner")).toHaveLength(1);
+      expect(f.runtime.get(user, created.task.id).operations).toHaveLength(1);
+      expect(f.requests).toHaveLength(3);
+      expect(f.writes).toEqual(["context", "pwd "]);
+    },
+  );
   it("generic task cancellation prevents a model request after delayed validation", async () => {
     const f = fixture(normal);
     const entered = deferred<void>(),

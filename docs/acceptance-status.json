@@ -1008,7 +1008,7 @@
       "id": "A13",
       "requirement": "requestId 重复/客户端重试",
       "acceptance": "返回原操作，不重复触发副作用",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/sessions/control.ts",
       "records": [
         "12-implementation.md",
@@ -1021,9 +1021,10 @@
         "155-mcp-pending-retry.md",
         "156-mcp-transfer-retries.md",
         "157-mcp-file-edit-retries.md",
-        "158-workflow-request-retries.md"
+        "158-workflow-request-retries.md",
+        "159-ai-creation-retries.md"
       ],
-      "remaining": "正式MCP schema的14个requestId入口已对应并发/重复/冲突证据；内置AI任务创建的独立请求缓存仍需验证。"
+      "remaining": ""
     },
     {
       "id": "A14",
