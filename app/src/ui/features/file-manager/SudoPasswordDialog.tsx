@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,7 @@ import { useTranslation } from "react-i18next";
 interface SudoPasswordDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (password: string) => void;
+  onSubmit: (password: string) => void | Promise<void>;
 }
 
 export function SudoPasswordDialog({
@@ -26,9 +26,28 @@ export function SudoPasswordDialog({
   const { t } = useTranslation();
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const pending = useRef<object | null>(null);
+  const changeOpen = (next: boolean) => {
+    if (!next) {
+      pending.current = null;
+      setPassword("");
+      setLoading(false);
+      setError(false);
+    }
+    onOpenChange(next);
+  };
+  useEffect(
+    () => () => {
+      pending.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!open) {
+      pending.current = null;
+      setError(false);
       setPassword("");
       setLoading(false);
     }
@@ -39,16 +58,28 @@ export function SudoPasswordDialog({
       e.preventDefault();
     }
 
-    if (!password.trim()) {
+    if (!password || pending.current) {
       return;
     }
 
+    const request = {};
+    pending.current = request;
     setLoading(true);
-    onSubmit(password);
+    setError(false);
+    try {
+      await onSubmit(password);
+    } catch {
+      if (pending.current === request) setError(true);
+    } finally {
+      if (pending.current === request) {
+        pending.current = null;
+        setLoading(false);
+      }
+    }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={changeOpen}>
       <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-md rounded-none border-border bg-card">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
@@ -72,19 +103,19 @@ export function SudoPasswordDialog({
             />
           </div>
 
+          {error && <p role="alert">{t("fileManager.sudoOperationFailed")}</p>}
           <DialogFooter>
             <Button
               type="button"
               variant="ghost"
-              onClick={() => onOpenChange(false)}
-              disabled={loading}
+              onClick={() => changeOpen(false)}
               className="rounded-none text-[10px] font-bold uppercase tracking-widest"
             >
               {t("common.cancel")}
             </Button>
             <Button
               type="submit"
-              disabled={!password.trim() || loading}
+              disabled={!password || loading}
               variant="outline"
               className="border-accent-brand/40 text-accent-brand hover:bg-accent-brand/10 rounded-none text-[10px] font-bold uppercase tracking-widest"
             >
