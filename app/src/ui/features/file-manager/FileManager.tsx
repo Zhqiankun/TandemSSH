@@ -1,6 +1,7 @@
 import {
   fileActionReceipt,
   settleFileUndo,
+  assertFileUndoSession,
   type SuccessfulFileAction,
 } from "./file-operation-history";
 import { usePendingSudoOperation } from "./hooks/use-pending-sudo-operation";
@@ -251,15 +252,12 @@ function FileManagerContent({
   } | null>(null);
 
   interface UndoAction {
+    sessionId: string;
     type: "copy" | "cut" | "delete";
     description: string;
     data: {
       operation: "copy" | "cut";
-      copiedFiles?: {
-        originalPath: string;
-        targetPath: string;
-        targetName: string;
-      }[];
+      copiedFiles?: SuccessfulFileAction[];
       deletedFiles?: { path: string; name: string }[];
       targetDirectory?: string;
     };
@@ -268,6 +266,13 @@ function FileManagerContent({
 
   const [undoHistory, setUndoHistory] = useState<UndoAction[]>([]);
   const undoInProgress = useRef(false);
+  const undoMounted = useRef(true);
+  useEffect(() => {
+    undoMounted.current = true;
+    return () => {
+      undoMounted.current = false;
+    };
+  }, []);
 
   const [createIntent, setCreateIntent] = useState<CreateIntent | null>(null);
   const [editingFile, setEditingFile] = useState<FileItem | null>(null);
@@ -1837,6 +1842,7 @@ function FileManagerContent({
                 file.path,
                 currentPath,
                 result.uniqueName || file.name,
+                file.type === "directory",
               ),
             );
             successCount++;
@@ -1854,7 +1860,12 @@ function FileManagerContent({
                 currentHost?.userId?.toString(),
               );
               completedActions.push(
-                fileActionReceipt(file.path, currentPath, file.name),
+                fileActionReceipt(
+                  file.path,
+                  currentPath,
+                  file.name,
+                  file.type === "directory",
+                ),
               );
               successCount++;
             }
@@ -1891,6 +1902,7 @@ function FileManagerContent({
           const copiedFiles = completedActions;
 
           const undoAction: UndoAction = {
+            sessionId: sshSessionId!,
             type: "copy",
             description: t("fileManager.copiedItems", { count: successCount }),
             data: {
@@ -1905,6 +1917,7 @@ function FileManagerContent({
           const movedFiles = completedActions;
 
           const undoAction: UndoAction = {
+            sessionId: sshSessionId!,
             type: "cut",
             description: t("fileManager.movedItems", { count: successCount }),
             data: {
@@ -2112,28 +2125,36 @@ function FileManagerContent({
 
     undoInProgress.current = true;
     const completed = new Set<SuccessfulFileAction>();
+    const assertCurrent = () =>
+      assertFileUndoSession(
+        lastAction.sessionId,
+        sshSessionIdRef.current,
+        undoMounted.current,
+      );
     try {
+      assertCurrent();
       await ensureSSHConnection();
+      assertCurrent();
 
       switch (lastAction.type) {
         case "copy":
           if (lastAction.data.copiedFiles) {
             let successCount = 0;
             for (const copiedFile of lastAction.data.copiedFiles) {
+              assertCurrent();
               try {
-                const isDirectory =
-                  files.find((f) => f.path === copiedFile.targetPath)?.type ===
-                  "directory";
                 await deleteSSHItem(
-                  sshSessionId!,
+                  lastAction.sessionId,
                   copiedFile.targetPath,
-                  isDirectory,
+                  copiedFile.isDirectory,
                   currentHost?.id,
                   currentHost?.userId?.toString(),
                 );
                 completed.add(copiedFile);
                 successCount++;
+                assertCurrent();
               } catch (error: unknown) {
+                assertCurrent();
                 console.error(
                   `Failed to delete copied file ${copiedFile.targetName}:`,
                   error,
@@ -2165,9 +2186,10 @@ function FileManagerContent({
           if (lastAction.data.copiedFiles) {
             let successCount = 0;
             for (const movedFile of lastAction.data.copiedFiles) {
+              assertCurrent();
               try {
                 await moveSSHItem(
-                  sshSessionId!,
+                  lastAction.sessionId,
                   movedFile.targetPath,
                   movedFile.originalPath,
                   currentHost?.id,
@@ -2175,7 +2197,9 @@ function FileManagerContent({
                 );
                 completed.add(movedFile);
                 successCount++;
+                assertCurrent();
               } catch (error: unknown) {
+                assertCurrent();
                 console.error(
                   `Failed to move back file ${movedFile.targetName}:`,
                   error,
@@ -2215,8 +2239,17 @@ function FileManagerContent({
           return;
       }
 
+      assertCurrent();
       handleRefreshDirectory();
     } catch (error: unknown) {
+      if (!undoMounted.current) return;
+      if (
+        error instanceof Error &&
+        error.message === "FILE_UNDO_SESSION_CHANGED"
+      ) {
+        toast.error(t("fileManager.undoSessionChanged"));
+        return;
+      }
       const errorMessage = getErrorMessage(error, String(error));
       toast.error(`${t("fileManager.undoOperationFailed")}: ${errorMessage}`);
       console.error("Undo failed:", error);
@@ -2798,7 +2831,12 @@ function FileManagerContent({
               currentHost?.userId?.toString(),
             );
             completedActions.push(
-              fileActionReceipt(file.path, targetFolder.path, file.name),
+              fileActionReceipt(
+                file.path,
+                targetFolder.path,
+                file.name,
+                file.type === "directory",
+              ),
             );
             successCount++;
           }
@@ -2816,6 +2854,7 @@ function FileManagerContent({
         const movedFiles = completedActions;
 
         const undoAction: UndoAction = {
+          sessionId: sshSessionId!,
           type: "cut",
           description: t("fileManager.dragMovedItems", {
             count: successCount,

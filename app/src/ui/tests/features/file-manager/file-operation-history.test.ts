@@ -22,6 +22,7 @@ it("records only acknowledged destinations when an earlier item fails", async ()
       originalPath: "/source/actual",
       targetPath: "/target/copied-name.txt",
       targetName: "copied-name.txt",
+      isDirectory: false,
     },
   ]);
 });
@@ -30,6 +31,7 @@ it("preserves literal destination names and root destinations", () => {
     originalPath: "/source/a",
     targetPath: "/中文;name",
     targetName: "中文;name",
+    isDirectory: false,
   });
 });
 
@@ -76,4 +78,29 @@ it("does not remove another action or an equal-looking unacknowledged receipt", 
   expect(settleFileUndo([action], action, new Set([{ ...receipt }]))).toEqual([
     action,
   ]);
+});
+
+it("allows undo only while its original session and mounted owner remain active", async () => {
+  const { assertFileUndoSession } =
+    await import("../../../features/file-manager/file-operation-history");
+  expect(() =>
+    assertFileUndoSession("session-a", "session-a", true),
+  ).not.toThrow();
+  for (const [expected, current, mounted] of [
+    ["session-a", "session-b", true],
+    ["session-a", null, true],
+    ["", "", true],
+    ["session-a", "session-a", false],
+  ] as const) {
+    expect(() => assertFileUndoSession(expected, current, mounted)).toThrow(
+      "FILE_UNDO_SESSION_CHANGED",
+    );
+  }
+});
+
+it("retains a copied directory type independently of later directory listings", () => {
+  expect(
+    fileActionReceipt("/source/folder", "/target", "folder-copy", true)
+      .isDirectory,
+  ).toBe(true);
 });
