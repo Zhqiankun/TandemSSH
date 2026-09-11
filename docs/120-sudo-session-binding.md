@@ -25,3 +25,12 @@
 
 此前源码 77c2e09 的文件工作台集中回归（UI file-manager 与 backend files）52 文件 / 326 项通过，57.46 秒，报告 .cache/file-workbench-regression-results.json。本次新对话框改动另由上述专项验证，不将先前集中回归称为其完整复跑。
 对话框异步修复的 ESLint 与 tsc -b 类型检查通过。
+
+## 提权后的部分结果与删除模式
+
+后续把 sudo 删除循环接入已有 runFileBatch，保留已确认数；中途再次 sudo 验证失败只保留 files.slice(completed)，不会重试已确认项。普通失败提示中文部分结果或通用错误，不直接展示原始错误详情。
+
+后端 operation-routes 核对确认普通删除进入回收站，permanent=true 才执行永久删除。回收站不可用后已获用户明确确认的永久删除分支，若返回 needsSudo，现在把 permanent 标记与剩余文件保存到待确认操作；密码重试保持该模式。成功提示区分回收站和永久删除。未移除任何永久删除确认。
+
+相关批量计数、待操作取消和密码重试 7 项通过；这些是依赖契约回归，尚未构成真实 sudo 永久删除整链验证。
+最终删除模式接线的 tsc -b 与 7 项专项复测通过；lint 无错误，保留原 windowId 警告。

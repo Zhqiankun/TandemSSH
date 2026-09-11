@@ -1263,6 +1263,22 @@ function FileManagerContent({
                   remaining: files.length - completed - permanent.completed,
                 }),
               );
+              if (
+                permanent.ok === false &&
+                (
+                  permanent.error as {
+                    response?: { data?: { needsSudo?: boolean } };
+                  }
+                )?.response?.data?.needsSudo
+              ) {
+                setPendingSudoOperation({
+                  type: "delete",
+                  sessionId: operationSession,
+                  files: files.slice(completed + permanent.completed),
+                  permanent: true,
+                });
+                setSudoDialogOpen(true);
+              }
             }
             if (
               sshSessionIdRef.current === operationSession &&
@@ -1316,6 +1332,7 @@ function FileManagerContent({
         throw Error("FILE_OPERATION_CANCELLED");
       assertFileSession(operationSession, sshSessionIdRef.current);
     };
+    let completed = 0;
     try {
       assertCurrent();
       await setSudoPassword(operationSession, password);
@@ -1323,21 +1340,32 @@ function FileManagerContent({
       setSudoDialogOpen(false);
 
       if (pendingSudoOperation.type === "delete") {
-        for (const file of pendingSudoOperation.files) {
-          assertCurrent();
-          await deleteSSHItem(
-            operationSession,
-            file.path,
-            file.type === "directory",
-            currentHost?.id,
-            currentHost?.userId?.toString(),
-          );
-        }
+        const batch = await runFileBatch(
+          pendingSudoOperation.files,
+          async (file) => {
+            assertCurrent();
+            await deleteSSHItem(
+              operationSession,
+              file.path,
+              file.type === "directory",
+              currentHost?.id,
+              currentHost?.userId?.toString(),
+              pendingSudoOperation.permanent ?? false,
+            );
+          },
+        );
+        completed = batch.completed;
+        if (batch.ok === false) throw batch.error;
         assertCurrent();
         toast.success(
-          t("fileManager.itemsDeletedSuccessfully", {
-            count: pendingSudoOperation.files.length,
-          }),
+          t(
+            pendingSudoOperation.permanent
+              ? "fileManager.itemsDeletedSuccessfully"
+              : "fileManager.itemsMovedToTrash",
+            {
+              count: pendingSudoOperation.files.length,
+            },
+          ),
         );
         handleRefreshDirectory();
         clearSelection();
@@ -1368,13 +1396,30 @@ function FileManagerContent({
         message?: string;
       };
 
+      if (completed > 0 && pendingSudoOperation.type === "delete") {
+        toast.error(
+          t("fileManager.batchDeletePartial", {
+            completed,
+            remaining: pendingSudoOperation.files.length - completed,
+          }),
+        );
+        handleRefreshDirectory();
+        if (axiosError.response?.data?.sudoFailed) {
+          setPendingSudoOperation({
+            ...pendingSudoOperation,
+            files: pendingSudoOperation.files.slice(completed),
+          });
+          setSudoDialogOpen(true);
+        } else setPendingSudoOperation(null);
+        return;
+      }
       if (axiosError.response?.data?.sudoFailed) {
         toast.error(t("fileManager.sudoAuthFailed"));
         setSudoDialogOpen(true);
         return;
       }
 
-      toast.error(axiosError.message || t("fileManager.sudoOperationFailed"));
+      toast.error(t("fileManager.sudoOperationFailed"));
       setPendingSudoOperation(null);
     }
   }
