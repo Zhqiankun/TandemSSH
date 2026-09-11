@@ -2,16 +2,15 @@
 
 同舟 SSH 是 Windows 优先的人机协作 SSH 工作台，基于 Termix 改造。模型使用你自己的接口地址和 API Key；核心 SSH、协同和 MCP 功能不要求本软件会员。
 
-## alpha.4 本次更新
+## alpha.5 本次更新
 
-- 修复浮动文件编辑器越出工作区的问题：初始打开、缩小应用窗口和拖动后，编辑内容与关闭控件保持可见。
-- 文件列表和编辑器的修改时间随界面语言显示，编辑后使用最新时间戳；旧记录无有效时间戳时保留原值。
-- MCP 服务版本跟随应用构建，实际 Codex 连接验证仍可发现 38 个工具。安装升级检查新增应用/MCP 版本一致性验证。
-- 随 Windows 包提供实际 npm 依赖清单、声明汇编及九份精确版本补充原文；未确认的五项与其他资源范围继续明确列出，不将其包装成完整许可结论。
-- 补齐文件操作的策略变更竞态验证，保留自动执行、人机协作、人工接管及 20 分钟更新检测。
+- AI 交还控制权后可读取最近的人工终端输出；已知秘密会脱敏，输出有长度上限并标记为非可信数据。Windows / 真实 Linux SSH 的自动和协作模式已完成专项验证。
+- 修复切换会话时旧请求覆盖当前任务列表、接管状态相互影响的问题；命令和模型上下文仍绑定原会话。
+- MCP 在人工接管后明确返回控制权失效错误，并提供中文停止写入提示。
+- 修复回收站中的断链被误判为丢失、还原时可能覆盖既有断链的问题；修复 Windows 本地图片存储目录无法按原生路径保存的问题。
+- 保留内置更新按钮和每 20 分钟自动检测，由 Actions 同步发布 latest.yml、安装包及校验文件。
 
-此版本仍为开发预览，完整产品验收继续进行。alpha.1 及之后的安装版可在软件内检查新版；alpha.0 需手动安装一次当前版本。具体实现和证据见 docs/85-editor-window-bounds.md、docs/87-file-time-localization.md、docs/88-packaged-dependency-notices.md、docs/92-mcp-build-version.md。
-
+仍为开发预览，完整产品验收继续进行。alpha.1 及之后的安装版可在软件内检查新版；alpha.0 需手动安装一次当前版本。验收记录见 docs/94-trash-link-retention.md、docs/95-windows-image-storage-path.md、docs/97-mcp-control-errors.md、docs/102-windows-ai-handback.md、docs/103-workbench-session-isolation.md。
 
 ## 下载与启动
 
