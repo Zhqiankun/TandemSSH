@@ -238,3 +238,73 @@ describe("desktop download queue", () => {
     f.queue.setOwner(null);
   });
 });
+it("releases a failed preparation slot without dropping the remaining download jobs", async () => {
+  const f = fixture();
+  const original = vi.mocked(f.api.prepare).getMockImplementation()!;
+  let releaseFirst!: () => void, releaseSecond!: () => void;
+  const first = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const second = new Promise<void>((resolve) => {
+    releaseSecond = resolve;
+  });
+  let active = 0,
+    peak = 0,
+    started = 0;
+  vi.mocked(f.api.prepare).mockImplementation(async (...args) => {
+    const index = started++;
+    active++;
+    peak = Math.max(peak, active);
+    try {
+      if (index === 0) {
+        await first;
+        throw Error("DOWNLOAD_SOURCE_UNAVAILABLE");
+      }
+      if (index === 1) await second;
+      const source = await original(...args);
+      return {
+        ...source,
+        id: "source-" + index,
+        path: args[0].path,
+        canonicalPath: args[0].path,
+      };
+    } finally {
+      active--;
+    }
+  });
+  f.queue.setConcurrency(2);
+  for (const name of ["second", "third"])
+    f.queue.add({
+      sessionId: "session",
+      path: "/" + name,
+      name,
+      hostLabel: "host",
+    });
+  try {
+    await waitFor(() => expect(started).toBe(2));
+    expect(f.queue.getSnapshot()[2].state).toBe("queued");
+    releaseFirst();
+    await waitFor(() => expect(started).toBe(3));
+    releaseSecond();
+    await waitFor(() =>
+      expect(f.queue.getSnapshot().map((job) => job.state)).toEqual([
+        "failed",
+        "awaiting-review",
+        "awaiting-review",
+      ]),
+    );
+    expect(peak).toBe(2);
+    expect(f.queue.getSnapshot().map((job) => job.path)).toEqual([
+      "/result",
+      "/second",
+      "/third",
+    ]);
+    expect(f.native.start).not.toHaveBeenCalled();
+    expect(f.native.append).not.toHaveBeenCalled();
+  } finally {
+    releaseFirst();
+    releaseSecond();
+    f.finish();
+    f.queue.setOwner(null);
+  }
+});
