@@ -64,55 +64,88 @@ export function execWithSudo(
   session: SSHSession,
   command: string,
   sudoPassword: string,
+  assertSession?: () => void,
 ): Promise<{ stdout: string; stderr: string; code: number | null }> {
-  return execWithSudoBuffer(session, command, sudoPassword).then((result) => ({
-    stdout: result.stdout.toString("utf8"),
-    stderr: result.stderr,
-    code: result.code,
-  }));
+  return execWithSudoBuffer(session, command, sudoPassword, assertSession).then(
+    (result) => ({
+      stdout: result.stdout.toString("utf8"),
+      stderr: result.stderr,
+      code: result.code,
+    }),
+  );
 }
 
 export function execWithSudoBuffer(
   session: SSHSession,
   command: string,
   sudoPassword: string,
+  assertSession?: () => void,
 ): Promise<{ stdout: Buffer; stderr: string; code: number | null }> {
   return new Promise((resolve) => {
     const sudoCommand = `sudo -S -p '' -- ${command}`;
-
-    execChannel(session, sudoCommand, (err, stream) => {
-      if (err) {
-        resolve({ stdout: Buffer.alloc(0), stderr: err.message, code: 1 });
-        return;
-      }
-
-      const stdoutChunks: Buffer[] = [];
-      let stderr = "";
-
-      stream.on("data", (chunk: Buffer) => {
-        stdoutChunks.push(chunk);
-      });
-
-      stream.stderr.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
-
-      stream.on("close", (code: number) => {
-        const stdout = Buffer.concat(stdoutChunks);
-        resolve({ stdout, stderr, code: Number.isInteger(code) ? code : null });
-      });
-
-      stream.on("error", (streamErr: Error) => {
-        resolve({
-          stdout: Buffer.concat(stdoutChunks),
-          stderr: streamErr.message,
-          code: 1,
+    const stdoutChunks: Buffer[] = [];
+    let stderr = "",
+      settled = false,
+      dispatched = false;
+    let channel: import("ssh2").ClientChannel | undefined;
+    const finish = (code: number | null, detail = stderr) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ stdout: Buffer.concat(stdoutChunks), stderr: detail, code });
+    };
+    const timer = setTimeout(() => {
+      finish(null, dispatched ? "SUDO_RESULT_UNKNOWN" : "SUDO_NOT_DISPATCHED");
+      channel?.destroy();
+    }, 60000);
+    const checkSession = () => {
+      if (!session.isConnected) throw Error("SUDO_NOT_DISPATCHED");
+      assertSession?.();
+    };
+    execChannel(
+      session,
+      sudoCommand,
+      (err, stream) => {
+        if (settled) {
+          stream?.destroy();
+          return;
+        }
+        if (err) {
+          finish(1, err.message);
+          return;
+        }
+        channel = stream;
+        try {
+          checkSession();
+        } catch {
+          finish(null, "SUDO_RESULT_UNKNOWN");
+          stream.destroy();
+          return;
+        }
+        stream.on("data", (chunk: Buffer) => {
+          if (!settled) stdoutChunks.push(chunk);
         });
-      });
-      // Match the previous pipe EOF semantics without exposing the password
-      // in the remote shell command or process arguments.
-      stream.end(sudoPassword + "\n");
-    });
+        stream.stderr.on("data", (chunk: Buffer) => {
+          if (!settled) stderr += chunk.toString();
+        });
+        stream.on("close", (code: number) => {
+          finish(Number.isInteger(code) ? code : null);
+        });
+        stream.on("error", () => finish(null, "SUDO_RESULT_UNKNOWN"));
+        try {
+          // Send EOF after the password without exposing it in process arguments.
+          stream.end(sudoPassword + "\n");
+        } catch {
+          finish(null, "SUDO_RESULT_UNKNOWN");
+          stream.destroy();
+        }
+      },
+      () => {
+        if (settled) throw Error("SUDO_NOT_DISPATCHED");
+        checkSession();
+        dispatched = true;
+      },
+    );
   });
 }
 

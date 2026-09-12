@@ -411,7 +411,10 @@ export function registerFileOperationRoutes(
             if (sshConn.sudoPassword === attemptedPassword)
               delete sshConn.sudoPassword;
           };
-          execWithSudo(sshConn, deleteCommand, attemptedPassword).then(
+          execWithSudo(sshConn, deleteCommand, attemptedPassword, () => {
+            if (!sshConn.isConnected || sshSessions[sessionId] !== sshConn)
+              throw Error("SUDO_NOT_DISPATCHED");
+          }).then(
             (result) => {
               if (fileCommandSucceeded(result.code)) {
                 res.json({
@@ -445,14 +448,12 @@ export function registerFileOperationRoutes(
           (err, stream) => {
             if (err) {
               fileLogger.error("SSH deleteItem error:", err);
-              res
-                .status(500)
-                .json({
-                  error:
-                    err.message === "DELETE_NOT_DISPATCHED"
-                      ? err.message
-                      : "DELETE_RESULT_UNKNOWN",
-                });
+              res.status(500).json({
+                error:
+                  err.message === "DELETE_NOT_DISPATCHED"
+                    ? err.message
+                    : "DELETE_RESULT_UNKNOWN",
+              });
               resolve();
               return;
             }
