@@ -447,14 +447,18 @@
       "id": "F15",
       "requirement": "本地终端",
       "acceptance": "Windows PowerShell / 可选已安装 Shell，用于本机命令与上传前检查",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/electron",
       "records": [
         "11-m0-validation.md",
         "53-ssh-agent-authentication.md",
-        "56-linux-ssh-acceptance.md"
+        "56-linux-ssh-acceptance.md",
+        "180-local-terminal-options.md",
+        "235-local-terminal-evidence.md"
       ],
-      "remaining": "原生 PTY/安装验证存在；本地 Shell 选择、起始目录和与远端身份区别需要专门 UI 证据。"
+      "remaining": "",
+      "verifiedAt": "2026-09-12",
+      "verification": "当前代码与真实 Windows PowerShell/CMD、字面起始目录及本机标识报告重新核对，F15 与已验证 B16 使用同一直接证据；WSL 发行版未列入本轮实测。"
     },
     {
       "id": "B01",
