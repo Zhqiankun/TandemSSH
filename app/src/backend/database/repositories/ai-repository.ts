@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { FieldCrypto } from "../../utils/field-crypto.js";
 import { and, desc, eq } from "drizzle-orm";
 import {
   aiConversations,
@@ -34,7 +36,7 @@ export interface AiProviderInput {
  */
 export function apiKeyPrefix(apiKey: string | null | undefined): string | null {
   if (!apiKey) return null;
-  return apiKey.slice(0, 6);
+  return apiKey.length > 6 ? apiKey.slice(0, 6) : "••••";
 }
 
 export class AiRepository {
@@ -44,16 +46,14 @@ export class AiRepository {
   ) {}
 
   /**
-   * Provider API keys are field-encrypted like any other credential. The key is
-   * derived from the row id, which does not exist until after the insert, so a
-   * new provider is written once and then re-encrypted in place with its real
-   * id -- the same approach AlertRepository uses for channel configs.
+   * Encrypt before any database write. The existing envelope carries its own
+   * unique record context, so creation does not need the auto-increment row id.
    */
   private userDataKey(userId: string): Buffer | null {
     try {
       return DataCrypto.getUserDataKey(userId);
     } catch {
-      // Crypto is not initialized (tests, early boot); leave the value as is.
+      // Callers must reject secret persistence when crypto is unavailable.
       return null;
     }
   }
@@ -64,13 +64,20 @@ export class AiRepository {
     recordId: number | string,
   ): string {
     const userDataKey = this.userDataKey(userId);
-    if (!userDataKey) return apiKey;
-    return DataCrypto.encryptRecord(
-      "ai_providers",
-      { id: recordId, apiKey },
-      userId,
-      userDataKey,
-    ).apiKey;
+    if (!userDataKey) throw Error("AI_KEY_ENCRYPTION_UNAVAILABLE");
+    try {
+      const encrypted = DataCrypto.encryptRecord(
+        "ai_providers",
+        { id: recordId, apiKey },
+        userId,
+        userDataKey,
+      ).apiKey;
+      if (encrypted === apiKey || !FieldCrypto.isEncrypted(encrypted))
+        throw Error("Invalid encryption result");
+      return encrypted;
+    } catch {
+      throw Error("AI_KEY_ENCRYPTION_FAILED");
+    }
   }
 
   private decryptApiKey(
@@ -79,17 +86,19 @@ export class AiRepository {
     recordId: number | string,
   ): string {
     const userDataKey = this.userDataKey(userId);
-    if (!userDataKey) return apiKey;
+    if (!userDataKey) throw Error("AI_KEY_ENCRYPTION_UNAVAILABLE");
+    // Keep existing legacy plaintext rows readable for explicit key rotation;
+    // all new writes above require a valid encrypted envelope.
+    if (!FieldCrypto.isEncrypted(apiKey)) return apiKey;
     try {
-      return DataCrypto.decryptRecord(
-        "ai_providers",
-        { id: recordId, apiKey },
-        userId,
+      return FieldCrypto.decryptField(
+        apiKey,
         userDataKey,
-      ).apiKey;
+        String(recordId),
+        "apiKey",
+      );
     } catch {
-      // Rows written before encryption was enabled are still plaintext.
-      return apiKey;
+      throw Error("AI_KEY_DECRYPTION_FAILED");
     }
   }
 
@@ -144,30 +153,19 @@ export class AiRepository {
   }
 
   async createProvider(input: AiProviderInput): Promise<AiProviderRecord> {
+    const encryptedKey = input.apiKey
+      ? this.encryptApiKey(input.apiKey, input.userId, randomUUID())
+      : null;
     const [created] = await insertReturning(this.context, aiProviders, {
       userId: input.userId,
       providerType: input.providerType,
       label: input.label,
       baseUrl: input.baseUrl ?? null,
-      apiKey: input.apiKey ?? null,
+      apiKey: encryptedKey,
       apiKeyPrefix: apiKeyPrefix(input.apiKey),
       defaultModel: input.defaultModel ?? null,
       enabled: input.enabled ?? true,
     });
-
-    if (input.apiKey) {
-      const encrypted = this.encryptApiKey(
-        input.apiKey,
-        input.userId,
-        created.id,
-      );
-      if (encrypted !== input.apiKey) {
-        await this.context.drizzle
-          .update(aiProviders)
-          .set({ apiKey: encrypted })
-          .where(eq(aiProviders.id, created.id));
-      }
-    }
 
     await this.afterWrite();
     return { ...created, apiKey: null };

@@ -1,3 +1,4 @@
+import { AxiosError } from "axios";
 import { authApi, handleApiError } from "@/main-axios";
 
 export type AiProviderType =
@@ -66,6 +67,20 @@ export async function getAiProviders(): Promise<AiProvider[]> {
   }
 }
 
+function providerWriteError(error: unknown, operation: string): never {
+  const code =
+    error instanceof AxiosError ? error.response?.data?.code : undefined;
+  if (
+    error instanceof AxiosError &&
+    error.response?.status === 503 &&
+    (code === "AI_KEY_ENCRYPTION_UNAVAILABLE" ||
+      code === "AI_KEY_ENCRYPTION_FAILED")
+  ) {
+    throw Object.assign(new Error(code), { code, status: 503 });
+  }
+  return handleApiError(error, operation);
+}
+
 export async function createAiProvider(input: {
   providerType: AiProviderType;
   label: string;
@@ -76,7 +91,7 @@ export async function createAiProvider(input: {
   try {
     return (await authApi.post("/ai/providers", input)).data.provider;
   } catch (error) {
-    throw handleApiError(error, "create AI provider");
+    providerWriteError(error, "create AI provider");
   }
 }
 
@@ -93,7 +108,7 @@ export async function updateAiProvider(
   try {
     return (await authApi.patch(`/ai/providers/${id}`, input)).data.provider;
   } catch (error) {
-    throw handleApiError(error, "update AI provider");
+    providerWriteError(error, "update AI provider");
   }
 }
 

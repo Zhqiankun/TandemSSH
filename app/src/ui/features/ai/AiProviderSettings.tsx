@@ -123,7 +123,13 @@ function AiProviderEditForm({
       toast.success(t("ai.providerUpdated"));
       onSaved();
     } catch (error) {
-      toast.error(getErrorMessage(error, t("ai.providerSaveFailed")));
+      const code = (error as { code?: unknown })?.code;
+      toast.error(
+        code === "AI_KEY_ENCRYPTION_UNAVAILABLE" ||
+          code === "AI_KEY_ENCRYPTION_FAILED"
+          ? t("ai.providerKeyStorageFailed")
+          : getErrorMessage(error, t("ai.providerSaveFailed")),
+      );
     } finally {
       setSaving(false);
     }
@@ -312,7 +318,13 @@ export function AiProviderSettings({
       onChanged(created.id);
       onAdded?.();
     } catch (error) {
-      toast.error(getErrorMessage(error, t("ai.providerSaveFailed")));
+      const code = (error as { code?: unknown })?.code;
+      toast.error(
+        code === "AI_KEY_ENCRYPTION_UNAVAILABLE" ||
+          code === "AI_KEY_ENCRYPTION_FAILED"
+          ? t("ai.providerKeyStorageFailed")
+          : getErrorMessage(error, t("ai.providerSaveFailed")),
+      );
     } finally {
       setSaving(false);
     }

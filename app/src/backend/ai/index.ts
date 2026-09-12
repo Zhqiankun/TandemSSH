@@ -194,6 +194,15 @@ router.post(
 
       res.status(201).json({ provider: created });
     } catch (err) {
+      const code = getErrorMessage(err);
+      if (
+        ["AI_KEY_ENCRYPTION_UNAVAILABLE", "AI_KEY_ENCRYPTION_FAILED"].includes(
+          code,
+        )
+      ) {
+        res.status(503).json({ code, error: code });
+        return;
+      }
       databaseLogger.error("Failed to create AI provider", err, {
         operation: "ai_provider_create_failed",
         userId,
@@ -256,6 +265,15 @@ router.patch(
 
       res.json({ provider: updated });
     } catch (err) {
+      const code = getErrorMessage(err);
+      if (
+        ["AI_KEY_ENCRYPTION_UNAVAILABLE", "AI_KEY_ENCRYPTION_FAILED"].includes(
+          code,
+        )
+      ) {
+        res.status(503).json({ code, error: code });
+        return;
+      }
       databaseLogger.error("Failed to update AI provider", err, {
         operation: "ai_provider_update_failed",
         userId,

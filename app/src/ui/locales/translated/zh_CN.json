@@ -4713,6 +4713,7 @@
     "defaultModel": "默认模型",
     "defaultModelPlaceholder": "填写接口支持的模型 ID",
     "labelRequired": "给这家服务提供商起个名字",
+    "providerKeyStorageFailed": "加密保护不可用或失败，API Key 未保存。请恢复加密访问后重试。",
     "providerSaveFailed": "无法保存提供商",
     "providerUpdated": "提供商已更新",
     "providerDeleteFailed": "无法移除提供商",

@@ -4713,6 +4713,7 @@
     "defaultModel": "Default model",
     "defaultModelPlaceholder": "For example: llama3.1 or claude-opus-5",
     "labelRequired": "Give this provider a name",
+    "providerKeyStorageFailed": "Encryption is unavailable or failed. The API key was not saved. Restore encryption access and retry.",
     "providerSaveFailed": "Could not save the provider",
     "providerUpdated": "Provider updated",
     "providerDeleteFailed": "Could not remove the provider",

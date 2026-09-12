@@ -83,3 +83,27 @@ describe("AiProviderSettings", () => {
     ).toBeTruthy();
   });
 });
+it.each(["AI_KEY_ENCRYPTION_UNAVAILABLE", "AI_KEY_ENCRYPTION_FAILED"])(
+  "preserves edits and selects the encryption error translation for %s",
+  async (code) => {
+    const { toast } = await import("sonner");
+    vi.mocked(toast.error).mockClear();
+    const onChanged = vi.fn();
+    api.updateAiProvider.mockRejectedValueOnce(
+      Object.assign(new Error("private detail"), { code }),
+    );
+    render(<AiProviderSettings providers={[provider]} onChanged={onChanged} />);
+    fireEvent.click(screen.getByRole("button", { name: "ai.editProvider" }));
+    fireEvent.change(screen.getByLabelText("ai.providerLabel"), {
+      target: { value: "保留修改" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "ai.save" }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("ai.providerKeyStorageFailed"),
+    );
+    expect(
+      (screen.getByLabelText("ai.providerLabel") as HTMLInputElement).value,
+    ).toBe("保留修改");
+    expect(onChanged).not.toHaveBeenCalled();
+  },
+);

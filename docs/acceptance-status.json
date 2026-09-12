@@ -1097,9 +1097,10 @@
         "14-built-in-ai.md",
         "44-ai-task-recovery.md",
         "68-provider-response-bounds.md",
-        "69-chat-stream-bounds.md"
+        "69-chat-stream-bounds.md",
+        "202-ai-key-persistence.md"
       ],
-      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+      "remaining": "已修复 Key 首次明文写入和加密不可用时明文回退，仓储/API/设置共 15 项验证见 202；仍缺仅当前会话内存使用选项及系统加密不可用的完整桌面验证。"
     },
     {
       "id": "A17",
