@@ -660,7 +660,8 @@
         "161-delete-session-guards.md",
         "163-trash-unknown-result.md",
         "164-desktop-trash-recovery.md",
-        "166-delete-channel-results.md"
+        "166-delete-channel-results.md",
+        "167-sudo-stdin-acceptance.md"
       ],
       "remaining": "复制防覆盖有真实 Linux SSH 验证；新版目录复制/移动/异地撤销及双栏单文件取消/删除/回收站恢复已通过 Windows→Linux 桌面实测。批量部分失败、sudo、重连中止和断线后的完整交互仍需验收。"
     },

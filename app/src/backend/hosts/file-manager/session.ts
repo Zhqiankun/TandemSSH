@@ -78,8 +78,7 @@ export function execWithSudoBuffer(
   sudoPassword: string,
 ): Promise<{ stdout: Buffer; stderr: string; code: number | null }> {
   return new Promise((resolve) => {
-    const escapedPassword = sudoPassword.replace(/'/g, "'\"'\"'");
-    const sudoCommand = `echo '${escapedPassword}' | sudo -S ${command} 2>&1`;
+    const sudoCommand = `sudo -S -p '' -- ${command}`;
 
     execChannel(session, sudoCommand, (err, stream) => {
       if (err) {
@@ -99,13 +98,7 @@ export function execWithSudoBuffer(
       });
 
       stream.on("close", (code: number) => {
-        let stdout = Buffer.concat(stdoutChunks);
-        const sudoPromptMatch = stdout
-          .toString("utf8", 0, Math.min(stdout.length, 256))
-          .match(/^\[sudo\] password for .+?:\s*/);
-        if (sudoPromptMatch) {
-          stdout = stdout.subarray(Buffer.byteLength(sudoPromptMatch[0]));
-        }
+        const stdout = Buffer.concat(stdoutChunks);
         resolve({ stdout, stderr, code: Number.isInteger(code) ? code : null });
       });
 
@@ -116,6 +109,9 @@ export function execWithSudoBuffer(
           code: 1,
         });
       });
+      // Match the previous pipe EOF semantics without exposing the password
+      // in the remote shell command or process arguments.
+      stream.end(sudoPassword + "\n");
     });
   });
 }
