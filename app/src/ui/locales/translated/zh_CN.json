@@ -1,4 +1,22 @@
 {
+  "localTerminal": {
+    "localBadge": "本机终端",
+    "localOnly": "在这台电脑上运行，与 SSH 会话独立。",
+    "shell": "Shell",
+    "defaultShell": "默认 Shell",
+    "cwd": "起始目录（本机绝对路径）",
+    "homePlaceholder": "留空使用用户主目录",
+    "startedAt": "启动于 {{path}}",
+    "start": "启动",
+    "restart": "按新设置重启",
+    "starting": "正在启动…",
+    "restartHint": "重启会关闭当前本地 Shell，并可能结束其中运行的程序。",
+    "processExited": "进程已退出（{{code}}）",
+    "directoryUnavailable": "起始目录不存在或无法访问。",
+    "invalidDirectory": "请输入本机目录的绝对路径。",
+    "invalidShell": "当前系统不支持此 Shell 选项。",
+    "startFailed": "无法启动本地终端：{{detail}}"
+  },
   "monitoring": {
     "uptimeValue": "{{days}} 天 {{hours}} 小时 {{minutes}} 分钟",
     "unavailableValue": "不可用",

@@ -30,7 +30,7 @@ const { launchNativeRdp } = require("./native-rdp.cjs");
 const { isCloseActiveTabInput } = require("./keyboard-shortcuts.cjs");
 const { quitApp } = require("./app-quit.cjs");
 const { selectLinuxPasswordStore } = require("./linux-password-store.cjs");
-const { resolveLocalShell } = require("./local-shell.cjs");
+const { resolveLocalShell, resolveLocalCwd } = require("./local-shell.cjs");
 
 app.setName("TandemSSH");
 app.commandLine.appendSwitch("lang", "zh-CN");
@@ -2889,12 +2889,13 @@ ipcMain.handle("local-terminal-start", (event, dimensions = {}) => {
   const rows = Math.min(300, Math.max(1, Number(dimensions.rows) || 24));
   const sessionId = crypto.randomUUID();
   const shellConfig = resolveLocalShell(process.platform, dimensions.shell);
+  const cwd = resolveLocalCwd(dimensions.cwd);
   const child = pty.spawn(shellConfig.file, shellConfig.args, {
     name: "xterm-256color",
     useConptyDll: process.platform === "win32",
     cols,
     rows,
-    cwd: os.homedir(),
+    cwd,
     env: {
       ...process.env,
       TERM: "xterm-256color",
@@ -2920,7 +2921,7 @@ ipcMain.handle("local-terminal-start", (event, dimensions = {}) => {
     }
   });
   event.sender.once("destroyed", () => closeLocalTerminalsFor(ownerId));
-  return { sessionId, shell: shellConfig.file };
+  return { sessionId, shell: shellConfig.file, cwd };
 });
 
 ipcMain.handle("local-terminal-ready", (event, sessionId) => {

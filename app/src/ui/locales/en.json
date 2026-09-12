@@ -1,4 +1,22 @@
 {
+  "localTerminal": {
+    "localBadge": "LOCAL TERMINAL",
+    "localOnly": "Runs on this computer, independently of SSH sessions.",
+    "shell": "Shell",
+    "defaultShell": "Default shell",
+    "cwd": "Starting directory (local absolute path)",
+    "homePlaceholder": "Leave empty to use your home directory",
+    "startedAt": "Started in {{path}}",
+    "start": "Start",
+    "restart": "Restart with these settings",
+    "starting": "Starting…",
+    "restartHint": "Restarting closes the current local shell and may end its running programs.",
+    "processExited": "Process exited ({{code}})",
+    "directoryUnavailable": "The starting directory does not exist or is not accessible.",
+    "invalidDirectory": "Enter an absolute local directory path.",
+    "invalidShell": "This shell option is not supported on this system.",
+    "startFailed": "Could not start the local terminal: {{detail}}"
+  },
   "monitoring": {
     "uptimeValue": "{{days}}d {{hours}}h {{minutes}}m",
     "unavailableValue": "Unavailable",

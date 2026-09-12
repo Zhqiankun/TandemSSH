@@ -800,14 +800,15 @@
       "id": "B16",
       "requirement": "本地终端",
       "acceptance": "Windows 本机 Shell、Shell 选择、起始目录、与远端不同的明确标识",
-      "status": "not-fully-verified",
-      "implementation": "app/electron",
+      "status": "verified",
+      "implementation": "app/src/ui/features/local-terminal/LocalTerminal.tsx",
       "records": [
         "11-m0-validation.md",
         "53-ssh-agent-authentication.md",
-        "56-linux-ssh-acceptance.md"
+        "56-linux-ssh-acceptance.md",
+        "180-local-terminal-options.md"
       ],
-      "remaining": "原生 PTY/安装验证存在；本地 Shell 选择、起始目录和与远端身份区别需要专门 UI 证据。"
+      "remaining": ""
     },
     {
       "id": "A01",

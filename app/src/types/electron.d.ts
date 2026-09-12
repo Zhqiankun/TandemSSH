@@ -186,8 +186,9 @@ export interface ElectronAPI {
   startLocalTerminal(dimensions: {
     cols: number;
     rows: number;
-    shell?: "default" | "wsl";
-  }): Promise<{ sessionId: string; shell: string }>;
+    shell?: "default" | "wsl" | "cmd";
+    cwd?: string;
+  }): Promise<{ sessionId: string; shell: string; cwd: string }>;
   readyLocalTerminal(sessionId: string): Promise<boolean>;
   writeLocalTerminal(sessionId: string, data: string): Promise<boolean>;
   resizeLocalTerminal(
