@@ -19,3 +19,7 @@ UploadQueue.test.tsx 全文件 13 项通过；ESLint、TypeScript、diff 检查�
 保留 alpha.12 不可变标签。原标签的测试仍含旧时序假设；修正后的两种确定性顺序在开发分支验证同一生产实现。基于已复现且定位的测试竞态，允许对原标签完整云端门禁重跑一次，不跳过失败用例、不削弱断言、不改安装包源码。若再次失败，先检查新的证据，不循环盲重试。
 
 本记录不是重跑成功或已公开发布证明；须继续核对实际运行和产物。
+
+## 单次重跑已启动
+
+连接器重跑接口返回 403（Resource not accessible by integration）。改用仓库自身临时 GITHUB_TOKEN 的固定目标工作流，检查原运行 attempt=1 且 failure 后才请求 rerun-failed-jobs。辅助运行 34683262246 成功；GitHub API 确认 Release 34682059559 的 run_attempt=2、status=in_progress，源码仍为 f8fdab9dfc36d18b5c4f729e0a21a30d389d3f59。一次性工作流随后移除，不自动循环重跑。结果仍待实际门禁和产物确认。
