@@ -1,3 +1,5 @@
+import { readTerminalDirectory } from "./working-directory.js";
+import { PtyCommandExecutor } from "../../collaboration/adapters/pty-command.js";
 import { getErrorMessage } from "../../utils/error-message.js";
 import { serviceListenOptions } from "../../runtime/policy.js";
 import { ControlError } from "../../collaboration/sessions/control.js";
@@ -729,32 +731,23 @@ wss.on("connection", async (ws: WebSocket, req) => {
         }
 
         case "get_cwd": {
-          const activeConn =
-            sessionManager.getSession(currentSessionId)?.sshConn ?? sshConn;
-          if (!activeConn) {
-            ws.send(JSON.stringify({ type: "cwd", path: "/" }));
-            break;
+          const request = asObject(data);
+          const requestId = asString(request.requestId);
+          const session = sessionManager.getSession(currentSessionId);
+          try {
+            if (!session || !requestId || requestId.length > 128) throw Error("CWD_UNAVAILABLE");
+            const executor = new PtyCommandExecutor(() => session.sshStream, 15000);
+            const cwd = await readTerminalDirectory(session.control, () => executor.prepareContext(),
+              () => session.isConnected && !!session.sshStream && !session.sshStream.destroyed, request.shellReady === true);
+            if (currentSessionId !== session.id) throw Error("CWD_CHANGED");
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "cwd", path: cwd, requestId }));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "";
+            const code = ["CWD_CONFIRM_REQUIRED", "CWD_CONTROL_BUSY", "CWD_QUERY_BUSY", "CWD_CHANGED"].includes(message) ? message : "CWD_UNAVAILABLE";
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "error", code, requestId, message: "Cannot confirm the current terminal directory." }));
           }
-          activeConn.exec("pwd", (err, execStream) => {
-            if (err) {
-              ws.send(JSON.stringify({ type: "cwd", path: "/" }));
-              return;
-            }
-            let stdout = "";
-            execStream.on("data", (chunk: Buffer) => {
-              stdout += chunk.toString("utf-8");
-            });
-            execStream.stderr.on("data", () => {});
-            execStream.on("close", () => {
-              const cwd = stdout.trim() || "/";
-              if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: "cwd", path: cwd }));
-              }
-            });
-          });
           break;
         }
-
         case "open_file_in_editor": {
           const requestedPath = asString(asObject(data).path);
           const activeConn =

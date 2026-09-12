@@ -1984,6 +1984,11 @@
     }
   },
   "terminal": {
+    "cwdConfirm": "请确认终端处于空闲的 POSIX Shell 提示符，而非 vim、top 等交互程序中。将向同一终端发送只读目录查询。",
+    "cwdUnavailable": "无法确认当前终端目录，请在文件浏览器中手动选择目录。",
+    "cwdControlBusy": "请先人工接管并回到空闲 Shell 提示符，再读取此终端的目录。",
+    "cwdQueryBusy": "正在读取终端目录，请稍候。",
+    "cwdChanged": "读取目录期间终端已变化，未打开目录。请在 Shell 空闲后重试。",
     "initialPathUnsupported": "无法在远端终端中安全设置此目录，未执行启动命令。请手动切换目录。",
     "connect": "连接到主机",
     "clear": "清除",

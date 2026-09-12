@@ -732,9 +732,10 @@
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
         "59-windows-file-attributes.md",
-        "181-file-terminal-directory.md"
+        "181-file-terminal-directory.md",
+        "183-trusted-terminal-cwd.md"
       ],
-      "remaining": "已修复文件菜单根目录父路径与初始目录命令转义，并通过实际 Shell 和菜单测试。复制远端路径、真实在目录打开终端、可信 cwd 跟随、打开本地下载目录仍需逐项实机归并。"
+      "remaining": "根目录父路径与初始目录转义已验证；确认式同 PTY cwd 查询已有控制权和真实 SSH 证据。复制远端路径、目录打开终端、可信 cwd 查询的完整桌面链以及打开本地下载目录仍需逐项实机归并。"
     },
     {
       "id": "B12",

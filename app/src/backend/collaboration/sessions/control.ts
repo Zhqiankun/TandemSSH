@@ -28,6 +28,7 @@ export class SessionControl {
   private readonly terminalReplies = new TerminalReplyRequests();
   private generation = 1;
   private epoch = 0;
+  private manualRevision = 0;
   private owner: SessionController = { kind: "human" };
   private closed = false;
   private readonly listeners = new Set<(event: ControlChangedEvent) => void>();
@@ -150,10 +151,15 @@ export class SessionControl {
 
   /** Only authenticated manual-terminal adapters call this. Macros, snippets,
    * workflows and model tools must use the operation gateway instead. */
+  humanInputRevision(): number {
+    return this.manualRevision;
+  }
+
   humanInput(data: Uint8Array): void {
     this.ensureOpen();
     this.validateInput(data);
     if (this.owner.kind !== "human") this.takeover();
+    this.manualRevision++;
     this.write(data);
   }
 

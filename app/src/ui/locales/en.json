@@ -1984,6 +1984,11 @@
     }
   },
   "terminal": {
+    "cwdConfirm": "Confirm that this terminal is at an idle POSIX shell prompt, not inside vim/top or another interactive program. A read-only directory query will be sent to this same terminal.",
+    "cwdUnavailable": "The current terminal directory could not be confirmed. Use the file browser to choose a directory manually.",
+    "cwdControlBusy": "Take over control and return to an idle shell prompt before reading this terminal directory.",
+    "cwdQueryBusy": "A directory query is already running. Please wait.",
+    "cwdChanged": "The terminal changed during the directory query. No directory was opened; try again when the shell is idle.",
     "initialPathUnsupported": "This directory cannot be safely entered in the remote terminal. No startup command was run; change directory manually.",
     "connect": "Connect to Host",
     "clear": "Clear",

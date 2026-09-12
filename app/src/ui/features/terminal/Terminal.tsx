@@ -1000,6 +1000,42 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       }, 15000);
     }
 
+    const cwdHost = JSON.stringify([
+      hostConfig.id,
+      hostConfig.ip,
+      hostConfig.port,
+      hostConfig.username,
+    ]);
+    const cwdHostRef = useRef(cwdHost);
+    cwdHostRef.current = cwdHost;
+    const cwdRequest = useRef<{
+      id: string;
+      host: string;
+      socket: WebSocket;
+    } | null>(null);
+    const requestCurrentDirectory = useCallback(() => {
+      const socket = webSocketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        toast.error(t("terminal.cwdUnavailable"));
+        return;
+      }
+      if (
+        cwdRequest.current?.socket === socket &&
+        cwdRequest.current.host === cwdHost
+      ) {
+        toast.info(t("terminal.cwdQueryBusy"));
+        return;
+      }
+      if (!window.confirm(t("terminal.cwdConfirm"))) return;
+      const id =
+        typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+      cwdRequest.current = { id, host: cwdHost, socket };
+      socket.send(
+        JSON.stringify({ type: "get_cwd", shellReady: true, requestId: id }),
+      );
+    }, [cwdHost, t]);
     useImperativeHandle(
       ref,
       () => ({
@@ -1131,13 +1167,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         refresh: () => hardRefresh(),
         getApplicationCursorKeysMode: () =>
           terminal?.modes?.applicationCursorKeysMode ?? false,
-        openFileManager: () => {
-          if (webSocketRef.current?.readyState === WebSocket.OPEN) {
-            webSocketRef.current.send(JSON.stringify({ type: "get_cwd" }));
-          } else {
-            onOpenFileManager?.("/");
-          }
-        },
+        openFileManager: requestCurrentDirectory,
         openShareModal: () => setShareModalOpen(true),
         canShare: () =>
           isConnected &&
@@ -1146,6 +1176,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           typeof hostConfig.id === "number",
       }),
       [
+        requestCurrentDirectory,
         isConnected,
         terminal,
         isQuickConnect,
@@ -1540,6 +1571,29 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
               });
             }
           } else if (msg.type === "error") {
+            if (typeof msg.code === "string" && msg.code.startsWith("CWD_")) {
+              const pending = cwdRequest.current;
+              if (
+                !pending ||
+                pending.id !== msg.requestId ||
+                pending.host !== cwdHostRef.current ||
+                pending.socket !== webSocketRef.current
+              )
+                return;
+              cwdRequest.current = null;
+              toast.error(
+                t(
+                  msg.code === "CWD_CONTROL_BUSY"
+                    ? "terminal.cwdControlBusy"
+                    : msg.code === "CWD_QUERY_BUSY"
+                      ? "terminal.cwdQueryBusy"
+                      : msg.code === "CWD_CHANGED"
+                        ? "terminal.cwdChanged"
+                        : "terminal.cwdUnavailable",
+                ),
+              );
+              return;
+            }
             const trustRejected = msg.code === "HOST_TRUST_REJECTED";
             const credentialsRequired =
               msg.code === "HOST_CREDENTIAL_REBIND_REQUIRED";
@@ -2084,7 +2138,17 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
               connectionTimeoutRef.current = null;
             }
           } else if (msg.type === "cwd") {
-            onOpenFileManager?.(msg.path as string);
+            const pending = cwdRequest.current;
+            if (
+              !pending ||
+              pending.id !== msg.requestId ||
+              pending.host !== cwdHostRef.current ||
+              pending.socket !== webSocketRef.current ||
+              typeof msg.path !== "string"
+            )
+              return;
+            cwdRequest.current = null;
+            onOpenFileManager?.(msg.path);
           } else if (msg.type === "open_file_in_editor") {
             onOpenFileInEditor?.(msg.path as string);
           } else if (msg.type === "passphrase_required") {
@@ -3682,13 +3746,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             onUploadImage={(file) => void handleImageUpload(file, "file")}
             onPasteImage={() => void handleClipboardImage()}
             onOpenTab={onOpenTab}
-            onOpenFiles={() => {
-              if (webSocketRef.current?.readyState === WebSocket.OPEN) {
-                webSocketRef.current.send(JSON.stringify({ type: "get_cwd" }));
-              } else {
-                onOpenFileManager?.("/");
-              }
-            }}
+            onOpenFiles={requestCurrentDirectory}
             isFocused={isFocusedPane}
           />
         )}
