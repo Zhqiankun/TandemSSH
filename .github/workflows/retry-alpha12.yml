@@ -1,0 +1,24 @@
+name: Retry alpha.12 after diagnosed test race
+on:
+  push:
+    branches: [codex/unix-permissions]
+    paths: [.github/workflows/retry-alpha12.yml]
+permissions:
+  actions: write
+jobs:
+  retry:
+    if: github.repository == 'Zhqiankun/TandemSSH'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Retry the fixed target once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          attempt=$(gh api repos/Zhqiankun/TandemSSH/actions/runs/34682059559 --jq .run_attempt)
+          conclusion=$(gh api repos/Zhqiankun/TandemSSH/actions/runs/34682059559 --jq .conclusion)
+          if [ "$attempt" = "1" ] && [ "$conclusion" = "failure" ]; then
+            gh api --method POST repos/Zhqiankun/TandemSSH/actions/runs/34682059559/rerun-failed-jobs
+          else
+            echo "Target is not the first failed attempt; no retry requested."
+          fi
