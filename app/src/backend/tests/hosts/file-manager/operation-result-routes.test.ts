@@ -745,3 +745,113 @@ it.each(["request", "response", "success"] as const)(
     }
   },
 );
+
+it.each(["sftp", "list", "move"] as const)(
+  "stops waiting on HTTP abort during trash %s and does not start a later move",
+  async (phase) => {
+    const routes = new Map<string, RequestHandler>();
+    const register = (path: string, handler: RequestHandler) =>
+      routes.set(path, withRequestEvents(handler));
+    registerFileOperationRoutes(
+      {
+        get: register,
+        post: register,
+        put: register,
+        delete: register,
+      } as unknown as Express,
+      {
+        sshSessions: { session: { isConnected: true } as SSHSession },
+        verifySessionOwnership: () => true,
+      },
+    );
+    let release!: () => void,
+      entered!: () => void,
+      recorded = false;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const reached = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const block = async () => {
+      entered();
+      await gate;
+    };
+    vi.mocked(getSessionSftp).mockImplementation(async () => {
+      if (phase === "sftp") await block();
+      return {} as never;
+    });
+    vi.mocked(listTrash).mockImplementation(async () => {
+      if (phase === "list") await block();
+      return [];
+    });
+    vi.mocked(moveToTrash).mockImplementation(async (_sftp, _path, check) => {
+      check?.();
+      await block();
+      recorded = true;
+      return { id: "item" } as never;
+    });
+    const req = Object.assign(new EventEmitter(), {
+      userId: "owner",
+      body: { sessionId: "session", path: "/srv/file", permanent: false },
+    });
+    const status = vi.fn().mockReturnThis(),
+      json = vi.fn();
+    const res = Object.assign(new EventEmitter(), {
+      status,
+      json,
+      writableEnded: false,
+    });
+    const request = routes.get("/ssh/file_manager/ssh/deleteItem")!(
+      req as never,
+      res as never,
+      vi.fn(),
+    );
+    await reached;
+    req.emit("aborted");
+    await request;
+    expect(json).not.toHaveBeenCalled();
+    expect(req.listenerCount("aborted")).toBe(0);
+    expect(res.listenerCount("close")).toBe(0);
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(moveToTrash).toHaveBeenCalledTimes(phase === "move" ? 1 : 0);
+    expect(recorded).toBe(phase === "move");
+    expect(json).not.toHaveBeenCalled();
+    expect(execChannel).not.toHaveBeenCalled();
+  },
+);
+
+it.each(["aborted", "destroyed"] as const)(
+  "does not prepare trash for an already %s HTTP request",
+  async (reason) => {
+    const routes = new Map<string, RequestHandler>();
+    const register = (path: string, handler: RequestHandler) =>
+      routes.set(path, withRequestEvents(handler));
+    registerFileOperationRoutes(
+      {
+        get: register,
+        post: register,
+        put: register,
+        delete: register,
+      } as unknown as Express,
+      {
+        sshSessions: { session: { isConnected: true } as SSHSession },
+        verifySessionOwnership: () => true,
+      },
+    );
+    const json = vi.fn(),
+      status = vi.fn().mockReturnThis();
+    await routes.get("/ssh/file_manager/ssh/deleteItem")!(
+      {
+        aborted: reason === "aborted",
+        userId: "owner",
+        body: { sessionId: "session", path: "/srv/file", permanent: false },
+      } as never,
+      { destroyed: reason === "destroyed", json, status } as never,
+      vi.fn(),
+    );
+    expect(getSessionSftp).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  },
+);

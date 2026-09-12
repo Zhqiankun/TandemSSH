@@ -364,40 +364,89 @@ export function registerFileOperationRoutes(
     sshConn.lastActive = Date.now();
 
     if (!permanent) {
-      let moveAttempted = false;
-      try {
-        const sftp = await getSessionSftp(sshConn);
-        await listTrash(sftp, getTrashRetentionDays());
-        moveAttempted = true;
-        const item = await moveToTrash(sftp, itemPath);
-        fileLogger.success("Item moved to trash", {
-          operation: "file_trash_success",
-          sessionId,
-          userId,
-          path: itemPath,
-          trashId: item.id,
-        });
-        return res.json({
-          message: "Item moved to trash",
-          path: itemPath,
-          trashItem: item,
-        });
-      } catch (error) {
-        fileLogger.error("Failed to move item to trash", error, {
-          operation: "file_trash_failed",
-          sessionId,
-          userId,
-          path: itemPath,
-        });
-        return res.status(moveAttempted ? 500 : 409).json({
-          error: moveAttempted
-            ? "TRASH_RESULT_UNKNOWN"
-            : (error as Error).message,
-          trashUnavailable: !moveAttempted,
-        });
-      }
+      let moveAttempted = false,
+        interrupted = false;
+      let stopWaiting!: () => void;
+      const cancelled = new Promise<void>((resolve) => {
+        stopWaiting = resolve;
+      });
+      const clientGone = () => interrupted || req.aborted || res.destroyed;
+      const notDispatched = Error("DELETE_NOT_DISPATCHED");
+      const assertActive = () => {
+        if (
+          clientGone() ||
+          !sshConn.isConnected ||
+          sshSessions[sessionId] !== sshConn
+        )
+          throw notDispatched;
+      };
+      const cleanup = () => {
+        req.off("aborted", cancel);
+        res.off("close", responseClosed);
+      };
+      const cancel = () => {
+        interrupted = true;
+        cleanup();
+        stopWaiting();
+      };
+      const responseClosed = () => {
+        if (!res.writableEnded) cancel();
+      };
+      req.once("aborted", cancel);
+      res.once("close", responseClosed);
+      if (req.aborted || res.destroyed) cancel();
+      const work = (async () => {
+        try {
+          assertActive();
+          const sftp = await getSessionSftp(sshConn);
+          assertActive();
+          await listTrash(sftp, getTrashRetentionDays());
+          assertActive();
+          moveAttempted = true;
+          const item = await moveToTrash(sftp, itemPath, assertActive);
+          fileLogger.success("Item moved to trash", {
+            operation: "file_trash_success",
+            sessionId,
+            userId,
+            path: itemPath,
+            trashId: item.id,
+          });
+          if (!clientGone())
+            res.json({
+              message: "Item moved to trash",
+              path: itemPath,
+              trashItem: item,
+            });
+        } catch (error) {
+          if (clientGone()) return;
+          if (error === notDispatched) {
+            res
+              .status(500)
+              .json({
+                error: "DELETE_NOT_DISPATCHED",
+                trashUnavailable: false,
+              });
+            return;
+          }
+          fileLogger.error("Failed to move item to trash", error, {
+            operation: "file_trash_failed",
+            sessionId,
+            userId,
+            path: itemPath,
+          });
+          res.status(moveAttempted ? 500 : 409).json({
+            error: moveAttempted
+              ? "TRASH_RESULT_UNKNOWN"
+              : (error as Error).message,
+            trashUnavailable: !moveAttempted,
+          });
+        } finally {
+          cleanup();
+        }
+      })();
+      await Promise.race([work, cancelled]);
+      return;
     }
-
     const { command: deleteCommand, commandWithSuccess } = buildDeleteCommand(
       itemPath,
       Boolean(isDirectory),

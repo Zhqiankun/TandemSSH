@@ -320,3 +320,50 @@ it("does not treat permission denial as a missing restore destination", async ()
     ),
   ).toBe("important");
 });
+
+it("does not move a source cancelled during its inspection", async () => {
+  const { home, sftp } = await fixture();
+  const original = path.join(home, "cancelled.txt");
+  await fs.promises.writeFile(original, "keep");
+  let cancelled = false,
+    renames = 0;
+  const stat = sftp.lstat.bind(sftp),
+    rename = sftp.rename.bind(sftp);
+  sftp.lstat = (target, done) =>
+    stat(target, (error, value) => {
+      if (target === original) cancelled = true;
+      done(error, value);
+    });
+  sftp.rename = (from, to, done) => {
+    renames++;
+    rename(from, to, done);
+  };
+  await expect(
+    moveToTrash(sftp, original, () => {
+      if (cancelled) throw Error("cancelled");
+    }),
+  ).rejects.toThrow("cancelled");
+  expect(renames).toBe(0);
+  expect(await fs.promises.readFile(original, "utf8")).toBe("keep");
+  expect(await listTrash(sftp, 7)).toEqual([]);
+});
+
+it("finishes recovery metadata when cancellation follows the source move", async () => {
+  const { home, sftp } = await fixture();
+  const original = path.join(home, "moved.txt");
+  await fs.promises.writeFile(original, "recoverable");
+  let cancelled = false;
+  const rename = sftp.rename.bind(sftp);
+  sftp.rename = (from, to, done) =>
+    rename(from, to, (error) => {
+      if (!error) cancelled = true;
+      done(error);
+    });
+  const item = await moveToTrash(sftp, original, () => {
+    if (cancelled) throw Error("cancelled");
+  });
+  expect(cancelled).toBe(true);
+  expect(await listTrash(sftp, 7)).toEqual([item]);
+  await restoreTrashItem(sftp, item.id);
+  expect(await fs.promises.readFile(original, "utf8")).toBe("recoverable");
+});

@@ -144,8 +144,11 @@ async function readStoredItem(
 export async function moveToTrash(
   sftp: SFTPWrapper,
   itemPath: string,
+  assertActive: () => void = () => {},
 ): Promise<TrashItem> {
+  assertActive();
   const dirs = await trashPaths(sftp);
+  assertActive();
   if (!isSafeTrashSource(itemPath, dirs.root)) {
     throw new Error("This path cannot be moved to trash");
   }
@@ -162,7 +165,9 @@ export async function moveToTrash(
     size: itemStat.size,
   };
 
+  assertActive();
   await rename(sftp, itemPath, trashPath);
+  // Once the move is dispatched, finish its recovery record even if the caller leaves.
   try {
     await writeFile(
       sftp,
