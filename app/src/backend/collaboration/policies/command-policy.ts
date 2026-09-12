@@ -68,6 +68,19 @@ const OPAQUE_PROGRAMS = new Set([
   "eval",
   "python",
   "python3",
+  "pythonw",
+  "pypy",
+  "nodejs",
+  "php",
+  "lua",
+  "luajit",
+  "r",
+  "rscript",
+  "docker",
+  "docker-compose",
+  "podman",
+  "podman-compose",
+  "kubectl",
   "node",
   "perl",
   "ruby",
@@ -92,6 +105,25 @@ const OPAQUE_PROGRAMS = new Set([
   "tmux",
   "screen",
 ]);
+
+// Name classification is conservative; it does not inspect remote executable
+// contents, resolve symlinks, or change exact allow-rule matching.
+function isOpaqueProgram(program: string): boolean {
+  const name = program.split(/[\\/]/).at(-1)!.toLowerCase();
+  if (
+    /\.(?:sh|bash|zsh|fish|py|pyw|js|mjs|cjs|ts|rb|pl|lua|php|ps1|cmd|bat)$/.test(
+      name,
+    )
+  )
+    return true;
+  const executable = name.replace(/\.(?:exe|com)$/, "");
+  return (
+    OPAQUE_PROGRAMS.has(executable) ||
+    /^(?:bash|zsh|fish|dash|pythonw?|pypy|node(?:js)?|perl|ruby|php|lua|luajit|pwsh|powershell|rscript|vim|nvim)-?\d+(?:\.\d+)*(?:t|d)?$/.test(
+      executable,
+    )
+  );
+}
 
 /** Pure rule composition. This does not claim to sandbox a remote operating
  * system or prove the behavior of arbitrary executables/scripts. */
@@ -133,7 +165,7 @@ export function evaluateCommandPolicy(
       reasons.push(`POLICY_ALLOWLIST_MISS:${set.id}`);
     }
   }
-  const opaque = OPAQUE_PROGRAMS.has(action.program.split("/").at(-1)!);
+  const opaque = isOpaqueProgram(action.program);
   if (opaque && sets.some((set) => set.strictAllowlist)) {
     denied = true;
     reasons.push("OPAQUE_COMMAND_IN_STRICT_MODE");

@@ -821,6 +821,26 @@ it.each(
     "btop",
     "tmux",
     "screen",
+    "python3.12",
+    "python3.13t",
+    "pythonw.exe",
+    "pypy3.10",
+    "nodejs",
+    "node.exe",
+    "PowerShell.EXE",
+    "pwsh7.4",
+    "cmd.exe",
+    "php8.3",
+    "lua5.4",
+    "Rscript",
+    "docker",
+    "podman",
+    "kubectl",
+    "deploy.sh",
+    "script.ps1",
+    "script.py",
+    "script.cmd",
+    "C:\\Windows\\System32\\cmd.exe",
   ].flatMap((program) =>
     (["automatic", "collaborative"] as const).map((mode) => ({
       program,
@@ -873,5 +893,27 @@ it.each(
       );
       expect(f.writes).toEqual([]);
     }
+  },
+);
+it.each(["python3-config", "node_exporter", "bashful", "printf"])(
+  "does not classify %s or script-shaped arguments by substring",
+  (program) => {
+    const f = fixture();
+    f.policy.sets[0].strictAllowlist = true;
+    f.policy.sets[0].rules = [
+      {
+        id: "exact",
+        effect: "allow",
+        match: { kind: "program", program },
+        reason: "明确规则",
+      },
+    ];
+    expect(
+      evaluateCommandPolicy(
+        f.policy,
+        { hostId: "host-1", taskId: "task-1", groupIds: [] },
+        action(program, ["script.py", "bash.exe"]),
+      ).outcome,
+    ).toBe("allow");
   },
 );

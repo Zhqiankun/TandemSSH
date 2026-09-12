@@ -241,7 +241,15 @@ it("shows global deny and host allow sources for the final denied trial", async 
   expect(api.save).not.toHaveBeenCalled();
   expect(collab.takeover).not.toHaveBeenCalled();
 });
-it.each(["/bin/bash", "/usr/bin/python3", "/usr/bin/vim"])(
+it.each([
+  "/bin/bash",
+  "/usr/bin/python3",
+  "/usr/bin/vim",
+  "/usr/bin/python3.12",
+  "PowerShell.exe",
+  "./deploy.sh",
+  "docker",
+])(
   "shows %s as needing review and then denied in strict mode without saving",
   async (program) => {
     api.read.mockResolvedValueOnce({

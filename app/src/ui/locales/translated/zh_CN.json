@@ -5331,7 +5331,7 @@
       "reasons": {
         "POLICY_ALLOWLIST_MISS": "未命中该范围的白名单",
         "OPAQUE_COMMAND_IN_STRICT_MODE": "严格模式禁止无法判定行为的脚本、解释器或交互式终端工具",
-        "COMMAND_NEEDS_MANUAL_REVIEW": "脚本内容需要人工审阅",
+        "COMMAND_NEEDS_MANUAL_REVIEW": "该命令的执行行为需要人工审阅",
         "FILE_ALLOWLIST_MISS": "请求路径或实际目标未命中文件白名单。"
       }
     },
