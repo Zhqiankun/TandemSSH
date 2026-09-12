@@ -4524,6 +4524,8 @@
     "ruleSaveFailed": "Regel konnte nicht gespeichert werden"
   },
   "ai": {
+    "chatFailedRecord": "This reply failed. Partial content is not replayed automatically.",
+    "chatInterruptedRecord": "This reply was interrupted. Partial content is not replayed automatically.",
     "title": "Assistent",
     "send": "Schicken",
     "stop": "Stoppen",

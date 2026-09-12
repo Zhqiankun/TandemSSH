@@ -1,4 +1,8 @@
-import { encodeChatTurn, restoreChatHistory } from "./chat-history.js";
+import {
+  chatTurnOutcome,
+  encodeChatTurn,
+  restoreChatHistory,
+} from "./chat-history.js";
 import { ChatDelivery } from "./chat-delivery.js";
 import { getErrorMessage } from "../utils/error-message.js";
 import express from "express";
@@ -549,7 +553,14 @@ router.get(
         repository.listProposals(userId, id),
       ]);
 
-      res.json({ conversation, messages, proposals });
+      res.json({
+        conversation,
+        messages: messages.map((message) => ({
+          ...message,
+          outcome: chatTurnOutcome(message.toolCalls),
+        })),
+        proposals,
+      });
     } catch (err) {
       databaseLogger.error("Failed to load AI conversation", err, {
         operation: "ai_conversation_load_failed",
@@ -734,6 +745,20 @@ router.post(
 
       let assistantText = "";
       const transcript: ChatMessage[] = [];
+      let streamedText = "",
+        modelCompleted = false,
+        incompleteSaved = false;
+      const saveIncomplete = async (outcome: "failed" | "interrupted") => {
+        if (incompleteSaved || (!streamedText && !transcript.length)) return;
+        incompleteSaved = true;
+        await repository.appendMessage({
+          conversationId: conversation.id,
+          role: "assistant",
+          content: streamedText || assistantText,
+          toolCalls: encodeChatTurn(transcript, outcome),
+        });
+        await repository.touchConversation(conversation.id);
+      };
 
       try {
         for await (const event of runAgent({
@@ -760,8 +785,13 @@ router.post(
           abort.signal.throwIfAborted();
           // Completion belongs to this HTTP turn, after messages and history
           // ordering are durable; the engine only signals model completion.
-          if (event.type === "done") continue;
+          if (event.type === "done") {
+            modelCompleted = true;
+            continue;
+          }
+          if (event.type === "token") streamedText += event.text;
           if (event.type === "error") {
+            await saveIncomplete("failed");
             await send(event);
             res.end();
             return;
@@ -814,8 +844,11 @@ router.post(
         }
       } finally {
         clearInterval(heartbeat);
+        if (!modelCompleted)
+          await saveIncomplete(abort.signal.aborted ? "interrupted" : "failed");
       }
 
+      if (!modelCompleted) throw Error("MODEL_STREAM_INTERRUPTED");
       if (transcript.length) {
         await repository.appendMessage({
           conversationId: conversation.id,

@@ -31,6 +31,7 @@ export interface AiMessage {
   role: "user" | "assistant" | "tool";
   content: string;
   toolCalls: string | null;
+  outcome?: "failed" | "interrupted";
   createdAt: string;
 }
 

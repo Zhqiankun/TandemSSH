@@ -4524,6 +4524,8 @@
     "ruleSaveFailed": "Не вдалося зберегти правило"
   },
   "ai": {
+    "chatFailedRecord": "This reply failed. Partial content is not replayed automatically.",
+    "chatInterruptedRecord": "This reply was interrupted. Partial content is not replayed automatically.",
     "title": "Помічник",
     "send": "Надіслати",
     "stop": "СТІЙ",

@@ -4524,6 +4524,8 @@
     "ruleSaveFailed": "নিয়ম সংরক্ষণ করতে ব্যর্থ হয়েছে"
   },
   "ai": {
+    "chatFailedRecord": "This reply failed. Partial content is not replayed automatically.",
+    "chatInterruptedRecord": "This reply was interrupted. Partial content is not replayed automatically.",
     "title": "সহকারী",
     "send": "পাঠান",
     "stop": "থামুন",

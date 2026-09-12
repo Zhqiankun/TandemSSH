@@ -4524,6 +4524,8 @@
     "ruleSaveFailed": "Het opslaan van de regel is mislukt."
   },
   "ai": {
+    "chatFailedRecord": "This reply failed. Partial content is not replayed automatically.",
+    "chatInterruptedRecord": "This reply was interrupted. Partial content is not replayed automatically.",
     "title": "Assistent",
     "send": "Versturen",
     "stop": "Stop",

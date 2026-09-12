@@ -4524,6 +4524,8 @@
     "ruleSaveFailed": "규칙 저장에 실패했습니다"
   },
   "ai": {
+    "chatFailedRecord": "This reply failed. Partial content is not replayed automatically.",
+    "chatInterruptedRecord": "This reply was interrupted. Partial content is not replayed automatically.",
     "title": "어시스턴트",
     "send": "보내다",
     "stop": "멈추다",

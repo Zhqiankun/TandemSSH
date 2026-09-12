@@ -1,3 +1,4 @@
+import { restoreChatHistory } from "../../ai/chat-history.js";
 import { afterEach, expect, it, vi } from "vitest";
 import express from "express";
 import type { Server } from "node:http";
@@ -7,6 +8,8 @@ const state = vi.hoisted(() => ({
   history: vi.fn(async () => []),
   engineHistory: vi.fn(),
   modelFailure: false,
+  pause: false,
+  waiting: vi.fn(),
 }));
 vi.mock("../../utils/auth-manager.js", () => ({
   AuthManager: {
@@ -43,7 +46,10 @@ vi.mock("../../database/repositories/factory.js", () => ({
   createCurrentHostRepository: () => ({ listByUserId: async () => [] }),
 }));
 vi.mock("../../ai/engine.js", () => ({
-  runAgent: async function* (options: { history: unknown }) {
+  runAgent: async function* (options: {
+    history: unknown;
+    signal: AbortSignal;
+  }) {
     state.engineHistory(options.history);
     yield {
       type: "assistant_message",
@@ -71,6 +77,17 @@ vi.mock("../../ai/engine.js", () => ({
       },
     };
     yield { type: "token", text: "中文回复" };
+    if (state.pause) {
+      state.waiting();
+      await new Promise<void>((resolve) => {
+        if (options.signal.aborted) resolve();
+        else
+          options.signal.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+      });
+      return;
+    }
     yield { type: "assistant_message", content: "中文回复", toolCalls: [] };
     yield { type: "done" };
   },
@@ -92,6 +109,7 @@ afterEach(async () => {
   await new Promise<void>((r) => (server ? server.close(() => r()) : r()));
   vi.clearAllMocks();
   state.modelFailure = false;
+  state.pause = false;
 });
 it.each([false, true])(
   "chat completion is emitted only after persistence (save failure: %s)",
@@ -190,7 +208,7 @@ it.each([false, true])(
   },
 );
 
-it("model errors end the stream without completion or persisting unmatched tool calls", async () => {
+it("model errors retain a failed record without completing or replaying unmatched calls", async () => {
   state.modelFailure = true;
   state.history.mockResolvedValue([]);
   state.append.mockResolvedValue(undefined);
@@ -214,6 +232,57 @@ it("model errors end the stream without completion or persisting unmatched tool 
   expect(body).not.toContain('"type":"done"');
   expect(state.append.mock.calls.map(([input]) => input.role)).toEqual([
     "user",
+    "assistant",
   ]);
-  expect(state.touch).not.toHaveBeenCalled();
+  const record = state.append.mock.calls.at(-1)![0];
+  expect(JSON.parse(record.toolCalls).outcome).toBe("failed");
+  expect(restoreChatHistory([record])).toEqual([]);
+  expect(state.touch).toHaveBeenCalledOnce();
+});
+
+it("retains received text once when the HTTP client disconnects and excludes it from model replay", async () => {
+  state.pause = true;
+  state.history.mockResolvedValue([]);
+  state.append.mockResolvedValue(undefined);
+  const app = express();
+  app.use(express.json());
+  app.use("/ai", router);
+  server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server!.once("listening", resolve));
+  const abort = new AbortController();
+  const response = await fetch(
+    "http://127.0.0.1:" +
+      (server.address() as { port: number }).port +
+      "/ai/chat/stream",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providerId: 1, message: "检查" }),
+      signal: abort.signal,
+    },
+  );
+  const reader = response.body!.getReader();
+  let received = "";
+  while (!received.includes("中文回复")) {
+    const part = await reader.read();
+    if (part.done) throw Error("premature end");
+    received += new TextDecoder().decode(part.value);
+  }
+  await vi.waitFor(() => expect(state.waiting).toHaveBeenCalledOnce());
+  abort.abort();
+  await reader.cancel().catch(() => {});
+  await vi.waitFor(() =>
+    expect(
+      state.append.mock.calls.filter(([m]) => m.role === "assistant"),
+    ).toHaveLength(1),
+  );
+  const record = state.append.mock.calls.find(
+    ([m]) => m.role === "assistant",
+  )![0];
+  expect(record.content).toBe("中文回复");
+  expect(JSON.parse(record.toolCalls)).toMatchObject({
+    outcome: "interrupted",
+    messages: expect.any(Array),
+  });
+  expect(restoreChatHistory([record])).toEqual([]);
 });

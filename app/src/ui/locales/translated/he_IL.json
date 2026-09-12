@@ -4524,6 +4524,8 @@
     "ruleSaveFailed": "שמירת הכלל נכשלה"
   },
   "ai": {
+    "chatFailedRecord": "This reply failed. Partial content is not replayed automatically.",
+    "chatInterruptedRecord": "This reply was interrupted. Partial content is not replayed automatically.",
     "title": "עוֹזֵר",
     "send": "לִשְׁלוֹחַ",
     "stop": "לְהַפְסִיק",

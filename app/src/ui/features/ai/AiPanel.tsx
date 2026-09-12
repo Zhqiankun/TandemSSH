@@ -33,6 +33,7 @@ import { mentionLabel } from "./labels";
 interface HistoryEntry {
   role: "user" | "assistant";
   content: string;
+  outcome?: "failed" | "interrupted";
 }
 
 /** One entry in the rendered conversation, in the order it happened. */
@@ -42,6 +43,7 @@ type TimelineItem =
       key: string;
       role: "user" | "assistant";
       content: string;
+      outcome?: "failed" | "interrupted";
     }
   | { kind: "tool"; key: string; tool: ToolActivity }
   | { kind: "proposal"; key: string; proposal: AiProposal };
@@ -170,6 +172,7 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
               .map((entry) => ({
                 role: entry.role as "user" | "assistant",
                 content: entry.content,
+                outcome: entry.outcome,
               })),
           );
           return;
@@ -288,6 +291,7 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
       key: `history-${index}`,
       role: entry.role,
       content: entry.content,
+      outcome: entry.outcome,
     });
   });
 
@@ -301,6 +305,7 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
       key: `history-${trailingReply}`,
       role: "assistant",
       content: history[trailingReply].content,
+      outcome: history[trailingReply].outcome,
     });
   } else if (streamingReply) {
     timeline.push({
@@ -397,6 +402,7 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
                 key={item.key}
                 role={item.role}
                 content={item.content}
+                outcome={item.outcome}
               />
             );
           }

@@ -1,12 +1,15 @@
+import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 interface AiMessageProps {
   role: "user" | "assistant";
   content: string;
+  outcome?: "failed" | "interrupted";
 }
 
-export function AiMessage({ role, content }: AiMessageProps) {
+export function AiMessage({ role, content, outcome }: AiMessageProps) {
+  const { t } = useTranslation();
   if (role === "user") {
     return (
       <div className="rounded-none border border-border bg-muted px-3 py-2 text-sm whitespace-pre-wrap break-words">
@@ -17,6 +20,15 @@ export function AiMessage({ role, content }: AiMessageProps) {
 
   return (
     <div className="text-sm leading-relaxed [&_a]:underline [&_code]:font-mono [&_code]:text-xs [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-none [&_pre]:border [&_pre]:border-border [&_pre]:bg-muted [&_pre]:p-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5">
+      {outcome && (
+        <p role="status" className="text-amber-600 dark:text-amber-400">
+          {t(
+            outcome === "failed"
+              ? "ai.chatFailedRecord"
+              : "ai.chatInterruptedRecord",
+          )}
+        </p>
+      )}
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
     </div>
   );

@@ -4524,6 +4524,8 @@
     "ruleSaveFailed": "ルールの保存に失敗しました"
   },
   "ai": {
+    "chatFailedRecord": "This reply failed. Partial content is not replayed automatically.",
+    "chatInterruptedRecord": "This reply was interrupted. Partial content is not replayed automatically.",
     "title": "アシスタント",
     "send": "送信",
     "stop": "停止",

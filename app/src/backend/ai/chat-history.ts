@@ -18,11 +18,18 @@ const message = z
   })
   .strict();
 const envelope = z
-  .object({ version: z.literal(1), messages: z.array(message).max(80) })
+  .object({
+    version: z.literal(1),
+    messages: z.array(message).max(80),
+    outcome: z.enum(["failed", "interrupted"]).optional(),
+  })
   .strict();
 /** Owned by ordinary chat persistence; this field remains opaque to the UI. */
-export function encodeChatTurn(messages: ChatMessage[]): string {
-  return JSON.stringify(envelope.parse({ version: 1, messages }));
+export function encodeChatTurn(
+  messages: ChatMessage[],
+  outcome?: "failed" | "interrupted",
+): string {
+  return JSON.stringify(envelope.parse({ version: 1, messages, outcome }));
 }
 export function restoreChatHistory(
   rows: Array<{ role: string; content: string; toolCalls: string | null }>,
@@ -45,6 +52,16 @@ export function restoreChatHistory(
         },
       ];
     if (row.role !== "assistant") throw Error("CHAT_HISTORY_INVALID");
-    return envelope.parse(stored).messages;
+    const turn = envelope.parse(stored);
+    return turn.outcome ? [] : turn.messages;
   });
+}
+
+export function chatTurnOutcome(
+  raw: string | null,
+): "failed" | "interrupted" | undefined {
+  if (!raw) return undefined;
+  const value: unknown = JSON.parse(raw);
+  if (Array.isArray(value)) return undefined;
+  return envelope.parse(value).outcome;
 }

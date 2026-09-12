@@ -4691,6 +4691,8 @@
     "discordAvatar": "头像地址（可选）"
   },
   "ai": {
+    "chatFailedRecord": "本轮回复失败，以下内容未完成，不会自动重放。",
+    "chatInterruptedRecord": "本轮回复已中断，以下内容未完成，不会自动重放。",
     "title": "助手",
     "send": "发送",
     "stop": "停止",

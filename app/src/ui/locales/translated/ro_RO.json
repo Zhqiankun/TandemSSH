@@ -4524,6 +4524,8 @@
     "ruleSaveFailed": "Nu s-a putut salva regula"
   },
   "ai": {
+    "chatFailedRecord": "This reply failed. Partial content is not replayed automatically.",
+    "chatInterruptedRecord": "This reply was interrupted. Partial content is not replayed automatically.",
     "title": "Asistent",
     "send": "Trimite",
     "stop": "Stop",

@@ -4524,6 +4524,8 @@
     "ruleSaveFailed": "Nem sikerült menteni a szabályt"
   },
   "ai": {
+    "chatFailedRecord": "This reply failed. Partial content is not replayed automatically.",
+    "chatInterruptedRecord": "This reply was interrupted. Partial content is not replayed automatically.",
     "title": "Helyettes",
     "send": "Elküld",
     "stop": "Stop",
