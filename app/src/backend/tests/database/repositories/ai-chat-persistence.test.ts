@@ -153,3 +153,44 @@ it("does not leave a partial row when SQLite rejects a message write", async () 
     "请求",
   ]);
 });
+it("pages past 50 conversations without skipping tied timestamps when a newer row is inserted", async () => {
+  const ids: number[] = [];
+  for (let i = 0; i < 103; i++)
+    ids.push(
+      (await repo.createConversation({ userId: "owner", title: "历史" + i }))
+        .id,
+    );
+  await repo.createConversation({ userId: "other", title: "不应出现" });
+  db.prepare("UPDATE ai_conversations SET updated_at=?").run(
+    "2026-01-01 00:00:00",
+  );
+  const first = await repo.listConversationPage("owner");
+  expect(first.conversations).toHaveLength(50);
+  const newest = await repo.createConversation({
+    userId: "owner",
+    title: "新会话",
+  });
+  await repo.deleteConversation(first.conversations[0].id, "owner");
+  const second = await repo.listConversationPage(
+    "owner",
+    JSON.parse(first.nextCursor!),
+  );
+  const third = await repo.listConversationPage(
+    "owner",
+    JSON.parse(second.nextCursor!),
+  );
+  expect(second.conversations).toHaveLength(50);
+  expect(third.conversations).toHaveLength(3);
+  expect(third.nextCursor).toBeNull();
+  const actual = [
+    ...first.conversations,
+    ...second.conversations,
+    ...third.conversations,
+  ].map((r) => r.id);
+  expect(actual).toEqual(ids.reverse());
+  expect(new Set(actual).size).toBe(103);
+  expect(actual).not.toContain(newest.id);
+  expect((await repo.listConversationPage("owner")).conversations[0].id).toBe(
+    newest.id,
+  );
+});

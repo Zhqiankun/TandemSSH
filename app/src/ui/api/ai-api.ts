@@ -146,6 +146,19 @@ export async function getAiProviderModels(id: number): Promise<string[]> {
   }
 }
 
+export async function getAiConversationPage(
+  cursor?: string,
+): Promise<{ conversations: AiConversation[]; nextCursor: string | null }> {
+  try {
+    return (
+      await authApi.get("/ai/conversations", {
+        params: cursor ? { cursor } : undefined,
+      })
+    ).data;
+  } catch (error) {
+    throw handleApiError(error, "list AI conversations");
+  }
+}
 export async function getAiConversations(): Promise<AiConversation[]> {
   try {
     return (await authApi.get("/ai/conversations")).data.conversations;

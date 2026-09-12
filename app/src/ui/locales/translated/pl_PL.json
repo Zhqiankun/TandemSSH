@@ -4524,6 +4524,7 @@
     "ruleSaveFailed": "Nie udało się zapisać reguły"
   },
   "ai": {
+    "loadOlderConversations": "Load older chats",
     "chatHistory": "Chat history",
     "newConversation": "New chat",
     "refreshHistory": "Refresh",

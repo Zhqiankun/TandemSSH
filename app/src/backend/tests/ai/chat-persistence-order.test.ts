@@ -4,6 +4,7 @@ import express from "express";
 import type { Server } from "node:http";
 const state = vi.hoisted(() => ({
   append: vi.fn(),
+  page: vi.fn(),
   touch: vi.fn(),
   history: vi.fn(async () => []),
   engineHistory: vi.fn(),
@@ -39,6 +40,7 @@ vi.mock("../../database/repositories/factory.js", () => ({
     }),
     createConversation: async () => ({ id: 1 }),
     listMessages: state.history,
+    listConversationPage: state.page,
     findConversation: async () => ({ id: 1 }),
     appendMessage: state.append,
     touchConversation: state.touch,
@@ -285,4 +287,38 @@ it("retains received text once when the HTTP client disconnects and excludes it 
     messages: expect.any(Array),
   });
   expect(restoreChatHistory([record])).toEqual([]);
+});
+
+it("validates pagination at HTTP boundary and passes the authenticated owner separately", async () => {
+  state.page.mockResolvedValue({ conversations: [], nextCursor: null });
+  const app = express();
+  app.use("/ai", router);
+  server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((r) => server!.once("listening", r));
+  const base =
+    "http://127.0.0.1:" +
+    (server.address() as { port: number }).port +
+    "/ai/conversations";
+  const cursor = { updatedAt: "2026-09-12 12:00:00", id: 7 };
+  const response = await fetch(
+    base + "?" + new URLSearchParams({ cursor: JSON.stringify(cursor) }),
+  );
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    conversations: [],
+    nextCursor: null,
+  });
+  expect(state.page).toHaveBeenCalledWith("owner", cursor);
+  const invalid = await fetch(
+    base +
+      "?" +
+      new URLSearchParams({
+        cursor: JSON.stringify({ ...cursor, userId: "other" }),
+      }),
+  );
+  expect(invalid.status).toBe(400);
+  expect(await invalid.json()).toEqual({
+    error: "INVALID_CONVERSATION_CURSOR",
+  });
+  expect(state.page).toHaveBeenCalledOnce();
 });

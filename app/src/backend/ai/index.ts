@@ -1,3 +1,4 @@
+import { parseConversationCursor } from "./conversation-cursor.js";
 import {
   chatTurnOutcome,
   encodeChatTurn,
@@ -499,9 +500,15 @@ router.get(
   async (req, res) => {
     const userId = (req as AuthenticatedRequest).userId as string;
     try {
-      const conversations =
-        await createCurrentAiRepository().listConversations(userId);
-      res.json({ conversations });
+      let cursor;
+      try {
+        cursor = parseConversationCursor(req.query.cursor);
+      } catch {
+        return res.status(400).json({ error: "INVALID_CONVERSATION_CURSOR" });
+      }
+      res.json(
+        await createCurrentAiRepository().listConversationPage(userId, cursor),
+      );
     } catch (err) {
       databaseLogger.error("Failed to list AI conversations", err, {
         operation: "ai_conversations_list_failed",

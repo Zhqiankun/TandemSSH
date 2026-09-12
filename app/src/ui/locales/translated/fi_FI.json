@@ -4524,6 +4524,7 @@
     "ruleSaveFailed": "Säännön tallentaminen epäonnistui"
   },
   "ai": {
+    "loadOlderConversations": "Load older chats",
     "chatHistory": "Chat history",
     "newConversation": "New chat",
     "refreshHistory": "Refresh",

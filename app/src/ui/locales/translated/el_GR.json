@@ -4524,6 +4524,7 @@
     "ruleSaveFailed": "Η αποθήκευση του κανόνα απέτυχε"
   },
   "ai": {
+    "loadOlderConversations": "Load older chats",
     "chatHistory": "Chat history",
     "newConversation": "New chat",
     "refreshHistory": "Refresh",

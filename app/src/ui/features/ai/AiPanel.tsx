@@ -447,7 +447,7 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
         )}
         <AiConversationPicker
           value={state.conversationId}
-          refreshKey={`${state.conversationId}:${state.streaming}`}
+          refreshKey={String(state.streaming)}
           onSelect={(id) => void selectConversation(id)}
         />
         {historyLoading && (

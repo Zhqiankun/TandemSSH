@@ -4524,6 +4524,7 @@
     "ruleSaveFailed": "규칙 저장에 실패했습니다"
   },
   "ai": {
+    "loadOlderConversations": "Load older chats",
     "chatHistory": "Chat history",
     "newConversation": "New chat",
     "refreshHistory": "Refresh",

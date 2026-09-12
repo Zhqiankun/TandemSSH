@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { FieldCrypto } from "../../utils/field-crypto.js";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, lt, or } from "drizzle-orm";
 import {
   aiConversations,
   aiMessages,
@@ -230,6 +230,40 @@ export class AiRepository {
       .where(eq(aiConversations.userId, userId))
       .orderBy(desc(aiConversations.updatedAt))
       .limit(limit);
+  }
+
+  async listConversationPage(
+    userId: string,
+    cursor?: { updatedAt: string; id: number },
+  ) {
+    const rows = await this.context.drizzle
+      .select()
+      .from(aiConversations)
+      .where(
+        and(
+          eq(aiConversations.userId, userId),
+          cursor
+            ? or(
+                lt(aiConversations.updatedAt, cursor.updatedAt),
+                and(
+                  eq(aiConversations.updatedAt, cursor.updatedAt),
+                  lt(aiConversations.id, cursor.id),
+                ),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(desc(aiConversations.updatedAt), desc(aiConversations.id))
+      .limit(51);
+    const conversations = rows.slice(0, 50),
+      last = conversations.at(-1);
+    return {
+      conversations,
+      nextCursor:
+        rows.length > 50 && last
+          ? JSON.stringify({ updatedAt: last.updatedAt, id: last.id })
+          : null,
+    };
   }
 
   async findConversation(

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { getAiConversations, type AiConversation } from "@/api/ai-api";
+import { getAiConversationPage, type AiConversation } from "@/api/ai-api";
 import { Button } from "@/components/button";
 export function AiConversationPicker({
   value,
@@ -14,15 +14,28 @@ export function AiConversationPicker({
   const { t } = useTranslation();
   const [rows, setRows] = useState<AiConversation[]>([]),
     [error, setError] = useState(false),
-    [loading, setLoading] = useState(false);
+    [loading, setLoading] = useState(false),
+    [nextCursor, setNextCursor] = useState<string | null>(null);
   const revision = useRef(0);
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (cursor?: string) => {
     const current = ++revision.current;
     setLoading(true);
     setError(false);
     try {
-      const result = await getAiConversations();
-      if (current === revision.current) setRows(result);
+      const result = await getAiConversationPage(cursor);
+      if (current === revision.current) {
+        setRows((previous) =>
+          cursor
+            ? [
+                ...previous,
+                ...result.conversations.filter(
+                  (row) => !previous.some((old) => old.id === row.id),
+                ),
+              ]
+            : result.conversations,
+        );
+        setNextCursor(result.nextCursor);
+      }
     } catch {
       if (current === revision.current) setError(true);
     } finally {
@@ -71,6 +84,16 @@ export function AiConversationPicker({
           {t("ai.refreshHistory")}
         </Button>
       </div>
+      {nextCursor && (
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={loading}
+          onClick={() => void reload(nextCursor)}
+        >
+          {t("ai.loadOlderConversations")}
+        </Button>
+      )}
       {error && (
         <p role="alert" className="text-xs text-destructive">
           {t("ai.historyLoadFailed")}

@@ -4524,6 +4524,7 @@
     "ruleSaveFailed": "No s'ha pogut desar la regla"
   },
   "ai": {
+    "loadOlderConversations": "Load older chats",
     "chatHistory": "Chat history",
     "newConversation": "New chat",
     "refreshHistory": "Refresh",

@@ -4524,6 +4524,7 @@
     "ruleSaveFailed": "নিয়ম সংরক্ষণ করতে ব্যর্থ হয়েছে"
   },
   "ai": {
+    "loadOlderConversations": "Load older chats",
     "chatHistory": "Chat history",
     "newConversation": "New chat",
     "refreshHistory": "Refresh",

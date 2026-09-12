@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 const api = vi.hoisted(() => ({
   getAiConversations: vi.fn(),
+  getAiConversationPage: vi.fn(),
   getAiConversation: vi.fn(),
   getAiProviders: vi.fn(),
   getAiStatus: vi.fn(),
@@ -73,6 +74,13 @@ beforeEach(() => {
     { id: 1, title: "旧一" },
     { id: 2, title: "旧二" },
   ]);
+  api.getAiConversationPage.mockResolvedValue({
+    conversations: [
+      { id: 1, title: "旧一" },
+      { id: 2, title: "旧二" },
+    ],
+    nextCursor: null,
+  });
   api.getAiConversation.mockImplementation(async (id: number) => row(id));
   api.send.mockResolvedValue(undefined);
   HTMLElement.prototype.scrollTo = vi.fn();
@@ -82,6 +90,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 async function picker() {
+  await screen.findByRole("option", { name: "旧一" });
   return screen.findByRole("combobox", { name: "ai.chatHistory" });
 }
 it("opens saved history with incomplete status, continues its model and starts a separate new chat", async () => {

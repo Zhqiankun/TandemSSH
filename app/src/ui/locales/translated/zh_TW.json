@@ -4524,6 +4524,7 @@
     "ruleSaveFailed": "無法儲存規則"
   },
   "ai": {
+    "loadOlderConversations": "載入更早對話",
     "chatHistory": "歷史對話",
     "newConversation": "新對話",
     "refreshHistory": "重新整理",
