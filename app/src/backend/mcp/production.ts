@@ -1,3 +1,4 @@
+import { buildClientConfiguration } from "./client-configuration.js";
 import { taskRecovery } from "../collaboration/recovery/production.js";
 import {
   fileAutomation,
@@ -149,22 +150,14 @@ export async function clientConfiguration(
   userId: string,
   clientId: string,
 ): Promise<McpClientConfiguration> {
-  const { profileId } = await startMcpBridge();
-  if (
-    !pairingRegistry
-      .list(userId)
-      .some((client) => client.id === clientId && client.enabled)
-  )
-    throw new Error("MCP_CLIENT_NOT_FOUND");
-  return {
-    command: process.execPath,
-    args: [
-      fileURLToPath(new URL("./stdio.js", import.meta.url)),
-      "--profile",
-      profileId,
-      "--client",
-      clientId,
-    ],
-    env: { ELECTRON_RUN_AS_NODE: "1" },
-  };
+  return buildClientConfiguration(
+    {
+      list: (owner) => pairingRegistry.list(owner),
+      start: startMcpBridge,
+      executable: process.execPath,
+      entry: fileURLToPath(new URL("./stdio.js", import.meta.url)),
+    },
+    userId,
+    clientId,
+  );
 }
