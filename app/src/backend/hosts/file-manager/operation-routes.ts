@@ -411,11 +411,40 @@ export function registerFileOperationRoutes(
             if (sshConn.sudoPassword === attemptedPassword)
               delete sshConn.sudoPassword;
           };
-          execWithSudo(sshConn, deleteCommand, attemptedPassword, () => {
-            if (!sshConn.isConnected || sshSessions[sessionId] !== sshConn)
-              throw Error("SUDO_NOT_DISPATCHED");
-          }).then(
+          const controller = new AbortController();
+          const cleanupSudo = () => {
+            req.off("aborted", cancelSudo);
+            res.off("close", sudoResponseClosed);
+          };
+          const cancelSudo = () => {
+            if (controller.signal.aborted) return;
+            controller.abort();
+            cleanupSudo();
+            discardFailedPassword();
+            resolve();
+          };
+          const sudoResponseClosed = () => {
+            if (!res.writableEnded) cancelSudo();
+          };
+          req.once("aborted", cancelSudo);
+          res.once("close", sudoResponseClosed);
+          if (req.aborted || res.destroyed) {
+            cancelSudo();
+            return;
+          }
+          execWithSudo(
+            sshConn,
+            deleteCommand,
+            attemptedPassword,
+            () => {
+              if (!sshConn.isConnected || sshSessions[sessionId] !== sshConn)
+                throw Error("SUDO_NOT_DISPATCHED");
+            },
+            controller.signal,
+          ).then(
             (result) => {
+              cleanupSudo();
+              if (controller.signal.aborted) return;
               if (fileCommandSucceeded(result.code)) {
                 res.json({
                   message: "Item deleted successfully",
@@ -434,6 +463,8 @@ export function registerFileOperationRoutes(
               resolve();
             },
             () => {
+              cleanupSudo();
+              if (controller.signal.aborted) return;
               discardFailedPassword();
               res.status(500).json({ error: "SUDO_DELETE_FAILED" });
               resolve();

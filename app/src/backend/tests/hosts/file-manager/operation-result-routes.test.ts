@@ -664,3 +664,84 @@ it.each([
     }
   },
 );
+
+it.each(["request", "response", "success"] as const)(
+  "propagates HTTP %s to sudo cancellation without late responses",
+  async (phase) => {
+    const routes = new Map<string, RequestHandler>();
+    const register = (path: string, handler: RequestHandler) =>
+      routes.set(path, withRequestEvents(handler));
+    const session = { isConnected: true, sudoPassword: "cached" } as SSHSession;
+    registerFileOperationRoutes(
+      {
+        get: register,
+        post: register,
+        put: register,
+        delete: register,
+      } as unknown as Express,
+      { sshSessions: { session }, verifySessionOwnership: () => true },
+    );
+    vi.mocked(execChannel).mockImplementation(
+      (_session, _command, callback) => {
+        const stream = Object.assign(new EventEmitter(), {
+          stderr: new EventEmitter(),
+        });
+        callback(undefined, stream as never);
+        stream.stderr.emit("data", Buffer.from("Permission denied"));
+        stream.emit("close", 1);
+      },
+    );
+    let release!: (result: {
+      code: number;
+      stdout: string;
+      stderr: string;
+    }) => void;
+    let signal!: AbortSignal;
+    vi.mocked(execWithSudo).mockImplementation(
+      (_session, _command, _password, _check, cancelSignal) => {
+        signal = cancelSignal!;
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      },
+    );
+    const req = Object.assign(new EventEmitter(), {
+      userId: "owner",
+      body: { sessionId: "session", path: "/srv/file", permanent: true },
+    });
+    const status = vi.fn().mockReturnThis(),
+      json = vi.fn();
+    const res = Object.assign(new EventEmitter(), {
+      status,
+      json,
+      writableEnded: false,
+    });
+    json.mockImplementation(() => {
+      res.writableEnded = true;
+      res.emit("close");
+    });
+    const request = routes.get("/ssh/file_manager/ssh/deleteItem")!(
+      req as never,
+      res as never,
+      vi.fn(),
+    );
+    expect(execWithSudo).toHaveBeenCalledTimes(1);
+    if (phase === "request") req.emit("aborted");
+    if (phase === "response") res.emit("close");
+    if (phase !== "success") {
+      await request;
+      expect(signal.aborted).toBe(true);
+      expect(session.sudoPassword).toBeUndefined();
+    }
+    release({ code: 0, stdout: "", stderr: "" });
+    await request;
+    await Promise.resolve();
+    expect(json).toHaveBeenCalledTimes(phase === "success" ? 1 : 0);
+    expect(req.listenerCount("aborted")).toBe(0);
+    expect(res.listenerCount("close")).toBe(0);
+    if (phase === "success") {
+      expect(signal.aborted).toBe(false);
+      expect(session.sudoPassword).toBe("cached");
+    }
+  },
+);

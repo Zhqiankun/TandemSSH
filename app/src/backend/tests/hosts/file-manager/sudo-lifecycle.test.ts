@@ -1,4 +1,4 @@
-import { EventEmitter } from "node:events";
+import { EventEmitter, getEventListeners } from "node:events";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   ChannelOpenSerializer,
@@ -138,3 +138,61 @@ it("clears the timeout after confirmed completion", async () => {
   await vi.advanceTimersByTimeAsync(60000);
   expect(f.stream.destroy).not.toHaveBeenCalled();
 });
+
+it.each(["before", "queued", "negotiating", "active", "completed"] as const)(
+  "handles cancellation in the %s sudo phase",
+  async (phase) => {
+    const f = fixture(),
+      controller = new AbortController();
+    let release!: () => void;
+    const held =
+      phase === "queued"
+        ? f.session.channelOpener.run(
+            () =>
+              new Promise<void>((resolve) => {
+                release = resolve;
+              }),
+          )
+        : Promise.resolve();
+    if (phase === "before") controller.abort();
+    const pending = execWithSudoBuffer(
+      f.session,
+      "id -u",
+      "secret",
+      undefined,
+      controller.signal,
+    );
+    await flush();
+    if (phase === "active" || phase === "completed") {
+      f.open();
+      await flush();
+    }
+    if (phase === "completed") {
+      f.stream.emit("close", 0);
+      await pending;
+    }
+    controller.abort();
+    const result = await pending;
+    if (phase === "queued") {
+      release();
+      await held;
+      await flush();
+    }
+    if (phase === "negotiating") {
+      f.open();
+      await flush();
+    }
+    expect(result.code).toBe(phase === "completed" ? 0 : null);
+    expect(f.exec).toHaveBeenCalledTimes(
+      phase === "before" || phase === "queued" ? 0 : 1,
+    );
+    expect(f.stream.end).toHaveBeenCalledTimes(
+      phase === "active" || phase === "completed" ? 1 : 0,
+    );
+    expect(f.stream.destroy).toHaveBeenCalledTimes(
+      phase === "active" || phase === "negotiating" ? 1 : 0,
+    );
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+  },
+);

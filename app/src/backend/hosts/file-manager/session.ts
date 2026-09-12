@@ -65,14 +65,19 @@ export function execWithSudo(
   command: string,
   sudoPassword: string,
   assertSession?: () => void,
+  signal?: AbortSignal,
 ): Promise<{ stdout: string; stderr: string; code: number | null }> {
-  return execWithSudoBuffer(session, command, sudoPassword, assertSession).then(
-    (result) => ({
-      stdout: result.stdout.toString("utf8"),
-      stderr: result.stderr,
-      code: result.code,
-    }),
-  );
+  return execWithSudoBuffer(
+    session,
+    command,
+    sudoPassword,
+    assertSession,
+    signal,
+  ).then((result) => ({
+    stdout: result.stdout.toString("utf8"),
+    stderr: result.stderr,
+    code: result.code,
+  }));
 }
 
 export function execWithSudoBuffer(
@@ -80,6 +85,7 @@ export function execWithSudoBuffer(
   command: string,
   sudoPassword: string,
   assertSession?: () => void,
+  signal?: AbortSignal,
 ): Promise<{ stdout: Buffer; stderr: string; code: number | null }> {
   return new Promise((resolve) => {
     const sudoCommand = `sudo -S -p '' -- ${command}`;
@@ -92,12 +98,23 @@ export function execWithSudoBuffer(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
       resolve({ stdout: Buffer.concat(stdoutChunks), stderr: detail, code });
     };
     const timer = setTimeout(() => {
       finish(null, dispatched ? "SUDO_RESULT_UNKNOWN" : "SUDO_NOT_DISPATCHED");
       channel?.destroy();
     }, 60000);
+    const abort = () => {
+      if (settled) return;
+      finish(null, dispatched ? "SUDO_RESULT_UNKNOWN" : "SUDO_NOT_DISPATCHED");
+      channel?.destroy();
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
     const checkSession = () => {
       if (!session.isConnected) throw Error("SUDO_NOT_DISPATCHED");
       assertSession?.();
