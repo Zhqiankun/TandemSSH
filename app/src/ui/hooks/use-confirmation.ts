@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface ConfirmationOptions {
   title: string;
@@ -15,6 +16,7 @@ interface ToastConfirmOptions {
 }
 
 export function useConfirmation() {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [options, setOptions] = useState<ConfirmationOptions | null>(null);
   const [onConfirm, setOnConfirm] = useState<(() => void) | null>(null);
@@ -84,15 +86,19 @@ export function useConfirmation() {
   const confirmWithToast = (
     opts: ConfirmationOptions | string,
     callback?: () => void,
-    variantOrConfirmLabel: "default" | "destructive" | string = "Confirm",
-    cancelLabel: string = "Cancel",
+    variantOrConfirmLabel: "default" | "destructive" | string = t(
+      "common.confirm",
+    ),
+    cancelLabel: string = t("common.cancel"),
     toastOptions: ToastConfirmOptions = { confirmOnEnter: false },
   ): Promise<boolean> => {
     return new Promise((resolve) => {
       const isVariant =
         variantOrConfirmLabel === "default" ||
         variantOrConfirmLabel === "destructive";
-      const confirmLabel = isVariant ? "Confirm" : variantOrConfirmLabel;
+      const confirmLabel = isVariant
+        ? t("common.confirm")
+        : variantOrConfirmLabel;
 
       const { confirmOnEnter = false, duration = 8000 } = toastOptions;
 

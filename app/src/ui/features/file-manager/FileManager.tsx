@@ -3357,6 +3357,16 @@ function FileManagerContent({
             >
               {t("tandem.localBrowser.toggle")}
             </Button>
+            {localPanelOpen && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!sshSessionId}
+                onClick={() => setTrashOpen(true)}
+              >
+                {t("fileManager.trash")}
+              </Button>
+            )}
             <span className="min-w-0 truncate text-xs text-muted-foreground">
               {t("tandem.localBrowser.remote")} ·{" "}
               {currentHost?.name ?? currentHost?.ip} · {currentPath}
