@@ -24,6 +24,7 @@ beforeEach(() => vi.clearAllMocks());
 const requestEvents = { once: vi.fn(), off: vi.fn() };
 const responseEvents = { once: vi.fn(), off: vi.fn() };
 it.each([
+  "target-conflict",
   "silent-failure",
   "missing-exit",
   "silent-success",
@@ -46,7 +47,8 @@ it.each([
     stderr: new EventEmitter(),
   });
   vi.mocked(execChannel).mockImplementation((_session, command, callback) => {
-    expect(command).toMatch(/^cp -R -- /);
+    expect(command).toContain("cp -RP -- ");
+    expect(command).toContain("mv -n -T -- ");
     callback(undefined, stream as never);
     if (mode === "stream-error") stream.emit("error", Error("disconnected"));
     else {
@@ -58,7 +60,13 @@ it.each([
       }
       stream.emit(
         "close",
-        mode === "missing-exit" ? undefined : mode === "silent-failure" ? 1 : 0,
+        mode === "missing-exit"
+          ? undefined
+          : mode === "silent-failure"
+            ? 1
+            : mode === "target-conflict"
+              ? 73
+              : 0,
       );
     }
   });
@@ -84,7 +92,10 @@ it.each([
     mode === "missing-exit"
   )
     expect(status).toHaveBeenCalledWith(500);
-  else expect(json.mock.calls[0][0]).toHaveProperty("uniqueName");
+  else if (mode === "target-conflict") {
+    expect(status).toHaveBeenCalledWith(409);
+    expect(json).toHaveBeenCalledWith({ error: "FILE_TARGET_EXISTS" });
+  } else expect(json.mock.calls[0][0]).toHaveProperty("uniqueName");
 });
 
 it.each([

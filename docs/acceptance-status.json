@@ -587,7 +587,8 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "160-copy-no-overwrite.md"
       ],
       "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
     },
@@ -654,9 +655,10 @@
         "127-file-undo-session.md",
         "128-desktop-file-undo.md",
         "135-exclusive-file-create.md",
-        "136-desktop-file-create.md"
+        "136-desktop-file-create.md",
+        "160-copy-no-overwrite.md"
       ],
-      "remaining": "重命名与 Linux 跨文件系统移动已有真实 OpenSSH 验证；Windows→真实 SSH 的目录复制/移动/异地撤销、新建文件/目录及同名冲突已通过。批量失败撤销、重连中止仍只有逻辑测试/调用检查；复制命名冲突、超时/断连以及完整批量删除界面仍需验收。"
+      "remaining": "文件复制同名冲突、目录防合并与符号链接已通过真实 Linux SSH；排队超时/断连有路由测试。批量失败撤销、重连中止、完整批量删除界面与本轮复制修复的桌面交互仍需验收。"
     },
     {
       "id": "B10",

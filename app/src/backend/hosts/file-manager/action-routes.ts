@@ -1,3 +1,4 @@
+import { createCopyPlan } from "./copy-plan.js";
 import { registerOwnershipRoute } from "./ownership-route.js";
 import type { Express } from "express";
 import type { AuthenticatedRequest } from "../../../types/index.js";
@@ -81,16 +82,11 @@ export function registerFileActionRoutes(
     sshConn.lastActive = Date.now();
     scheduleSessionCleanup(sessionId);
 
-    const sourceName = sourcePath.split("/").pop() || "copied_item";
-
-    const timestamp = Date.now().toString().slice(-8);
-    const uniqueName = `${sourceName}_copy_${timestamp}`;
-    const targetPath = `${targetDir}/${uniqueName}`;
-
-    const escapedSource = sourcePath.replace(/'/g, "'\"'\"'");
-    const escapedTarget = targetPath.replace(/'/g, "'\"'\"'");
-
-    const copyCommand = `cp -R -- '${escapedSource}' '${escapedTarget}' && echo "COPY_SUCCESS"`;
+    const {
+      uniqueName,
+      targetPath,
+      command: copyCommand,
+    } = createCopyPlan(sourcePath, targetDir);
 
     let copyExpired = false;
     let copyStream: import("ssh2").ClientChannel | undefined;
@@ -169,6 +165,12 @@ export function registerFileActionRoutes(
         stream.on("close", (code) => {
           cleanupCopy();
           if (copyExpired) return;
+
+          if (code === 73) {
+            if (!res.headersSent)
+              res.status(409).json({ error: "FILE_TARGET_EXISTS" });
+            return;
+          }
 
           if (code !== 0) {
             const fullErrorInfo =
