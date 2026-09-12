@@ -27,3 +27,7 @@
 独立真实 ConPTY 全文件退出码 0：11 项全部通过，86.17 秒；包含自动和协作 TaskRuntime、父 MCP 流程共用控制租约、参数原文以及人工接管阻止后续派发。报告 `.cache/pre-alpha10-pty-results.json`。
 
 本地门禁通过后准备推送 v0.1.0-alpha.10，公开构建和发布必须继续等待 GitHub Actions；本记录不是发布成功证明。
+
+## 发布取消
+
+后续高级配置审查发现旧终端启动原始输入路径未关闭，详见 199。Release 34678529650 在 Validate source 阶段取消，最终 completed/cancelled；alpha.10 没有公开发布。标签保留，不重新指向其他提交，修复版使用 alpha.11。上述本地通过结果不再作为修复版发布门禁。

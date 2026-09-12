@@ -1989,6 +1989,7 @@
     }
   },
   "terminal": {
+    "legacyStartupBlocked": "已停用旧版自动启动命令。环境设置、启动片段和 Mosh 命令请转为流程，审阅后执行。",
     "cwdConfirm": "请确认终端处于空闲的 POSIX Shell 提示符，而非 vim、top 等交互程序中。将向同一终端发送只读目录查询。",
     "cwdUnavailable": "无法确认当前终端目录，请在文件浏览器中手动选择目录。",
     "cwdControlBusy": "请先人工接管并回到空闲 Shell 提示符，再读取此终端的目录。",

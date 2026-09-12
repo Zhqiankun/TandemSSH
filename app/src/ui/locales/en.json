@@ -1989,6 +1989,7 @@
     }
   },
   "terminal": {
+    "legacyStartupBlocked": "Legacy startup commands are disabled. Review and run environment setup, snippets and Mosh commands through a workflow.",
     "cwdConfirm": "Confirm that this terminal is at an idle POSIX shell prompt, not inside vim/top or another interactive program. A read-only directory query will be sent to this same terminal.",
     "cwdUnavailable": "The current terminal directory could not be confirmed. Use the file browser to choose a directory manually.",
     "cwdControlBusy": "Take over control and return to an idle shell prompt before reading this terminal directory.",

@@ -1689,58 +1689,22 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
             logTerminalActivity();
 
-            setTimeout(async () => {
-              const terminalConfig = {
-                ...DEFAULT_TERMINAL_CONFIG,
-                ...terminalDefaults,
-                ...hostConfig.terminalConfig,
-              };
-
-              if (
-                terminalConfig.environmentVariables &&
-                terminalConfig.environmentVariables.length > 0
-              ) {
-                for (const envVar of terminalConfig.environmentVariables) {
-                  if (envVar.key && envVar.value && ws.readyState === 1) {
-                    ws.send(
-                      JSON.stringify({
-                        type: "input",
-                        data: `export ${envVar.key}="${envVar.value}"\n`,
-                      }),
-                    );
-                  }
-                }
-              }
-
-              if (terminalConfig.startupSnippetId) {
-                try {
-                  const snippets = await getSnippets();
-                  const snippet = snippets.find(
-                    (s: { id: number }) =>
-                      s.id === terminalConfig.startupSnippetId,
-                  );
-                  if (snippet && ws.readyState === 1) {
-                    ws.send(
-                      JSON.stringify({
-                        type: "input",
-                        data: snippet.content + "\n",
-                      }),
-                    );
-                  }
-                } catch (err) {
-                  console.warn("Failed to execute startup snippet:", err);
-                }
-              }
-
-              if (terminalConfig.autoMosh && ws.readyState === 1) {
-                ws.send(
-                  JSON.stringify({
-                    type: "input",
-                    data: terminalConfig.moshCommand + "\n",
-                  }),
-                );
-              }
-            }, 100);
+            const startupConfig = {
+              ...DEFAULT_TERMINAL_CONFIG,
+              ...terminalDefaults,
+              ...hostConfig.terminalConfig,
+            };
+            if (
+              startupConfig.environmentVariables?.length ||
+              startupConfig.startupSnippetId ||
+              startupConfig.autoMosh
+            ) {
+              addLog({
+                type: "info",
+                stage: "connection",
+                message: t("terminal.legacyStartupBlocked"),
+              });
+            }
           } else if (msg.type === "session_ended") {
             wasDisconnectedBySSH.current = true;
             setIsConnected(false);
