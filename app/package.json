@@ -1,7 +1,7 @@
 {
   "name": "tandemssh",
   "private": true,
-  "version": "0.1.0-alpha.7",
+  "version": "0.1.0-alpha.8",
   "description": "Human and AI collaboration in a shared SSH workspace. Derived from Termix.",
   "author": "TandemSSH contributors",
   "main": "electron/main.cjs",

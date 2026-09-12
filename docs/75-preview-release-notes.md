@@ -2,15 +2,16 @@
 
 同舟 SSH 是 Windows 优先的人机协作 SSH 工作台，基于 Termix 改造。模型使用你自己的接口地址和 API Key；核心 SSH、协同和 MCP 功能不要求本软件会员。
 
-## alpha.5 本次更新
+## alpha.8 本次更新
 
-- AI 交还控制权后可读取最近的人工终端输出；已知秘密会脱敏，输出有长度上限并标记为非可信数据。Windows / 真实 Linux SSH 的自动和协作模式已完成专项验证。
-- 修复切换会话时旧请求覆盖当前任务列表、接管状态相互影响的问题；命令和模型上下文仍绑定原会话。
-- MCP 在人工接管后明确返回控制权失效错误，并提供中文停止写入提示。
-- 修复回收站中的断链被误判为丢失、还原时可能覆盖既有断链的问题；修复 Windows 本地图片存储目录无法按原生路径保存的问题。
+- 修复 MCP 同一命令并发重试时错误返回“操作进行中”的问题；重复请求共用原操作，改变请求内容会被拒绝。
+- 远端文件复制改为先完成临时副本，再以不覆盖方式放到目标位置；保护已有文件、目录及活动/悬空链接，冲突显示中文提示。
+- 普通与永久删除批次在连接切换或文件管理器关闭后停止后续操作，并明确显示已确认完成数。
+- vim、nano、less、top、tmux 等已知交互程序需要人工审查，严格模式拒绝自动执行；预授权不能跳过该规则。
+- 历史时间显示跟随软件语言。AI、MCP 与流程的重复请求及控制权切换补齐自动/协作模式验证。
 - 保留内置更新按钮和每 20 分钟自动检测，由 Actions 同步发布 latest.yml、安装包及校验文件。
 
-仍为开发预览，完整产品验收继续进行。alpha.1 及之后的安装版可在软件内检查新版；alpha.0 需手动安装一次当前版本。验收记录见 docs/94-trash-link-retention.md、docs/95-windows-image-storage-path.md、docs/97-mcp-control-errors.md、docs/102-windows-ai-handback.md、docs/103-workbench-session-isolation.md。
+仍为开发预览，完整产品验收继续进行。alpha.1 及之后的安装版可在软件内检查新版；alpha.0 需手动安装一次当前版本。相关验收记录见 docs/155-mcp-pending-retry.md、docs/159-ai-creation-retries.md、docs/160-copy-no-overwrite.md、docs/161-delete-session-guards.md。
 
 ## 下载与启动
 
