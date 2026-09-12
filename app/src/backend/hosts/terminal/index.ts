@@ -52,7 +52,7 @@ import {
   performPortKnocking,
   applyAgentAuth,
 } from "../terminal-auth-helpers.js";
-import { isWindowsSftpPath, sftpPathToLocalPath } from "../transfer-paths.js";
+import { initialDirectoryCommand } from "./initial-directory.js";
 import { preparePrivateKeyForSSH2 } from "../../utils/ssh-key-utils.js";
 import { triggerLoginAlert } from "../../utils/alert-trigger.js";
 import { getClientIp } from "../../utils/request-origin.js";
@@ -2279,14 +2279,13 @@ wss.on("connection", async (ws: WebSocket, req) => {
           // (or tmux session) is ready
           const runPostShellCommands = (delay: number) => {
             setTimeout(() => {
-              if (initialPath && initialPath.trim() !== "") {
+              if (initialPath !== undefined && initialPath !== null && initialPath !== "") {
                 let cdCommand: string;
-                if (isWindowsSftpPath(initialPath)) {
-                  const winPath = sftpPathToLocalPath(initialPath);
-                  const escaped = winPath.replace(/"/g, '""');
-                  cdCommand = `cd "${escaped}"\r`;
-                } else {
-                  cdCommand = `cd "${initialPath.replace(/"/g, '\\"')}"\r`;
+                try {
+                  cdCommand = initialDirectoryCommand(initialPath);
+                } catch {
+                  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "error", code: "UNSUPPORTED_TERMINAL_PATH", message: "This directory cannot be represented safely in the remote terminal." }));
+                  return;
                 }
                 stream.write(cdCommand);
               }

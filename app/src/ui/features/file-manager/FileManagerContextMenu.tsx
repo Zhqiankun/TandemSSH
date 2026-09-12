@@ -1,3 +1,4 @@
+import { terminalParentPath } from "./file-terminal-path";
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils.ts";
 import {
@@ -215,8 +216,8 @@ export function FileManagerContextMenu({
       const targetPath = isSingleFile
         ? files[0].type === "directory"
           ? files[0].path
-          : files[0].path.substring(0, files[0].path.lastIndexOf("/"))
-        : files[0].path.substring(0, files[0].path.lastIndexOf("/"));
+          : terminalParentPath(files[0].path)
+        : terminalParentPath(files[0].path);
 
       menuItems.push({
         icon: <Terminal className="size-3.5" />,

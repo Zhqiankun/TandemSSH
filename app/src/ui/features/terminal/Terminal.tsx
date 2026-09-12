@@ -1543,11 +1543,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             const trustRejected = msg.code === "HOST_TRUST_REJECTED";
             const credentialsRequired =
               msg.code === "HOST_CREDENTIAL_REBIND_REQUIRED";
-            const errorMessage = credentialsRequired
-              ? t("configBackup.credentialsRequired")
-              : trustRejected
-                ? t("terminal.hostKeyRejected")
-                : msg.message || t("terminal.unknownError");
+            const errorMessage =
+              msg.code === "UNSUPPORTED_TERMINAL_PATH"
+                ? t("terminal.initialPathUnsupported")
+                : credentialsRequired
+                  ? t("configBackup.credentialsRequired")
+                  : trustRejected
+                    ? t("terminal.hostKeyRejected")
+                    : msg.message || t("terminal.unknownError");
 
             addLog({
               type: "error",

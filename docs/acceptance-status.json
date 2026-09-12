@@ -731,9 +731,10 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "181-file-terminal-directory.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": "已修复文件菜单根目录父路径与初始目录命令转义，并通过实际 Shell 和菜单测试。复制远端路径、真实在目录打开终端、可信 cwd 跟随、打开本地下载目录仍需逐项实机归并。"
     },
     {
       "id": "B12",

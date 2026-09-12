@@ -1984,6 +1984,7 @@
     }
   },
   "terminal": {
+    "initialPathUnsupported": "This directory cannot be safely entered in the remote terminal. No startup command was run; change directory manually.",
     "connect": "Connect to Host",
     "clear": "Clear",
     "paste": "Paste",

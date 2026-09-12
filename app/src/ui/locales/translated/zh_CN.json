@@ -1984,6 +1984,7 @@
     }
   },
   "terminal": {
+    "initialPathUnsupported": "无法在远端终端中安全设置此目录，未执行启动命令。请手动切换目录。",
     "connect": "连接到主机",
     "clear": "清除",
     "paste": "粘贴",
