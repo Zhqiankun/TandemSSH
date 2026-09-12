@@ -241,3 +241,46 @@ it("shows global deny and host allow sources for the final denied trial", async 
   expect(api.save).not.toHaveBeenCalled();
   expect(collab.takeover).not.toHaveBeenCalled();
 });
+it.each(["/bin/bash", "/usr/bin/python3", "/usr/bin/vim"])(
+  "shows %s as needing review and then denied in strict mode without saving",
+  async (program) => {
+    api.read.mockResolvedValueOnce({
+      revision: 2,
+      sets: [
+        {
+          id: "global",
+          scope: { type: "global" },
+          strictAllowlist: false,
+          rules: [
+            {
+              id: "allow",
+              effect: "allow",
+              match: { kind: "program", program },
+              reason: "审查边界",
+            },
+          ],
+        },
+      ],
+    });
+    render(<PolicyEditor sessionId="session" hostId={1} />);
+    await screen.findByDisplayValue(program);
+    fireEvent.change(screen.getByLabelText("试算命令（仅一条）"), {
+      target: { value: program },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "只试算，不执行" }));
+    await screen.findByText("需要人工审阅");
+    expect(screen.queryByText("规则允许")).toBeNull();
+    expect(api.save).not.toHaveBeenCalled();
+    expect(collab.takeover).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "严格白名单：未明确允许就拒绝" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "只试算，不执行" }));
+    await screen.findByText("规则拒绝");
+    await screen.findByText(
+      /严格模式禁止无法判定行为的脚本、解释器或交互式终端工具/,
+    );
+    expect(api.save).not.toHaveBeenCalled();
+    expect(collab.takeover).not.toHaveBeenCalled();
+  },
+);

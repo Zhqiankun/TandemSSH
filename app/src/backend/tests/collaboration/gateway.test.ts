@@ -789,59 +789,89 @@ it("keeps a global deny above a host allow regardless of rule order", async () =
   }
 });
 
-it.each([
-  "vi",
-  "vim",
-  "nvim",
-  "nano",
-  "emacs",
-  "less",
-  "more",
-  "top",
-  "htop",
-  "btop",
-  "tmux",
-  "screen",
-])("does not treat %s as an ordinary allowlisted command", async (program) => {
-  for (const qualified of [program, "/usr/bin/" + program]) {
-    const f = fixture();
-    f.policy.sets[0].rules = [
-      {
-        id: "allow-interactive",
-        effect: "allow",
-        match: { kind: "program", program: qualified },
-        reason: "显式程序允许仍不证明交互安全",
-      },
-    ];
-    f.gateway.authorizeTask("task-1", f.lease, {
-      matches: [{ kind: "program", program: qualified }],
-      cwdScopes: ["/srv/app"],
-      maxOperations: 2,
-      expiresAt: 5000,
-      expectedPolicyRevision: 1,
-    });
-    const proposed = await f.gateway.propose(
-      f.context("interactive"),
-      action(qualified, []),
-    );
-    expect(proposed.decision.outcome).toBe("unknown");
-    await expect(f.gateway.dispatch(proposed.id)).rejects.toThrow(
-      "APPROVAL_REQUIRED",
-    );
-    expect(f.writes).toEqual([]);
-    f.policy.sets[0].strictAllowlist = true;
-    const strict = await f.gateway.propose(
-      f.context("strict-interactive"),
-      action(qualified, []),
-    );
-    expect(strict.decision.outcome).toBe("deny");
-    expect(strict.decision.reasons).toContain("OPAQUE_COMMAND_IN_STRICT_MODE");
-    expect(() => f.gateway.approveOnce(strict.id, strict.digest, 1)).toThrow(
-      "POLICY_DENIED",
-    );
-    await expect(f.gateway.dispatch(strict.id)).rejects.toThrow(
-      "POLICY_DENIED",
-    );
-    expect(f.writes).toEqual([]);
-  }
-});
+it.each(
+  [
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "dash",
+    "eval",
+    "python",
+    "python3",
+    "node",
+    "perl",
+    "ruby",
+    "powershell",
+    "pwsh",
+    "cmd",
+    "sudo",
+    "su",
+    "env",
+    "xargs",
+    "vi",
+    "vim",
+    "nvim",
+    "nano",
+    "emacs",
+    "less",
+    "more",
+    "top",
+    "htop",
+    "btop",
+    "tmux",
+    "screen",
+  ].flatMap((program) =>
+    (["automatic", "collaborative"] as const).map((mode) => ({
+      program,
+      mode,
+    })),
+  ),
+)(
+  "does not treat $program as ordinarily allowlisted in $mode mode",
+  async ({ program, mode }) => {
+    for (const qualified of [program, "/usr/bin/" + program]) {
+      const f = fixture({ mode });
+      f.policy.sets[0].rules = [
+        {
+          id: "allow-interactive",
+          effect: "allow",
+          match: { kind: "program", program: qualified },
+          reason: "显式程序允许仍不证明交互安全",
+        },
+      ];
+      f.gateway.authorizeTask("task-1", f.lease, {
+        matches: [{ kind: "program", program: qualified }],
+        cwdScopes: ["/srv/app"],
+        maxOperations: 2,
+        expiresAt: 5000,
+        expectedPolicyRevision: 1,
+      });
+      const proposed = await f.gateway.propose(
+        f.context("interactive"),
+        action(qualified, []),
+      );
+      expect(proposed.decision.outcome).toBe("unknown");
+      await expect(f.gateway.dispatch(proposed.id)).rejects.toThrow(
+        "APPROVAL_REQUIRED",
+      );
+      expect(f.writes).toEqual([]);
+      f.policy.sets[0].strictAllowlist = true;
+      const strict = await f.gateway.propose(
+        f.context("strict-interactive"),
+        action(qualified, []),
+      );
+      expect(strict.decision.outcome).toBe("deny");
+      expect(strict.decision.reasons).toContain(
+        "OPAQUE_COMMAND_IN_STRICT_MODE",
+      );
+      expect(() => f.gateway.approveOnce(strict.id, strict.digest, 1)).toThrow(
+        "POLICY_DENIED",
+      );
+      await expect(f.gateway.dispatch(strict.id)).rejects.toThrow(
+        "POLICY_DENIED",
+      );
+      expect(f.writes).toEqual([]);
+    }
+  },
+);

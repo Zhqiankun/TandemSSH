@@ -1028,9 +1028,10 @@
         "18-file-operation-gateway.md",
         "20-legacy-command-migration.md",
         "23-host-trust.md",
-        "29-local-file-grants.md"
+        "29-local-file-grants.md",
+        "201-opaque-command-matrix.md"
       ],
-      "remaining": "策略、路径授权与主机信任有专项；仍需完整规则组合、撤销与 UI 来源解释逐项核对。"
+      "remaining": "30 个已识别程序在自动/协作及名称/路径两种形式的未知/严格拒绝网关矩阵，以及 Shell/解释器/TUI 中文试算已验证（201）；版本化名称、别名与其他解释器识别覆盖仍需核对。"
     },
     {
       "id": "A13",
