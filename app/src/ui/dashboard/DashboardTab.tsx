@@ -1400,8 +1400,11 @@ export function DashboardTab({
 
   useEffect(() => {
     let mounted = true;
+    let generation = 0;
     const load = async () => {
-      const raw = await getSSHHosts().catch(() => []);
+      const current = ++generation;
+      const raw = await getSSHHosts().catch(() => undefined);
+      if (!mounted || current !== generation || !raw) return;
       const mapped = raw.map(sshHostToHost);
       const statusHosts = mapped.filter(isStatusCheckEnabled);
       if (mounted) setHosts(mapped);
@@ -1409,7 +1412,21 @@ export function DashboardTab({
         fetchMetrics(statusHosts).catch(() => {});
       }
     };
-    load();
+    void load();
+    const events = [
+      "termix:hosts-changed",
+      "ssh-hosts:changed",
+      "hosts:refresh",
+    ];
+    const refreshHosts = () => {
+      void load();
+    };
+    for (const event of events) window.addEventListener(event, refreshHosts);
+    const stop = () => {
+      mounted = false;
+      for (const event of events)
+        window.removeEventListener(event, refreshHosts);
+    };
 
     getUserInfo()
       .then((info) => {
@@ -1471,22 +1488,15 @@ export function DashboardTab({
       .catch(() => {});
 
     if (!isVisible) {
-      return () => {
-        mounted = false;
-      };
+      return stop;
     }
 
-    const metricsInterval = setInterval(async () => {
-      if (document.visibilityState === "hidden") return;
-      const raw = await getSSHHosts().catch(() => []);
-      const mapped = raw.map(sshHostToHost);
-      const statusHosts = mapped.filter(isStatusCheckEnabled);
-      if (mounted) setHosts(mapped);
-      fetchMetrics(statusHosts).catch(() => {});
+    const metricsInterval = setInterval(() => {
+      if (document.visibilityState !== "hidden") void load();
     }, 30000);
 
     return () => {
-      mounted = false;
+      stop();
       clearInterval(metricsInterval);
     };
   }, [fetchMetrics, isVisible]);
