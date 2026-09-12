@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
   touch: vi.fn(),
   history: vi.fn(async () => []),
   engineHistory: vi.fn(),
+  modelFailure: false,
 }));
 vi.mock("../../utils/auth-manager.js", () => ({
   AuthManager: {
@@ -56,6 +57,10 @@ vi.mock("../../ai/engine.js", () => ({
         },
       ],
     };
+    if (state.modelFailure) {
+      yield { type: "error", message: "模型服务暂时不可用" };
+      return;
+    }
     yield {
       type: "tool_message",
       message: {
@@ -86,6 +91,7 @@ afterEach(async () => {
   server?.closeAllConnections();
   await new Promise<void>((r) => (server ? server.close(() => r()) : r()));
   vi.clearAllMocks();
+  state.modelFailure = false;
 });
 it.each([false, true])(
   "chat completion is emitted only after persistence (save failure: %s)",
@@ -183,3 +189,31 @@ it.each([false, true])(
     }
   },
 );
+
+it("model errors end the stream without completion or persisting unmatched tool calls", async () => {
+  state.modelFailure = true;
+  state.history.mockResolvedValue([]);
+  state.append.mockResolvedValue(undefined);
+  const app = express();
+  app.use(express.json());
+  app.use("/ai", router);
+  server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server!.once("listening", resolve));
+  const response = await fetch(
+    "http://127.0.0.1:" +
+      (server.address() as { port: number }).port +
+      "/ai/chat/stream",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providerId: 1, message: "检查主机" }),
+    },
+  );
+  const body = await response.text();
+  expect(body).toContain("模型服务暂时不可用");
+  expect(body).not.toContain('"type":"done"');
+  expect(state.append.mock.calls.map(([input]) => input.role)).toEqual([
+    "user",
+  ]);
+  expect(state.touch).not.toHaveBeenCalled();
+});
