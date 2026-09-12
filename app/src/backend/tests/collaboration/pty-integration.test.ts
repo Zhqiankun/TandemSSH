@@ -1,3 +1,4 @@
+import { compileWorkflow } from "../../collaboration/workflows/definition.js";
 import { LegacyCommandService } from "../../collaboration/legacy/service.js";
 import { describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -423,40 +424,94 @@ describe.runIf(!!shell && fs.existsSync(shell))(
 describe.runIf(!!shell && fs.existsSync(shell))(
   "workflow multiline arguments on actual PTY",
   () => {
-    it("preserves exact multiline and trailing whitespace through a real shell", async () => {
-      await withTerminal(async ({ control, executor, root }) => {
-        const lease = control.grant(
-          {
-            kind: "automation",
-            ownerType: "workflow-run",
-            ownerId: "multiline",
-          },
-          control.snapshot(),
-        );
-        const payload = "首行\n$(printf unexpected); 'quoted'\tending\n\n";
-        const action: CommandAction = {
-          type: "terminal.command",
-          program: "bash",
-          args: [
-            "-c",
-            'printf "%s" "$1" | base64 | tr -d "\\r\\n"',
-            "tandem-test",
-            payload,
-          ],
-          cwd: root,
-        };
-        const prepared = await executor.prepare(action, "multiline");
-        prepared.beforeSend?.();
-        control.commitWrite(lease, prepared.bytes);
-        const result = await prepared.completion;
-        prepared.dispose();
-        expect(result.exitCode).toBe(0);
-        expect(result.output).toContain(
-          Buffer.from(payload).toString("base64"),
-        );
-        expect(result.output).not.toContain("unexpected");
-      });
-    }, 20000);
+    it.each(["command", "script"] as const)(
+      "compiles %s parameters and preserves one exact argument through a real shell",
+      async (kind) => {
+        await withTerminal(async ({ control, executor, root, child }) => {
+          const lease = control.grant(
+            {
+              kind: "automation",
+              ownerType: "workflow-run",
+              ownerId: "multiline",
+            },
+            control.snapshot(),
+          );
+          const marker = root + "/unexpected-side-effect";
+          const payload =
+            "首行\n$(touch " +
+            quoteShellWord(marker) +
+            "); `touch " +
+            quoteShellWord(marker) +
+            "`; 'quoted'\"double\"\\literal\tending\n\n";
+          const source =
+            'printf "%s\\n" "$#"; printf "%s" "$1" | base64 | tr -d "\\r\\n"';
+          const compiled = compileWorkflow(
+            {
+              schemaVersion: 1,
+              id: "literal-parameters",
+              name: "参数原文验证",
+              version: "1.0.0",
+              parameters: {
+                folder: { type: "remote-directory", required: true },
+                value: { type: "string", required: true },
+              },
+              defaults: { cwd: { param: "folder" } },
+              steps: [
+                {
+                  id: "inspect",
+                  name: "检查参数",
+                  action:
+                    kind === "script"
+                      ? {
+                          type: "script",
+                          shell: "bash",
+                          source,
+                          args: [{ param: "value" }],
+                        }
+                      : {
+                          type: "command",
+                          program: "bash",
+                          args: [
+                            "-c",
+                            source,
+                            "parameter-proof",
+                            { param: "value" },
+                          ],
+                        },
+                },
+              ],
+            },
+            { folder: child, value: payload },
+          );
+          const command = compiled.commands[0];
+          const action: CommandAction = {
+            type: "terminal.command",
+            program: command.program,
+            args: command.args,
+            cwd: command.cwd!,
+          };
+          const prepared = await executor.prepare(action, "multiline");
+          prepared.beforeSend?.();
+          control.commitWrite(lease, prepared.bytes);
+          const result = await prepared.completion;
+          prepared.dispose();
+          expect(result.exitCode).toBe(0);
+          expect(result.cwd).toBe(child);
+          expect(result.output.replace(/\r/g, "").trim()).toBe(
+            "1\n" + Buffer.from(payload).toString("base64"),
+          );
+          const nativeMarker =
+            process.platform === "win32"
+              ? marker.replace(
+                  /^\/([a-z])\//i,
+                  (_, drive: string) => drive.toUpperCase() + ":/",
+                )
+              : marker;
+          expect(fs.existsSync(nativeMarker)).toBe(false);
+        });
+      },
+      20000,
+    );
   },
 );
 

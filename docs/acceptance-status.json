@@ -1004,7 +1004,7 @@
       "id": "A11",
       "requirement": "参数包含引号、换行、替换语法",
       "acceptance": "保持单个参数或明确拒绝，不生成额外命令",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/workflows",
       "records": [
         "15-saved-workflows.md",
@@ -1013,9 +1013,10 @@
         "31-workflow-files.md",
         "36-workflow-directory-steps.md",
         "43-task-execution-recovery.md",
-        "45-parent-workflow-recovery.md"
+        "45-parent-workflow-recovery.md",
+        "190-workflow-parameter-acceptance.md"
       ],
-      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+      "remaining": "保存流程编译到真实 ConPTY 的 command/script 两种参数原文执行已验证；保留一个参数、字节一致、无注入副作用，详见 190。secret-ref 传输属于 R09 的待决策范围。"
     },
     {
       "id": "A12",
