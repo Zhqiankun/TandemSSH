@@ -7,8 +7,7 @@ function resolveLocalShell(platform, requestedShell, env = process.env) {
     !["default", "wsl", "cmd"].includes(requestedShell)
   )
     throw Error("LOCAL_TERMINAL_INVALID_SHELL");
-  if (platform !== "win32" && requestedShell && requestedShell !== "default")
-    throw Error("LOCAL_TERMINAL_INVALID_SHELL");
+  // Keep the configured native shell when a Windows-only hint reaches another platform.
   if (platform === "win32") {
     if (requestedShell === "cmd")
       return { file: env.ComSpec || "cmd.exe", args: ["/d"] };

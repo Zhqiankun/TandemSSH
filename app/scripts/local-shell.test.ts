@@ -34,9 +34,10 @@ it("selects Windows shells without treating shell selection as a command", () =>
   expect(() => resolveLocalShell("win32", "cmd & anything", {})).toThrow(
     "LOCAL_TERMINAL_INVALID_SHELL",
   );
-  expect(() => resolveLocalShell("linux", "cmd", {})).toThrow(
-    "LOCAL_TERMINAL_INVALID_SHELL",
-  );
+  expect(resolveLocalShell("linux", "cmd", { SHELL: "/bin/fish" })).toEqual({
+    file: "/bin/fish",
+    args: ["-l"],
+  });
 });
 it("uses the home default or a verified absolute directory, preserving literal path characters", () => {
   const root = mkdtempSync(join(tmpdir(), "tandem-local-cwd-"));
