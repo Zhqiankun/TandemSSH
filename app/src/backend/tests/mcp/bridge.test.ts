@@ -32,8 +32,10 @@ async function fixture() {
       _principal: BridgePrincipal,
       _method: string,
       _parameters: Record<string, unknown>,
+      _signal: AbortSignal,
     ) => ({ state: "ready", output: "同舟测试" }),
   );
+  const isAllowed = vi.fn(() => allowed);
   const server = new LocalBridgeServer({
     profileId,
     authenticate: async (id) =>
@@ -48,7 +50,7 @@ async function fixture() {
             },
           }
         : null,
-    isAllowed: () => allowed,
+    isAllowed,
     connected: (p) => {
       connected.push(p);
     },
@@ -87,6 +89,7 @@ async function fixture() {
     connected,
     disconnected,
     invoke,
+    isAllowed,
     connect,
     revoke: () => {
       allowed = false;
@@ -143,6 +146,59 @@ describe("authenticated local MCP bridge", () => {
       "MCP_DISCONNECTED",
     );
     expect(f.invoke).not.toHaveBeenCalled();
+  });
+  it("rechecks revocation between request scheduling and the core callback", async () => {
+    const f = await fixture(),
+      client = await f.connect();
+    f.isAllowed.mockImplementationOnce(() => {
+      queueMicrotask(f.revoke);
+      return true;
+    });
+    await expect(client.invoke("status", {})).rejects.toThrow(
+      "MCP_DISCONNECTED",
+    );
+    await vi.waitFor(() => expect(f.disconnected).toHaveLength(1));
+    expect(f.invoke).not.toHaveBeenCalled();
+  });
+  it("revokes all pending calls, aborts their work, and suppresses late results", async () => {
+    const f = await fixture();
+    const signals: AbortSignal[] = [];
+    const finish: Array<(value: { state: string; output: string }) => void> =
+      [];
+    f.invoke.mockImplementation(async (_p, _m, _args, signal) => {
+      signals.push(signal);
+      return new Promise((resolve) => finish.push(resolve));
+    });
+    const client = await f.connect();
+    const pending = Promise.allSettled([
+      client.invoke("status", {}),
+      client.invoke("status", {}),
+    ]);
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    f.revoke();
+    const results = await pending;
+    expect(results).toHaveLength(2);
+    for (const result of results) {
+      expect(result.status).toBe("rejected");
+      if (result.status === "rejected")
+        expect(result.reason.message).toBe("MCP_DISCONNECTED");
+    }
+    await vi.waitFor(() =>
+      expect(signals.every((signal) => signal.aborted)).toBe(true),
+    );
+    for (const resolve of finish)
+      resolve({ state: "done", output: "late-result-must-not-return" });
+    await expect(client.invoke("status", {})).rejects.toThrow(
+      "MCP_DISCONNECTED",
+    );
+    await expect(f.connect()).rejects.toThrow();
+    expect(f.invoke).toHaveBeenCalledTimes(2);
+    expect(f.connected).toHaveLength(1);
+    expect(
+      f.disconnected.filter(
+        (p) => p.connectionId === f.connected[0].connectionId,
+      ),
+    ).toHaveLength(1);
   });
   it("aborting a pending call closes the client instead of silently replaying it", async () => {
     const f = await fixture();

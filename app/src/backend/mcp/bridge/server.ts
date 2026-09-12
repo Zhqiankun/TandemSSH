@@ -167,14 +167,20 @@ export class LocalBridgeServer {
         const identity = principal;
         const signingSecret = secret;
         void Promise.resolve()
-          .then(() =>
-            this.ports.invoke(
+          .then(() => {
+            if (
+              abort.signal.aborted ||
+              socket.destroyed ||
+              !this.ports.isAllowed(identity)
+            )
+              throw new Error("MCP_PAIRING_REVOKED");
+            return this.ports.invoke(
               identity,
               request.method,
               request.parameters,
               abort.signal,
-            ),
-          )
+            );
+          })
           .then(
             (result) => ({ id: message.id, result }),
             (error) => ({ id: message.id, error: publicError(error) }),
