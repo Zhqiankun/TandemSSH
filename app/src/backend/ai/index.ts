@@ -1,3 +1,4 @@
+import { encodeChatTurn, restoreChatHistory } from "./chat-history.js";
 import { ChatDelivery } from "./chat-delivery.js";
 import { getErrorMessage } from "../utils/error-message.js";
 import express from "express";
@@ -728,15 +729,11 @@ router.post(
 
       await send({ type: "conversation", conversationId: conversation.id });
 
-      const chatHistory: ChatMessage[] = history.map((entry) => ({
-        role: entry.role as ChatMessage["role"],
-        content: entry.content,
-        ...(entry.toolCalls ? { toolCalls: JSON.parse(entry.toolCalls) } : {}),
-      }));
+      const chatHistory = restoreChatHistory(history);
       chatHistory.push({ role: "user", content: message.trim() });
 
       let assistantText = "";
-      let assistantToolCalls: unknown[] = [];
+      const transcript: ChatMessage[] = [];
 
       try {
         for await (const event of runAgent({
@@ -765,11 +762,20 @@ router.post(
           // ordering are durable; the engine only signals model completion.
           if (event.type === "done") continue;
           if (event.type === "assistant_message") {
-            assistantText = event.content;
+            assistantText += event.content;
             // Kept so the next message replays them verbatim. Gemini rejects a
             // turn whose functionCall parts lost their thoughtSignature, so
             // dropping these breaks the second message in every conversation.
-            assistantToolCalls = event.toolCalls;
+            transcript.push({
+              role: "assistant",
+              content: event.content,
+              toolCalls: event.toolCalls,
+            });
+            continue;
+          }
+
+          if (event.type === "tool_message") {
+            transcript.push(event.message);
             continue;
           }
 
@@ -805,14 +811,12 @@ router.post(
         clearInterval(heartbeat);
       }
 
-      if (assistantText || assistantToolCalls.length) {
+      if (transcript.length) {
         await repository.appendMessage({
           conversationId: conversation.id,
           role: "assistant",
           content: assistantText,
-          toolCalls: assistantToolCalls.length
-            ? JSON.stringify(assistantToolCalls)
-            : null,
+          toolCalls: encodeChatTurn(transcript),
         });
       }
       await repository.touchConversation(conversation.id);

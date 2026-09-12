@@ -87,6 +87,12 @@ describe("runAgent", () => {
 
     expect(handler).toHaveBeenCalledOnce();
     expect(events.some((e) => e.type === "tool_result")).toBe(true);
+    expect(events.find((e) => e.type === "tool_message")?.message).toEqual({
+      role: "tool",
+      content: JSON.stringify({ hosts: [{ id: 1, name: "web-1" }] }),
+      toolCallId: "c1",
+      toolName: "list_hosts",
+    });
     expect(streamChat).toHaveBeenCalledTimes(2);
   });
 

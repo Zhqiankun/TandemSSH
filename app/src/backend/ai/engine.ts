@@ -31,6 +31,7 @@ export type EngineEvent =
   | { type: "tool_result"; name: string; result: unknown }
   | { type: "proposal"; draft: ProposalDraft }
   | { type: "assistant_message"; content: string; toolCalls: ToolCall[] }
+  | { type: "tool_message"; message: ChatMessage }
   | { type: "done" }
   | { type: "error"; message: string };
 
@@ -131,7 +132,7 @@ export async function* runAgent(
           yield { type: "proposal", draft: result };
           // The model is told the proposal is awaiting the user rather than done,
           // so it does not go on to describe the change as applied.
-          messages.push({
+          const toolMessage: ChatMessage = {
             role: "tool",
             content: JSON.stringify({
               status: "awaiting_user_approval",
@@ -139,17 +140,21 @@ export async function* runAgent(
             }),
             toolCallId: call.id,
             toolName: call.name,
-          });
+          };
+          yield { type: "tool_message", message: toolMessage };
+          messages.push(toolMessage);
           continue;
         }
 
         yield { type: "tool_result", name: call.name, result: redact(result) };
-        messages.push({
+        const toolMessage: ChatMessage = {
           role: "tool",
           content: redactToJson(result),
           toolCallId: call.id,
           toolName: call.name,
-        });
+        };
+        yield { type: "tool_message", message: toolMessage };
+        messages.push(toolMessage);
       }
     }
   } catch (error) {

@@ -1,7 +1,12 @@
 import { afterEach, expect, it, vi } from "vitest";
 import express from "express";
 import type { Server } from "node:http";
-const state = vi.hoisted(() => ({ append: vi.fn(), touch: vi.fn() }));
+const state = vi.hoisted(() => ({
+  append: vi.fn(),
+  touch: vi.fn(),
+  history: vi.fn(async () => []),
+  engineHistory: vi.fn(),
+}));
 vi.mock("../../utils/auth-manager.js", () => ({
   AuthManager: {
     getInstance: () => ({
@@ -29,14 +34,37 @@ vi.mock("../../database/repositories/factory.js", () => ({
       defaultModel: "test",
     }),
     createConversation: async () => ({ id: 1 }),
-    listMessages: async () => [],
+    listMessages: state.history,
+    findConversation: async () => ({ id: 1 }),
     appendMessage: state.append,
     touchConversation: state.touch,
   }),
   createCurrentHostRepository: () => ({ listByUserId: async () => [] }),
 }));
 vi.mock("../../ai/engine.js", () => ({
-  runAgent: async function* () {
+  runAgent: async function* (options: { history: unknown }) {
+    state.engineHistory(options.history);
+    yield {
+      type: "assistant_message",
+      content: "先检查",
+      toolCalls: [
+        {
+          id: "call-1",
+          name: "list_hosts",
+          arguments: {},
+          providerSignature: "opaque",
+        },
+      ],
+    };
+    yield {
+      type: "tool_message",
+      message: {
+        role: "tool",
+        content: "[]",
+        toolCallId: "call-1",
+        toolName: "list_hosts",
+      },
+    };
     yield { type: "token", text: "中文回复" };
     yield { type: "assistant_message", content: "中文回复", toolCalls: [] };
     yield { type: "done" };
@@ -62,6 +90,7 @@ afterEach(async () => {
 it.each([false, true])(
   "chat completion is emitted only after persistence (save failure: %s)",
   async (fail) => {
+    state.history.mockResolvedValue([]);
     let saved = false,
       touched = false;
     state.append.mockImplementation(async (input: { role: string }) => {
@@ -109,6 +138,48 @@ it.each([false, true])(
     } else {
       expect(completions).toEqual([{ saved: true, touched: true }]);
       expect(body).not.toContain('"type":"error"');
+      expect(body).not.toContain('"type":"tool_message"');
+      const stored = state.append.mock.calls.find(
+        ([m]) => m.role === "assistant",
+      )![0];
+      expect(stored.content).toBe("先检查中文回复");
+      expect(JSON.parse(stored.toolCalls)).toMatchObject({
+        version: 1,
+        messages: [
+          {
+            role: "assistant",
+            toolCalls: [{ id: "call-1", providerSignature: "opaque" }],
+          },
+          {
+            role: "tool",
+            toolCallId: "call-1",
+            toolName: "list_hosts",
+            content: "[]",
+          },
+          { role: "assistant", content: "中文回复" },
+        ],
+      });
+      state.history.mockResolvedValue([stored] as never[]);
+      const next = await fetch(
+        "http://127.0.0.1:" +
+          (server.address() as { port: number }).port +
+          "/ai/chat/stream",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            providerId: 1,
+            conversationId: 1,
+            message: "继续",
+          }),
+        },
+      );
+      expect(next.status).toBe(200);
+      await next.text();
+      expect(state.engineHistory.mock.calls[1][0]).toEqual([
+        ...JSON.parse(stored.toolCalls).messages,
+        { role: "user", content: "继续" },
+      ]);
     }
   },
 );
