@@ -442,7 +442,7 @@ export function registerFileOperationRoutes(
 
           let outputData = "";
           let errorData = "";
-          let permissionDenied = false;
+          let settled = false;
 
           stream.on("data", (chunk: Buffer) => {
             outputData += chunk.toString();
@@ -450,13 +450,16 @@ export function registerFileOperationRoutes(
 
           stream.stderr.on("data", (chunk: Buffer) => {
             errorData += chunk.toString();
-            if (chunk.toString().includes("Permission denied")) {
-              permissionDenied = true;
-            }
           });
 
           stream.on("close", (code) => {
-            if (permissionDenied) {
+            if (settled) return;
+            settled = true;
+            if (
+              typeof code === "number" &&
+              code !== 0 &&
+              /permission denied/i.test(errorData)
+            ) {
               if (sshConn.sudoPassword) {
                 executeDelete(true).then(resolve);
                 return;
@@ -504,6 +507,8 @@ export function registerFileOperationRoutes(
           });
 
           stream.on("error", (streamErr) => {
+            if (settled) return;
+            settled = true;
             fileLogger.error("SSH deleteItem stream error:", streamErr);
             res
               .status(500)

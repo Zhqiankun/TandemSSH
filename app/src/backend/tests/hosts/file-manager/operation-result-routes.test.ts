@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import {
   listTrash,
   moveToTrash,
@@ -237,5 +238,82 @@ it.each([
       scenario === "move-applied-response-lost" ? ["/srv/file"] : [],
     );
     expect(execChannel).not.toHaveBeenCalled();
+  },
+);
+
+it.each([
+  "split-denied",
+  "successful-warning",
+  "missing-exit",
+  "error-then-close",
+  "close-then-error",
+] as const)(
+  "settles permanent deletion once and only requests sudo for confirmed permission failures: %s",
+  async (scenario) => {
+    const routes = new Map<string, RequestHandler>();
+    const register = (path: string, handler: RequestHandler) =>
+      routes.set(path, handler);
+    registerFileOperationRoutes(
+      {
+        get: register,
+        post: register,
+        put: register,
+        delete: register,
+      } as unknown as Express,
+      {
+        sshSessions: { session: { isConnected: true } as SSHSession },
+        verifySessionOwnership: () => true,
+      },
+    );
+    const stream = Object.assign(new EventEmitter(), {
+      stderr: new EventEmitter(),
+    });
+    vi.mocked(execChannel).mockImplementation(
+      (_session, _command, callback) => {
+        callback(undefined, stream as never);
+        stream.stderr.emit("data", Buffer.from("Permission "));
+        stream.stderr.emit("data", Buffer.from("denied"));
+        if (
+          scenario === "successful-warning" ||
+          scenario === "close-then-error"
+        )
+          stream.emit("data", Buffer.from("SUCCESS\n"));
+        if (scenario === "error-then-close")
+          stream.emit("error", Error("lost connection"));
+        stream.emit(
+          "close",
+          scenario === "missing-exit"
+            ? undefined
+            : scenario === "successful-warning" ||
+                scenario === "close-then-error"
+              ? 0
+              : 1,
+        );
+        if (scenario === "close-then-error")
+          stream.emit("error", Error("late close error"));
+      },
+    );
+    const status = vi.fn().mockReturnThis(),
+      json = vi.fn();
+    await routes.get("/ssh/file_manager/ssh/deleteItem")!(
+      {
+        userId: "owner",
+        body: { sessionId: "session", path: "/srv/file", permanent: true },
+      } as never,
+      { status, json } as never,
+      vi.fn(),
+    );
+    expect(execChannel).toHaveBeenCalledTimes(1);
+    expect(json).toHaveBeenCalledTimes(1);
+    if (scenario === "split-denied") {
+      expect(status).toHaveBeenCalledWith(403);
+      expect(json.mock.calls[0][0].needsSudo).toBe(true);
+    } else if (scenario === "missing-exit" || scenario === "error-then-close") {
+      expect(status).toHaveBeenCalledWith(500);
+      expect(json.mock.calls[0][0].needsSudo).not.toBe(true);
+    } else {
+      expect(status).not.toHaveBeenCalled();
+      expect(json.mock.calls[0][0].message).toBe("Item deleted successfully");
+    }
   },
 );
