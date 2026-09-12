@@ -734,9 +734,11 @@
         "59-windows-file-attributes.md",
         "181-file-terminal-directory.md",
         "183-trusted-terminal-cwd.md",
-        "185-cwd-client-lifecycle.md"
+        "185-cwd-client-lifecycle.md",
+        "186-download-reveal-errors.md",
+        "187-file-terminal-desktop.md"
       ],
-      "remaining": "根目录父路径与初始目录转义已验证；确认式同 PTY cwd 查询已有控制权和真实 SSH 证据。复制远端路径、目录打开终端、可信 cwd 查询的完整桌面链以及打开本地下载目录仍需逐项实机归并。"
+      "remaining": "根目录父路径与初始目录转义已验证；真实 Windows 桌面与 OpenSSH 已验证目录打开终端、确认式同 PTY cwd 跳转，并修复请求 data 封装。复制远端路径、打开本地下载目录仍需桌面实机归并。"
     },
     {
       "id": "B12",

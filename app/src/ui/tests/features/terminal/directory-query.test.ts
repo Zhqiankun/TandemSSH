@@ -1,3 +1,4 @@
+import { parseWsMessage } from "../../../../backend/utils/ws-message";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { TerminalDirectoryQuery } from "../../../features/terminal/directory-query";
 beforeEach(() => vi.useFakeTimers());
@@ -8,10 +9,9 @@ it("sends the confirmed query and consumes only the matching host, socket and re
   const query = new TerminalDirectoryQuery(),
     ws = socket();
   query.start(ws, "host", "request", vi.fn());
-  expect(JSON.parse(ws.send.mock.calls[0][0])).toEqual({
+  expect(parseWsMessage(Buffer.from(ws.send.mock.calls[0][0]))).toEqual({
     type: "get_cwd",
-    shellReady: true,
-    requestId: "request",
+    data: { shellReady: true, requestId: "request" },
   });
   expect(query.consume("old", "host", ws)).toBe(false);
   expect(query.consume("request", "other", ws)).toBe(false);

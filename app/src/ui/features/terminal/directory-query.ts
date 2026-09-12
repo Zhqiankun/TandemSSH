@@ -36,7 +36,10 @@ export class TerminalDirectoryQuery {
     }, 20000);
     try {
       socket.send(
-        JSON.stringify({ type: "get_cwd", shellReady: true, requestId: id }),
+        JSON.stringify({
+          type: "get_cwd",
+          data: { shellReady: true, requestId: id },
+        }),
       );
     } catch (error) {
       if (this.pending === pending) this.dispose();
