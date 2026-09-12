@@ -1,3 +1,4 @@
+import { TerminalDirectoryQuery } from "./directory-query";
 import { installTerminalReplies } from "./terminal-replies";
 import { requestLegacyTask } from "@/api/legacy-commands-api";
 import { translateUiText } from "@/i18n/ui-text";
@@ -1008,21 +1009,15 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     ]);
     const cwdHostRef = useRef(cwdHost);
     cwdHostRef.current = cwdHost;
-    const cwdRequest = useRef<{
-      id: string;
-      host: string;
-      socket: WebSocket;
-    } | null>(null);
+    const [cwdQuery] = useState(() => new TerminalDirectoryQuery());
+    useEffect(() => () => cwdQuery.dispose(), [cwdQuery]);
     const requestCurrentDirectory = useCallback(() => {
       const socket = webSocketRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN) {
         toast.error(t("terminal.cwdUnavailable"));
         return;
       }
-      if (
-        cwdRequest.current?.socket === socket &&
-        cwdRequest.current.host === cwdHost
-      ) {
+      if (cwdQuery.isPending(socket, cwdHost)) {
         toast.info(t("terminal.cwdQueryBusy"));
         return;
       }
@@ -1031,11 +1026,15 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         typeof crypto.randomUUID === "function"
           ? crypto.randomUUID()
           : Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
-      cwdRequest.current = { id, host: cwdHost, socket };
-      socket.send(
-        JSON.stringify({ type: "get_cwd", shellReady: true, requestId: id }),
-      );
-    }, [cwdHost, t]);
+      try {
+        cwdQuery.start(socket, cwdHost, id, () => {
+          if (cwdHostRef.current === cwdHost && webSocketRef.current === socket)
+            toast.error(t("terminal.cwdUnavailable"));
+        });
+      } catch {
+        toast.error(t("terminal.cwdUnavailable"));
+      }
+    }, [cwdHost, cwdQuery, t]);
     useImperativeHandle(
       ref,
       () => ({
@@ -1572,15 +1571,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             }
           } else if (msg.type === "error") {
             if (typeof msg.code === "string" && msg.code.startsWith("CWD_")) {
-              const pending = cwdRequest.current;
               if (
-                !pending ||
-                pending.id !== msg.requestId ||
-                pending.host !== cwdHostRef.current ||
-                pending.socket !== webSocketRef.current
+                !cwdQuery.consume(
+                  msg.requestId,
+                  cwdHostRef.current,
+                  webSocketRef.current,
+                )
               )
                 return;
-              cwdRequest.current = null;
               toast.error(
                 t(
                   msg.code === "CWD_CONTROL_BUSY"
@@ -2138,16 +2136,15 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
               connectionTimeoutRef.current = null;
             }
           } else if (msg.type === "cwd") {
-            const pending = cwdRequest.current;
             if (
-              !pending ||
-              pending.id !== msg.requestId ||
-              pending.host !== cwdHostRef.current ||
-              pending.socket !== webSocketRef.current ||
-              typeof msg.path !== "string"
+              typeof msg.path !== "string" ||
+              !cwdQuery.consume(
+                msg.requestId,
+                cwdHostRef.current,
+                webSocketRef.current,
+              )
             )
               return;
-            cwdRequest.current = null;
             onOpenFileManager?.(msg.path);
           } else if (msg.type === "open_file_in_editor") {
             onOpenFileInEditor?.(msg.path as string);
