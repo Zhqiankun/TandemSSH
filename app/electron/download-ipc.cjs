@@ -1,4 +1,5 @@
 const path = require("node:path");
+const fs = require("node:fs/promises");
 const {
   DownloadDirectoryTargets,
 } = require("./download-directory-targets.cjs");
@@ -72,6 +73,24 @@ function registerDownloadIpc({
     }
     return { id: sender.id, life };
   }
+  async function reveal(event, resolvePath) {
+    const { life } = owner(event),
+      epoch = life.epoch;
+    const target = resolvePath();
+    try {
+      await fs.lstat(target);
+    } catch {
+      throw Error("DOWNLOAD_SHOW_FAILED");
+    }
+    owner(event);
+    if (epoch !== life.epoch) throw Error("DOWNLOAD_CANCELLED");
+    resolvePath();
+    try {
+      shell.showItemInFolder(target);
+    } catch {
+      throw Error("DOWNLOAD_SHOW_FAILED");
+    }
+  }
   ipcMain.handle("tandem-download", async (event, operation, ...args) => {
     try {
       const scoped = owner(event),
@@ -143,10 +162,12 @@ function registerDownloadIpc({
             await batches?.afterCancel(id, args[0], value);
           }
         } else if (operation === "show") {
-          const r = sink.owned(id, args[0]);
-          if (r.view.state !== "completed") throw Error("DOWNLOAD_NOT_READY");
-          shell.showItemInFolder(r.view.path);
-          value = sink.view(r);
+          await reveal(event, () => {
+            const r = sink.owned(id, args[0]);
+            if (r.view.state !== "completed") throw Error("DOWNLOAD_NOT_READY");
+            return r.view.path;
+          });
+          value = sink.view(sink.owned(id, args[0]));
         } else throw Error("DOWNLOAD_REQUEST_INVALID");
       }
       return { ok: true, value };
@@ -215,7 +236,7 @@ function registerDownloadIpc({
           } else if (operation === "complete")
             value = directories.complete(id, args[0], args[1]);
           else if (operation === "show") {
-            shell.showItemInFolder(directories.show(id, args[0], args[1]));
+            await reveal(event, () => directories.show(id, args[0], args[1]));
             value = null;
           } else if (operation === "cancel") {
             value = await directories.cancel(id, args[0]);

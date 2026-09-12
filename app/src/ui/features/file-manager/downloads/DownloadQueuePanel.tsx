@@ -27,10 +27,13 @@ function DownloadRow({
     job.state === "downloading"
       ? estimateTransfer(job.size, job.writtenBytes, job.speed)
       : undefined;
-  const action = (work: () => unknown | Promise<unknown>) => {
+  const action = (
+    work: () => unknown | Promise<unknown>,
+    errorKey = "tandem.download.failed",
+  ) => {
     void Promise.resolve()
       .then(work)
-      .catch(() => toast.error(t("tandem.download.failed")));
+      .catch(() => toast.error(t(errorKey)));
   };
   return (
     <article
@@ -177,7 +180,9 @@ function DownloadRow({
           <Button
             size="sm"
             variant="outline"
-            onClick={() => action(() => queue.show(job.id))}
+            onClick={() =>
+              action(() => queue.show(job.id), "tandem.download.showFailed")
+            }
           >
             {t("tandem.download.show")}
           </Button>

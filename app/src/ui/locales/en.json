@@ -5776,6 +5776,7 @@
       "start": "Start download",
       "resume": "Verify and resume",
       "retry": "Choose destination again",
+      "showFailed": "Could not show the downloaded item. Check that it still exists and that your file manager is available. The download status has not changed.",
       "show": "Show in folder",
       "unknown": "Local commit outcome is unverified. Check the destination; overwriting will not be retried automatically.",
       "memoryHint": "The live queue stays in memory. Paused single-file downloads can explicitly save encrypted recovery progress.",
