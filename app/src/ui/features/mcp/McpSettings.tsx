@@ -65,13 +65,16 @@ function PairingForm({ hostId }: { hostId?: number }) {
       alive = false;
     };
   }, [t]);
-  async function run(action: () => Promise<void>) {
+  async function run(
+    action: () => Promise<void>,
+    failureKey = "tandem.mcp.failed",
+  ) {
     setBusy(true);
     setError(undefined);
     try {
       await action();
     } catch {
-      setError(t("tandem.mcp.failed"));
+      setError(t(failureKey));
     } finally {
       setBusy(false);
     }
@@ -171,11 +174,19 @@ function PairingForm({ hostId }: { hostId?: number }) {
             <Button
               size="sm"
               variant="outline"
+              disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  await copyToClipboard(codexMcpConfiguration(configuration));
+                  setCopied(false);
+                  const ok = await copyToClipboard(
+                    codexMcpConfiguration(configuration),
+                  );
+                  if (!ok) {
+                    setError(t("common.copyFailed"));
+                    return;
+                  }
                   setCopied(true);
-                })
+                }, "common.copyFailed")
               }
             >
               <Copy size={13} />

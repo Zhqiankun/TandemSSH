@@ -70,6 +70,9 @@ describe("Chinese MCP pairing settings", () => {
     fireEvent.click(screen.getByRole("button", { name: "撤销 Codex 的配对" }));
     await screen.findByText("已撤销");
     expect(mocks.revoke).toHaveBeenCalledWith("paired");
+    expect(
+      screen.queryByRole("button", { name: /^(复制配置|已复制)$/ }),
+    ).toBeNull();
   });
   it("requires an explicit host selection from general user settings", async () => {
     render(<McpSettings />);
@@ -87,4 +90,31 @@ describe("Chinese MCP pairing settings", () => {
       ).toBe(false),
     );
   });
+});
+it.each(["false", "throw"])(
+  "does not report copied when the clipboard returns %s",
+  async (failure) => {
+    if (failure === "false") mocks.copy.mockResolvedValueOnce(false);
+    else mocks.copy.mockRejectedValueOnce(Error("internal clipboard detail"));
+    render(<McpSettings hostId={7} />);
+    fireEvent.click(screen.getByRole("button", { name: "MCP 接入" }));
+    await screen.findByText("测试主机");
+    fireEvent.click(screen.getByRole("button", { name: "创建配对" }));
+    fireEvent.click(await screen.findByRole("button", { name: "复制配置" }));
+    await screen.findByText("复制到剪贴板失败");
+    expect(screen.queryByRole("button", { name: "已复制" })).toBeNull();
+    expect(screen.getByRole("button", { name: "复制配置" })).toBeTruthy();
+    expect(mocks.copy).toHaveBeenCalledTimes(1);
+  },
+);
+it("clears a previous copied result when a later copy fails", async () => {
+  mocks.copy.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+  render(<McpSettings hostId={7} />);
+  fireEvent.click(screen.getByRole("button", { name: "MCP 接入" }));
+  await screen.findByText("测试主机");
+  fireEvent.click(screen.getByRole("button", { name: "创建配对" }));
+  fireEvent.click(await screen.findByRole("button", { name: "复制配置" }));
+  fireEvent.click(await screen.findByRole("button", { name: "已复制" }));
+  await screen.findByText("复制到剪贴板失败");
+  expect(screen.queryByRole("button", { name: "已复制" })).toBeNull();
 });

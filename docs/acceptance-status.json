@@ -367,9 +367,10 @@
         "48-task-download-directory-recovery.md",
         "64-jump-combined-acceptance.md",
         "208-native-mcp-control.md",
-        "209-mcp-revocation-boundaries.md"
+        "209-mcp-revocation-boundaries.md",
+        "210-mcp-configuration-copy.md"
       ],
-      "remaining": "已存在 38 工具及打包 Codex 发现证据；真实 stdio 接管拒写见 208，活动撤销、排队前复核和迟到结果阻断见 209。导出及所有工具权限矩阵仍需逐项闭环。"
+      "remaining": "已存在 38 工具及打包 Codex 发现证据；真实 stdio 接管拒写见 208，活动撤销、排队前复核和迟到结果阻断见 209。配置格式转义与中文复制反馈已验证（210）；配置 API 所有权及所有工具权限矩阵仍需逐项闭环。"
     },
     {
       "id": "F11",
