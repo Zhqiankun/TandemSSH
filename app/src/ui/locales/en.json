@@ -789,6 +789,7 @@
     "confirmCloseHost": "Close {{host}}?"
   },
   "hosts": {
+    "importLookupFailed": "Could not read existing hosts. Import has not started; retry after the connection or database recovers.",
     "importResult": "Import finished: {{created}} created, {{updated}} updated, {{skipped}} skipped, {{failed}} failed.",
     "importFileTooLarge": "Import files must not exceed 8 MB.",
     "importReview": "Host import preview\nFile: {{file}}\nOverwrite existing connections: {{overwrite}}\nCredentials included: {{credentials}}\n\nConnections:\n{{entries}}\n\nAdvanced configuration is also submitted; desktop imports disable background sampling and automatic startup. You can enable them manually afterwards. Review the source and configuration. Continue?",

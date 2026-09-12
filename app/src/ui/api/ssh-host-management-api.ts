@@ -135,6 +135,20 @@ export async function wakeOnLan(hostId: number): Promise<{ success: boolean }> {
   }
 }
 
+function handleHostImportError(error: unknown, operation: string): never {
+  if (
+    error instanceof AxiosError &&
+    error.response?.status === 409 &&
+    error.response.data?.code === "HOST_IMPORT_LOOKUP_FAILED"
+  ) {
+    throw Object.assign(new Error("HOST_IMPORT_LOOKUP_FAILED"), {
+      code: "HOST_IMPORT_LOOKUP_FAILED",
+      status: 409,
+    });
+  }
+  return handleApiError(error, operation);
+}
+
 export async function bulkImportSSHHosts(
   hosts: SSHHostData[],
   overwrite = false,
@@ -156,7 +170,7 @@ export async function bulkImportSSHHosts(
     invalidateHostsAndStatusCaches();
     return response.data;
   } catch (error) {
-    handleApiError(error, "bulk import SSH hosts");
+    handleHostImportError(error, "bulk import SSH hosts");
   }
 }
 
@@ -179,7 +193,7 @@ export async function importSSHConfigHosts(
     invalidateHostsAndStatusCaches();
     return response.data;
   } catch (error) {
-    handleApiError(error, "import SSH config hosts");
+    handleHostImportError(error, "import SSH config hosts");
   }
 }
 

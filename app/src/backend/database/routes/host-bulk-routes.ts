@@ -452,6 +452,27 @@ export function registerHostBulkRoutes(
         errors: [] as string[],
       };
 
+      let existingHostMap: Map<string, { id: number }> | undefined;
+      const hostRepository = createCurrentHostRepository();
+      if (overwrite) {
+        try {
+          const allHosts =
+            await createCurrentHostResolutionRepository().findHostsByUserId(
+              userId,
+            );
+          existingHostMap = new Map();
+          for (const h of allHosts) {
+            const key = `${h.ip}:${h.port}:${h.username}`;
+            existingHostMap.set(key, { id: h.id as number });
+          }
+        } catch {
+          return res.status(409).json({
+            code: "HOST_IMPORT_LOOKUP_FAILED",
+            error: "Cannot read existing hosts. Import was not started.",
+          });
+        }
+      }
+
       const credentialAliasMap = new Map<string, number>();
       const addCredentialAlias = (alias: unknown, id: number) => {
         const key = textValue(alias);
@@ -515,24 +536,6 @@ export function registerHostBulkRoutes(
         results.errors.push(
           `Credential placeholders: ${getErrorMessage(error, "failed to prepare credential aliases")}`,
         );
-      }
-
-      let existingHostMap: Map<string, { id: number }> | undefined;
-      const hostRepository = createCurrentHostRepository();
-      if (overwrite) {
-        try {
-          const allHosts =
-            await createCurrentHostResolutionRepository().findHostsByUserId(
-              userId,
-            );
-          existingHostMap = new Map();
-          for (const h of allHosts) {
-            const key = `${h.ip}:${h.port}:${h.username}`;
-            existingHostMap.set(key, { id: h.id as number });
-          }
-        } catch {
-          existingHostMap = undefined;
-        }
       }
 
       for (let i = 0; i < hostsToImport.length; i++) {
@@ -905,7 +908,10 @@ export function registerHostBulkRoutes(
             existingHostMap.set(key, { id: h.id as number });
           }
         } catch {
-          existingHostMap = undefined;
+          return res.status(409).json({
+            code: "HOST_IMPORT_LOOKUP_FAILED",
+            error: "Cannot read existing hosts. Import was not started.",
+          });
         }
       }
 

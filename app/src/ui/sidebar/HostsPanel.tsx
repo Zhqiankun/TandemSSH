@@ -517,7 +517,12 @@ export function HostsPanel({
                 if (result.failed) toast.warning(msg);
                 else toast.success(msg);
               } catch (err: unknown) {
-                toast.error(getErrorMessage(err, "Failed to import hosts"));
+                toast.error(
+                  (err as { code?: unknown })?.code ===
+                    "HOST_IMPORT_LOOKUP_FAILED"
+                    ? t("hosts.importLookupFailed")
+                    : getErrorMessage(err, "Failed to import hosts"),
+                );
               }
             }}
           />
@@ -570,7 +575,10 @@ export function HostsPanel({
                 else toast.success(msg);
               } catch (err: unknown) {
                 toast.error(
-                  getErrorMessage(err, "Failed to import SSH config"),
+                  (err as { code?: unknown })?.code ===
+                    "HOST_IMPORT_LOOKUP_FAILED"
+                    ? t("hosts.importLookupFailed")
+                    : getErrorMessage(err, "Failed to import SSH config"),
                 );
               }
             }}

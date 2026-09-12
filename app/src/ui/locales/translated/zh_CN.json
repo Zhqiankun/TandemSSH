@@ -789,6 +789,7 @@
     "confirmCloseHost": "关闭 {{host}}？"
   },
   "hosts": {
+    "importLookupFailed": "无法读取已有主机，导入尚未开始。请在连接或数据库恢复后重试。",
     "importResult": "导入结束：新增 {{created}}，更新 {{updated}}，跳过 {{skipped}}，失败 {{failed}}。",
     "importFileTooLarge": "导入文件不能超过 8 MB。",
     "importReview": "主机导入预览\n文件：{{file}}\n覆盖已有连接：{{overwrite}}\n随文件导入的凭据数量：{{credentials}}\n\n连接：\n{{entries}}\n\n文件中的高级配置也会提交；桌面导入会停用后台采样和自动启动，导入后可手动启用。请确认来源和连接配置，继续导入？",

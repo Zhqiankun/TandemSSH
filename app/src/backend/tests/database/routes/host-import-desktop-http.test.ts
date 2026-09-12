@@ -166,3 +166,62 @@ it.each([
     expect(await repo.listByUserId("other")).toEqual([]);
   },
 );
+it.each(["/bulk-import", "/ssh-config-import"])(
+  "%s refuses overwrite when the existing-host lookup fails",
+  async (route) => {
+    await repo.createEncryptedForUser("owner", {
+      userId: "owner",
+      name: "keep",
+      ip: "127.0.0.1",
+      port: 2222,
+      username: "fixture",
+      authType: "none",
+    });
+    const before = await repo.listByUserId("owner");
+    factories.resolution.mockReturnValue({
+      findHostsByUserId: vi
+        .fn()
+        .mockRejectedValue(Error("private database detail")),
+    });
+    const body =
+      route === "/bulk-import"
+        ? {
+            overwrite: true,
+            credentials: [
+              {
+                alias: "unused",
+                name: "must-not-create",
+                authType: "password",
+              },
+            ],
+            hosts: [
+              {
+                name: "replacement",
+                ip: "127.0.0.1",
+                port: 2222,
+                username: "fixture",
+                authType: "none",
+              },
+            ],
+          }
+        : {
+            overwrite: true,
+            content:
+              "Host replacement\n HostName 127.0.0.1\n Port 2222\n User fixture\n",
+          };
+    const response = await fetch(url + route, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      code: "HOST_IMPORT_LOOKUP_FAILED",
+      error: "Cannot read existing hosts. Import was not started.",
+    });
+    expect(await repo.listByUserId("owner")).toEqual(before);
+    expect(await factories.credential().listDecryptedByUserId("owner")).toEqual(
+      [],
+    );
+  },
+);
