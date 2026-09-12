@@ -789,9 +789,10 @@
     "confirmCloseHost": "关闭 {{host}}？"
   },
   "hosts": {
+    "importResult": "导入结束：新增 {{created}}，更新 {{updated}}，跳过 {{skipped}}，失败 {{failed}}。",
     "importFileTooLarge": "导入文件不能超过 8 MB。",
-    "importReview": "主机导入预览\n文件：{{file}}\n覆盖已有连接：{{overwrite}}\n随文件导入的凭据数量：{{credentials}}\n\n连接：\n{{entries}}\n\n文件中的高级配置也会提交。请确认来源和连接配置，继续导入？",
-    "sshConfigImportReview": "SSH 配置导入预览\n文件：{{file}}\n覆盖已有连接：{{overwrite}}\n\n连接声明（最多显示 400 行；最终结果以导入解析为准）：\n{{entries}}\n\n请确认以上连接声明，继续导入？",
+    "importReview": "主机导入预览\n文件：{{file}}\n覆盖已有连接：{{overwrite}}\n随文件导入的凭据数量：{{credentials}}\n\n连接：\n{{entries}}\n\n文件中的高级配置也会提交；桌面导入会停用后台采样和自动启动，导入后可手动启用。请确认来源和连接配置，继续导入？",
+    "sshConfigImportReview": "SSH 配置导入预览\n文件：{{file}}\n覆盖已有连接：{{overwrite}}\n\n连接声明（最多显示 400 行；最终结果以导入解析为准）：\n{{entries}}\n\n桌面导入会停用后台采样和自动启动，导入后可手动启用。请确认以上连接声明，继续导入？",
     "hosts": "主机",
     "noHosts": "没有 SSH 主机",
     "retry": "重试",

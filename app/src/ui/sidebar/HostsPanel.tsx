@@ -508,14 +508,14 @@ export function HostsPanel({
                 const hosts = await getSSHHosts();
                 setRawHosts(hosts);
                 window.dispatchEvent(new CustomEvent("termix:hosts-changed"));
-                const msg = [
-                  result.success ? `${result.success} imported` : null,
-                  result.updated ? `${result.updated} updated` : null,
-                  result.failed ? `${result.failed} failed` : null,
-                ]
-                  .filter(Boolean)
-                  .join(", ");
-                toast.success(`Import complete: ${msg}`);
+                const msg = t("hosts.importResult", {
+                  created: result.success,
+                  updated: result.updated,
+                  skipped: result.skipped,
+                  failed: result.failed,
+                });
+                if (result.failed) toast.warning(msg);
+                else toast.success(msg);
               } catch (err: unknown) {
                 toast.error(getErrorMessage(err, "Failed to import hosts"));
               }
@@ -560,14 +560,14 @@ export function HostsPanel({
                 const hosts = await getSSHHosts();
                 setRawHosts(hosts);
                 window.dispatchEvent(new CustomEvent("termix:hosts-changed"));
-                const msg = [
-                  result.success ? `${result.success} imported` : null,
-                  result.updated ? `${result.updated} updated` : null,
-                  result.failed ? `${result.failed} failed` : null,
-                ]
-                  .filter(Boolean)
-                  .join(", ");
-                toast.success(`${t("hosts.importSSHConfig")}: ${msg}`);
+                const msg = t("hosts.importResult", {
+                  created: result.success,
+                  updated: result.updated,
+                  skipped: result.skipped,
+                  failed: result.failed,
+                });
+                if (result.failed) toast.warning(msg);
+                else toast.success(msg);
               } catch (err: unknown) {
                 toast.error(
                   getErrorMessage(err, "Failed to import SSH config"),

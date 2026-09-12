@@ -1210,9 +1210,10 @@
         "45-parent-workflow-recovery.md",
         "191-workflow-import-boundaries.md",
         "192-configuration-import-policy-boundary.md",
-        "193-legacy-host-import-review.md"
+        "193-legacy-host-import-review.md",
+        "194-host-import-inactive.md"
       ],
-      "remaining": "流程导入边界见 191；统一配置恢复的预览无写入、剔除策略/启动字段、SQLite 原黑名单不变见 192。旧数据库导入在桌面已拦截；旧 JSON/SSH 配置导入新增摘要确认（193），仍需桌面实测、高级字段行为及覆盖差异核对。不能泛化到全部导入。"
+      "remaining": "流程导入边界见 191；统一配置恢复的预览无写入、剔除策略/启动字段、SQLite 原黑名单不变见 192。旧数据库导入在桌面已拦截；旧 JSON/SSH 配置导入新增摘要确认（193）和桌面停用激活状态（194）；仍需真实路由新增/覆盖、桌面实测、高级字段及运行中资源生命周期核对。不能泛化到全部导入。"
     },
     {
       "id": "A23",

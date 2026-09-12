@@ -1,3 +1,5 @@
+import { runtimePolicy } from "../../runtime/policy.js";
+import { inactiveImportedHost } from "./host-import-activation.js";
 import { getErrorMessage } from "../../utils/error-message.js";
 import type { AuthenticatedRequest } from "../../../types/index.js";
 import type { Request, RequestHandler, Response, Router } from "express";
@@ -769,6 +771,9 @@ export function registerHostBulkRoutes(
             sshDataObj.guacamoleConfig = null;
           }
 
+          if (runtimePolicy.desktop)
+            Object.assign(sshDataObj, inactiveImportedHost(sshDataObj));
+
           const lookupKey = `${hostData.ip}:${hostData.port}:${hostData.username}`;
           const existing = existingHostMap?.get(lookupKey);
 
@@ -973,6 +978,9 @@ export function registerHostBulkRoutes(
             enableTelnet: false,
             updatedAt: new Date().toISOString(),
           };
+
+          if (runtimePolicy.desktop)
+            Object.assign(sshDataObj, inactiveImportedHost(sshDataObj));
 
           const lookupKey = `${hostData.ip}:${hostData.port}:${hostData.username}`;
           const existing = existingHostMap?.get(lookupKey);

@@ -789,9 +789,10 @@
     "confirmCloseHost": "Close {{host}}?"
   },
   "hosts": {
+    "importResult": "Import finished: {{created}} created, {{updated}} updated, {{skipped}} skipped, {{failed}} failed.",
     "importFileTooLarge": "Import files must not exceed 8 MB.",
-    "importReview": "Host import preview\nFile: {{file}}\nOverwrite existing connections: {{overwrite}}\nCredentials included: {{credentials}}\n\nConnections:\n{{entries}}\n\nAdvanced configuration from the file will also be submitted. Review the source and configuration before importing. Continue?",
-    "sshConfigImportReview": "SSH config import preview\nFile: {{file}}\nOverwrite existing connections: {{overwrite}}\n\nConnection declarations (up to 400 lines; final results depend on parsing):\n{{entries}}\n\nReview these connection declarations. Continue importing?",
+    "importReview": "Host import preview\nFile: {{file}}\nOverwrite existing connections: {{overwrite}}\nCredentials included: {{credentials}}\n\nConnections:\n{{entries}}\n\nAdvanced configuration is also submitted; desktop imports disable background sampling and automatic startup. You can enable them manually afterwards. Review the source and configuration. Continue?",
+    "sshConfigImportReview": "SSH config import preview\nFile: {{file}}\nOverwrite existing connections: {{overwrite}}\n\nConnection declarations (up to 400 lines; final results depend on parsing):\n{{entries}}\n\nDesktop imports disable background sampling and automatic startup; enable them manually afterwards. Review these connection declarations. Continue importing?",
     "hosts": "Hosts",
     "noHosts": "No SSH Hosts",
     "retry": "Retry",
