@@ -463,3 +463,86 @@ it.each(["disconnected", "replaced"] as const)(
     });
   },
 );
+
+it.each(["queued", "negotiating", "active", "completed"] as const)(
+  "bounds deletion in the %s phase and ignores late results",
+  async (phase) => {
+    vi.useFakeTimers();
+    try {
+      const routes = new Map<string, RequestHandler>();
+      const register = (path: string, handler: RequestHandler) =>
+        routes.set(path, handler);
+      registerFileOperationRoutes(
+        {
+          get: register,
+          post: register,
+          put: register,
+          delete: register,
+        } as unknown as Express,
+        {
+          sshSessions: {
+            session: {
+              isConnected: true,
+              sudoPassword: "cached",
+            } as SSHSession,
+          },
+          verifySessionOwnership: () => true,
+        },
+      );
+      const stream = Object.assign(new EventEmitter(), {
+        stderr: new EventEmitter(),
+        destroy: vi.fn(),
+      });
+      let open!: Parameters<typeof execChannel>[2];
+      let guard!: () => void;
+      vi.mocked(execChannel).mockImplementation(
+        (_session, _command, callback, beforeOpen) => {
+          open = callback;
+          guard = beforeOpen!;
+          if (phase !== "queued") guard();
+          if (phase === "active" || phase === "completed")
+            callback(undefined, stream as never);
+          if (phase === "completed") {
+            stream.emit("data", Buffer.from("SUCCESS\n"));
+            stream.emit("close", 0);
+          }
+        },
+      );
+      const status = vi.fn().mockReturnThis(),
+        json = vi.fn();
+      const request = routes.get("/ssh/file_manager/ssh/deleteItem")!(
+        {
+          userId: "owner",
+          body: { sessionId: "session", path: "/srv/file", permanent: true },
+        } as never,
+        { status, json } as never,
+        vi.fn(),
+      );
+      await vi.advanceTimersByTimeAsync(60000);
+      await request;
+      expect(json).toHaveBeenCalledTimes(1);
+      if (phase === "completed") {
+        expect(status).not.toHaveBeenCalled();
+        expect(stream.destroy).not.toHaveBeenCalled();
+      } else {
+        expect(status).toHaveBeenCalledWith(500);
+        expect(json.mock.calls[0][0].error).toBe(
+          phase === "queued"
+            ? "DELETE_NOT_DISPATCHED"
+            : "DELETE_RESULT_UNKNOWN",
+        );
+        expect(() => guard()).toThrow("DELETE_NOT_DISPATCHED");
+        if (phase !== "active") open(undefined, stream as never);
+        expect(stream.destroy).toHaveBeenCalledTimes(1);
+        stream.emit("data", Buffer.from("SUCCESS\n"));
+        stream.stderr.emit("data", Buffer.from("Permission denied"));
+        stream.emit("close", 1);
+        expect(json).toHaveBeenCalledTimes(1);
+        expect(execWithSudo).not.toHaveBeenCalled();
+      }
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
