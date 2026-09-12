@@ -4524,6 +4524,11 @@
     "ruleSaveFailed": "Säännön tallentaminen epäonnistui"
   },
   "ai": {
+    "chatHistory": "Chat history",
+    "newConversation": "New chat",
+    "refreshHistory": "Refresh",
+    "historyLoadFailed": "Could not load chat history. Refresh or select it again.",
+    "historyLoading": "Loading chat history…",
     "chatFailedRecord": "This reply failed. Partial content is not replayed automatically.",
     "chatInterruptedRecord": "This reply was interrupted. Partial content is not replayed automatically.",
     "title": "Assistentti",

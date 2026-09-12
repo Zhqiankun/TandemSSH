@@ -1,3 +1,4 @@
+import { AiConversationPicker } from "./AiConversationPicker";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader2, Send, Settings2, Sparkles, Square } from "lucide-react";
@@ -50,7 +51,7 @@ type TimelineItem =
 
 export function AiPanel({ activeTab }: { activeTab?: string | null }) {
   const { t } = useTranslation();
-  const { state, send, stop } = useAiStream();
+  const { state, send, stop, reset, setState } = useAiStream();
 
   const [providers, setProviders] = useState<AiProvider[]>([]);
   const [providerId, setProviderId] = useState<number | null>(null);
@@ -58,6 +59,55 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
   const [showSettings, setShowSettings] = useState(false);
   const [input, setInput] = useState("");
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
+  const [historyModel, setHistoryModel] = useState<string | null>(null);
+  const selectionRevision = useRef(0);
+  useEffect(
+    () => () => {
+      selectionRevision.current++;
+    },
+    [],
+  );
+  async function selectConversation(id: number | null) {
+    const revision = ++selectionRevision.current;
+    reset();
+    setHistory([]);
+    setInput("");
+    setResolvedProposals({});
+    setHistoryError(false);
+    setHistoryModel(null);
+    setHistoryLoading(id !== null);
+    if (id === null) return;
+    try {
+      const loaded = await getAiConversation(id);
+      if (revision !== selectionRevision.current) return;
+      setHistory(
+        loaded.messages
+          .filter((m) => m.role !== "tool")
+          .map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            outcome: m.outcome,
+          })),
+      );
+      setProviderId(
+        providers.some((p) => p.id === loaded.conversation.providerId)
+          ? loaded.conversation.providerId
+          : null,
+      );
+      setHistoryModel(loaded.conversation.model);
+      setState((prev) => ({
+        ...prev,
+        conversationId: id,
+        proposals: loaded.proposals,
+      }));
+    } catch {
+      if (revision === selectionRevision.current) setHistoryError(true);
+    } finally {
+      if (revision === selectionRevision.current) setHistoryLoading(false);
+    }
+  }
   const [resolvedProposals, setResolvedProposals] = useState<
     Record<number, { status: "applied" | "rejected"; resultSummary?: string }>
   >({});
@@ -161,11 +211,13 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
 
   const reloadHistory = useCallback(
     async (conversationId: number | null, reply: string) => {
+      const revision = selectionRevision.current;
       // Reload from the server so the transcript is the stored one rather
       // than a client-side reconstruction.
       if (conversationId) {
         try {
           const loaded = await getAiConversation(conversationId);
+          if (revision !== selectionRevision.current) return;
           setHistory(
             loaded.messages
               .filter((entry) => entry.role !== "tool")
@@ -184,7 +236,7 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
       // No stored copy to fall back on, so the streamed reply is appended
       // locally. Without this it would vanish when the next turn resets the
       // stream state.
-      if (reply) {
+      if (reply && revision === selectionRevision.current) {
         setHistory((prev) => [...prev, { role: "assistant", content: reply }]);
       }
     },
@@ -193,7 +245,14 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
 
   async function handleSend() {
     const message = input.trim();
-    if (!message || !providerId || state.streaming) return;
+    if (
+      !message ||
+      !providerId ||
+      state.streaming ||
+      historyLoading ||
+      historyError
+    )
+      return;
 
     setInput("");
     setHistory((prev) => [...prev, { role: "user", content: message }]);
@@ -202,6 +261,7 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
       message,
       providerId,
       conversationId: state.conversationId,
+      model: historyModel ?? undefined,
       activeTab,
       onComplete: reloadHistory,
     });
@@ -224,7 +284,8 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
       [id]: { status, resultSummary },
     }));
 
-    if (!providerId || state.streaming) return;
+    if (!providerId || state.streaming || historyLoading || historyError)
+      return;
 
     const proposal = state.proposals.find((entry) => entry.id === id);
     const label = proposal?.summary ?? proposal?.kind ?? `proposal ${id}`;
@@ -242,6 +303,7 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
       message: followUp,
       providerId,
       conversationId: state.conversationId,
+      model: historyModel ?? undefined,
       activeTab,
       onComplete: reloadHistory,
     });
@@ -365,7 +427,10 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
           <div className="flex items-center gap-2 px-3 pb-2">
             <Select
               value={providerId ? String(providerId) : undefined}
-              onValueChange={(value) => setProviderId(Number(value))}
+              onValueChange={(value) => {
+                setProviderId(Number(value));
+                setHistoryModel(null);
+              }}
             >
               <SelectTrigger className="h-7 min-w-0 flex-1 rounded-none text-xs">
                 <SelectValue placeholder={t("ai.selectProvider")} />
@@ -379,6 +444,21 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
               </SelectContent>
             </Select>
           </div>
+        )}
+        <AiConversationPicker
+          value={state.conversationId}
+          refreshKey={`${state.conversationId}:${state.streaming}`}
+          onSelect={(id) => void selectConversation(id)}
+        />
+        {historyLoading && (
+          <p role="status" className="px-3 pb-2 text-xs">
+            {t("ai.historyLoading")}
+          </p>
+        )}
+        {historyError && (
+          <p role="alert" className="px-3 pb-2 text-xs text-destructive">
+            {t("ai.historyLoadFailed")}
+          </p>
         )}
       </div>
 
@@ -506,7 +586,7 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
             }
           }}
           placeholder={t("ai.inputPlaceholder")}
-          disabled={!providerId}
+          disabled={!providerId || historyLoading || historyError}
         />
         {/*
           The hint gets its own line and wraps: sharing a row with the send
@@ -527,7 +607,9 @@ export function AiPanel({ activeTab }: { activeTab?: string | null }) {
               size="sm"
               variant="outline"
               className="border-accent-brand/40 text-accent-brand hover:bg-accent-brand/10 hover:text-accent-brand"
-              disabled={!input.trim() || !providerId}
+              disabled={
+                !input.trim() || !providerId || historyLoading || historyError
+              }
               onClick={() => void handleSend()}
             >
               <Send size={14} />

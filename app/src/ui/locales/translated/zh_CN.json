@@ -4691,6 +4691,11 @@
     "discordAvatar": "头像地址（可选）"
   },
   "ai": {
+    "chatHistory": "历史会话",
+    "newConversation": "新会话",
+    "refreshHistory": "刷新",
+    "historyLoadFailed": "历史会话加载失败，请刷新或重新选择。",
+    "historyLoading": "正在加载历史会话…",
     "chatFailedRecord": "本轮回复失败，以下内容未完成，不会自动重放。",
     "chatInterruptedRecord": "本轮回复已中断，以下内容未完成，不会自动重放。",
     "title": "助手",

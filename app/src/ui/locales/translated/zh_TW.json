@@ -4524,6 +4524,11 @@
     "ruleSaveFailed": "無法儲存規則"
   },
   "ai": {
+    "chatHistory": "歷史對話",
+    "newConversation": "新對話",
+    "refreshHistory": "重新整理",
+    "historyLoadFailed": "歷史對話載入失敗，請重新整理或重新選擇。",
+    "historyLoading": "正在載入歷史對話…",
     "chatFailedRecord": "本輪回覆失敗，以下內容未完成，不會自動重播。",
     "chatInterruptedRecord": "本輪回覆已中斷，以下內容未完成，不會自動重播。",
     "title": "助理",
