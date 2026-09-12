@@ -108,7 +108,7 @@
         "68-provider-response-bounds.md",
         "69-chat-stream-bounds.md"
       ],
-      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天完成帧早于保存的问题已修复并回归（220）；多轮工具消息持久化、实际历史刷新及全局资源上限仍未闭环。"
     },
     {
       "id": "R07",
@@ -278,7 +278,7 @@
         "68-provider-response-bounds.md",
         "69-chat-stream-bounds.md"
       ],
-      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天完成帧早于保存的问题已修复并回归（220）；多轮工具消息持久化、实际历史刷新及全局资源上限仍未闭环。"
     },
     {
       "id": "F06",
@@ -292,7 +292,7 @@
         "68-provider-response-bounds.md",
         "69-chat-stream-bounds.md"
       ],
-      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天完成帧早于保存的问题已修复并回归（220）；多轮工具消息持久化、实际历史刷新及全局资源上限仍未闭环。"
     },
     {
       "id": "F07",
@@ -1250,7 +1250,7 @@
         "68-provider-response-bounds.md",
         "69-chat-stream-bounds.md"
       ],
-      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天持久化/历史刷新及全局资源上限尚未闭环。"
+      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天完成帧早于保存的问题已修复并回归（220）；多轮工具消息持久化、实际历史刷新及全局资源上限仍未闭环。"
     },
     {
       "id": "A24",

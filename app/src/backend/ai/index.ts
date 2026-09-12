@@ -761,6 +761,9 @@ router.post(
           signal: abort.signal,
         })) {
           abort.signal.throwIfAborted();
+          // Completion belongs to this HTTP turn, after messages and history
+          // ordering are durable; the engine only signals model completion.
+          if (event.type === "done") continue;
           if (event.type === "assistant_message") {
             assistantText = event.content;
             // Kept so the next message replays them verbatim. Gemini rejects a
