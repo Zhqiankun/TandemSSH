@@ -3,6 +3,7 @@
 export async function runFileBatch<T>(
   items: readonly T[],
   action: (item: T) => Promise<unknown>,
+  assertCurrent: () => void = () => {},
 ): Promise<
   | { ok: true; completed: number }
   | { ok: false; completed: number; error: unknown }
@@ -10,8 +11,10 @@ export async function runFileBatch<T>(
   let completed = 0;
   for (const item of items) {
     try {
+      assertCurrent();
       await action(item);
       completed++;
+      assertCurrent();
     } catch (error) {
       return { ok: false, completed, error };
     }
@@ -22,6 +25,8 @@ export async function runFileBatch<T>(
 export function assertFileSession(
   expected: string,
   current: string | null | undefined,
+  mounted = true,
 ): void {
-  if (!expected || expected !== current) throw Error("FILE_SESSION_CHANGED");
+  if (!mounted || !expected || expected !== current)
+    throw Error("FILE_SESSION_CHANGED");
 }

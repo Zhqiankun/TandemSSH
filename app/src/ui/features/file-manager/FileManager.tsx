@@ -266,11 +266,11 @@ function FileManagerContent({
 
   const [undoHistory, setUndoHistory] = useState<UndoAction[]>([]);
   const undoInProgress = useRef(false);
-  const undoMounted = useRef(true);
+  const fileManagerMounted = useRef(true);
   useEffect(() => {
-    undoMounted.current = true;
+    fileManagerMounted.current = true;
     return () => {
-      undoMounted.current = false;
+      fileManagerMounted.current = false;
     };
   }, []);
 
@@ -1182,6 +1182,25 @@ function FileManagerContent({
       async () => {
         const operationPath = currentPath;
         const operationSession = sshSessionId;
+        const assertCurrent = () =>
+          assertFileSession(
+            operationSession,
+            sshSessionIdRef.current,
+            fileManagerMounted.current,
+          );
+        if (
+          !fileManagerMounted.current ||
+          sshSessionIdRef.current !== operationSession
+        ) {
+          if (fileManagerMounted.current)
+            toast.error(
+              t("fileManager.deleteSessionChanged", {
+                completed: 0,
+                remaining: files.length,
+              }),
+            );
+          return;
+        }
         const deletedPaths = new Set(files.map((file) => file.path));
         commitFilesForPath(
           operationSession,
@@ -1195,15 +1214,19 @@ function FileManagerContent({
         let completed = 0;
         try {
           await ensureSSHConnection();
+          assertCurrent();
 
-          const batch = await runFileBatch(files, (file) =>
-            deleteSSHItem(
-              operationSession,
-              file.path,
-              file.type === "directory",
-              currentHost?.id,
-              currentHost?.userId?.toString(),
-            ),
+          const batch = await runFileBatch(
+            files,
+            (file) =>
+              deleteSSHItem(
+                operationSession,
+                file.path,
+                file.type === "directory",
+                currentHost?.id,
+                currentHost?.userId?.toString(),
+              ),
+            assertCurrent,
           );
           completed = batch.completed;
           if (batch.ok === false) throw batch.error;
@@ -1220,6 +1243,10 @@ function FileManagerContent({
             invalidateCachedFileList(operationSession, operationPath);
           }
         } catch (error: unknown) {
+          if (!fileManagerMounted.current) {
+            invalidateCachedFileList(operationSession, operationPath);
+            return;
+          }
           commitFilesForPath(
             operationSession,
             operationPath,
@@ -1228,6 +1255,18 @@ function FileManagerContent({
               files.slice(completed),
             ),
           );
+          if (
+            sshSessionIdRef.current !== operationSession ||
+            (error instanceof Error && error.message === "FILE_SESSION_CHANGED")
+          ) {
+            toast.error(
+              t("fileManager.deleteSessionChanged", {
+                completed,
+                remaining: files.length - completed,
+              }),
+            );
+            return;
+          }
           const axiosError = error as {
             response?: {
               data?: { needsSudo?: boolean; error?: string };
@@ -1260,7 +1299,12 @@ function FileManagerContent({
                   currentHost?.userId?.toString(),
                   true,
                 ),
+              assertCurrent,
             );
+            if (!fileManagerMounted.current) {
+              invalidateCachedFileList(operationSession, operationPath);
+              return;
+            }
             if (permanent.ok) {
               toast.success(
                 t("fileManager.itemsDeletedSuccessfully", {
@@ -1269,10 +1313,17 @@ function FileManagerContent({
               );
             } else {
               toast.error(
-                t("fileManager.batchDeletePartial", {
-                  completed: completed + permanent.completed,
-                  remaining: files.length - completed - permanent.completed,
-                }),
+                t(
+                  permanent.ok === false &&
+                    permanent.error instanceof Error &&
+                    permanent.error.message === "FILE_SESSION_CHANGED"
+                    ? "fileManager.deleteSessionChanged"
+                    : "fileManager.batchDeletePartial",
+                  {
+                    completed: completed + permanent.completed,
+                    remaining: files.length - completed - permanent.completed,
+                  },
+                ),
               );
               if (
                 permanent.ok === false &&
@@ -2135,7 +2186,7 @@ function FileManagerContent({
       assertFileUndoSession(
         lastAction.sessionId,
         sshSessionIdRef.current,
-        undoMounted.current,
+        fileManagerMounted.current,
       );
     try {
       assertCurrent();
@@ -2248,7 +2299,7 @@ function FileManagerContent({
       assertCurrent();
       handleRefreshDirectory();
     } catch (error: unknown) {
-      if (!undoMounted.current) return;
+      if (!fileManagerMounted.current) return;
       if (
         error instanceof Error &&
         error.message === "FILE_UNDO_SESSION_CHANGED"

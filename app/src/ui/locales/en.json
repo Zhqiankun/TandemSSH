@@ -2383,6 +2383,7 @@
       "replacedLine": "replaced match on line $",
       "replacedMatches": "replaced $ matches"
     },
+    "deleteSessionChanged": "Connection changed or the file manager closed. Stopped this delete batch: {{completed}} confirmed, {{remaining}} unconfirmed or not attempted. Refresh the original directory before retrying.",
     "batchDeletePartial": "Confirmed {{completed}} items deleted or moved to trash; {{remaining}} items are unconfirmed or not attempted. Refresh before retrying.",
     "createTargetExists": "A file, folder or link with this name already exists. Choose another name.",
     "createResultUnknown": "The create result is unknown. Refresh the directory before retrying.",

@@ -2383,6 +2383,7 @@
       "replacedLine": "已替换第 $ 行的匹配",
       "replacedMatches": "已替换 $ 处匹配"
     },
+    "deleteSessionChanged": "连接已切换或文件管理器已关闭，本次删除已停止：已确认 {{completed}} 项，其余 {{remaining}} 项结果未确认或尚未执行。请刷新原目录核对后再重试。",
     "batchDeletePartial": "已确认 {{completed}} 项删除或移至回收站；其余 {{remaining}} 项结果未确认或尚未执行。请刷新核对后再重试。",
     "createTargetExists": "同名文件、目录或链接已存在，请换一个名称。",
     "createResultUnknown": "无法确认新建结果，请刷新目录检查后再重试。",

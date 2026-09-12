@@ -48,3 +48,48 @@ it("stops later file actions after the selected connection changes", async () =>
     "FILE_SESSION_CHANGED",
   );
 });
+
+it.each(["switch", "unmount"] as const)(
+  "does not start a stale confirmed delete batch after %s",
+  async (reason) => {
+    const action = vi.fn();
+    const result = await runFileBatch(["first", "second"], action, () =>
+      assertFileSession(
+        "original",
+        reason === "switch" ? "replacement" : "original",
+        reason !== "unmount",
+      ),
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      completed: 0,
+      error: expect.objectContaining({ message: "FILE_SESSION_CHANGED" }),
+    });
+    expect(action).not.toHaveBeenCalled();
+  },
+);
+it.each(["switch", "unmount"] as const)(
+  "counts a confirmed in-flight deletion but prevents the next after %s",
+  async (reason) => {
+    let current = "original",
+      mounted = true;
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const action = vi.fn(async () => pending);
+    const result = runFileBatch(["first", "second", "third"], action, () =>
+      assertFileSession("original", current, mounted),
+    );
+    expect(action).toHaveBeenCalledTimes(1);
+    if (reason === "switch") current = "replacement";
+    else mounted = false;
+    release();
+    expect(await result).toMatchObject({
+      ok: false,
+      completed: 1,
+      error: expect.objectContaining({ message: "FILE_SESSION_CHANGED" }),
+    });
+    expect(action).toHaveBeenCalledTimes(1);
+  },
+);
