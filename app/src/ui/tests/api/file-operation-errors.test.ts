@@ -1,5 +1,9 @@
 import { expect, it, vi, beforeEach } from "vitest";
-const { post, put } = vi.hoisted(() => ({ post: vi.fn(), put: vi.fn() }));
+const { post, put, remove } = vi.hoisted(() => ({
+  post: vi.fn(),
+  put: vi.fn(),
+  remove: vi.fn(),
+}));
 const generic = vi.hoisted(() =>
   vi.fn((error: unknown) => {
     throw error;
@@ -9,11 +13,12 @@ vi.mock("@/main-axios", () => ({
   authApi: {},
   fileManagerApi: {},
   handleApiError: generic,
-  getFileManagerApiForSession: () => ({ post, put }),
+  getFileManagerApiForSession: () => ({ post, put, delete: remove }),
   setSessionOrigin: vi.fn(),
   clearSessionOrigin: vi.fn(),
 }));
 import {
+  deleteSSHItem,
   createSSHFile,
   createSSHFolder,
   copySSHItem,
@@ -57,4 +62,25 @@ it("retains the existing handling for unrelated and authentication errors", () =
   };
   expect(() => throwFileOperationError(error, "copy")).toThrow();
   expect(generic).toHaveBeenCalledWith(error, "copy");
+});
+
+it("passes an unconfirmed trash result through deleteSSHItem without retaining credentials", async () => {
+  remove.mockRejectedValue({
+    isAxiosError: true,
+    config: { headers: { Authorization: "fixture-secret" } },
+    response: {
+      status: 500,
+      data: { error: "TRASH_RESULT_UNKNOWN", trashUnavailable: false },
+    },
+  });
+  const error = await deleteSSHItem("s", "/file", false).catch(
+    (error) => error,
+  );
+  expect(error).toMatchObject({
+    response: { status: 500, data: { error: "TRASH_RESULT_UNKNOWN" } },
+  });
+  expect(error.config).toBeUndefined();
+  expect(error.response.data.trashUnavailable).not.toBe(true);
+  expect(JSON.stringify(error)).not.toContain("fixture-secret");
+  expect(generic).not.toHaveBeenCalled();
 });

@@ -1,6 +1,7 @@
 import axios from "axios";
 import { handleApiError } from "@/main-axios";
 const fileResultCodes = new Set([
+  "TRASH_RESULT_UNKNOWN",
   "FILE_TARGET_EXISTS",
   "CREATE_RESULT_UNKNOWN",
   "INVALID_CREATE_PATH",

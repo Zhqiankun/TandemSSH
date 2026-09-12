@@ -538,7 +538,7 @@ export async function deleteSSHItem(
     ) {
       throw error;
     }
-    handleApiError(error, "delete SSH item");
+    throwFileOperationError(error, "delete SSH item");
   }
 }
 

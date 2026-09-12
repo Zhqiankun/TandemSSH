@@ -364,9 +364,11 @@ export function registerFileOperationRoutes(
     sshConn.lastActive = Date.now();
 
     if (!permanent) {
+      let moveAttempted = false;
       try {
         const sftp = await getSessionSftp(sshConn);
         await listTrash(sftp, getTrashRetentionDays());
+        moveAttempted = true;
         const item = await moveToTrash(sftp, itemPath);
         fileLogger.success("Item moved to trash", {
           operation: "file_trash_success",
@@ -387,9 +389,11 @@ export function registerFileOperationRoutes(
           userId,
           path: itemPath,
         });
-        return res.status(409).json({
-          error: (error as Error).message,
-          trashUnavailable: true,
+        return res.status(moveAttempted ? 500 : 409).json({
+          error: moveAttempted
+            ? "TRASH_RESULT_UNKNOWN"
+            : (error as Error).message,
+          trashUnavailable: !moveAttempted,
         });
       }
     }

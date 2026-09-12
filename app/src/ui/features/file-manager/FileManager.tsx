@@ -1375,6 +1375,10 @@ function FileManagerContent({
                 port: currentHost?.port,
               }),
             );
+          } else if (
+            axiosError.response?.data?.error === "TRASH_RESULT_UNKNOWN"
+          ) {
+            toast.error(t("fileManager.trashResultUnknown"));
           } else {
             toast.error(t("fileManager.failedToDeleteItems"));
           }

@@ -657,7 +657,8 @@
         "135-exclusive-file-create.md",
         "136-desktop-file-create.md",
         "160-copy-no-overwrite.md",
-        "161-delete-session-guards.md"
+        "161-delete-session-guards.md",
+        "163-trash-unknown-result.md"
       ],
       "remaining": "文件复制同名冲突、目录防合并与符号链接已通过真实 Linux SSH；排队超时/断连有路由测试。批量失败撤销、重连中止、完整批量删除界面与本轮复制修复的桌面交互仍需验收。"
     },

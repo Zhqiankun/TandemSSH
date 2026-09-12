@@ -2384,6 +2384,7 @@
       "replacedMatches": "replaced $ matches"
     },
     "deleteSessionChanged": "Connection changed or the file manager closed. Stopped this delete batch: {{completed}} confirmed, {{remaining}} unconfirmed or not attempted. Refresh the original directory before retrying.",
+    "trashResultUnknown": "The move to trash was attempted, but its result could not be confirmed. Refresh the original directory and trash before retrying; do not permanently delete based on this response.",
     "batchDeletePartial": "Confirmed {{completed}} items deleted or moved to trash; {{remaining}} items are unconfirmed or not attempted. Refresh before retrying.",
     "createTargetExists": "A file, folder or link with this name already exists. Choose another name.",
     "createResultUnknown": "The create result is unknown. Refresh the directory before retrying.",
