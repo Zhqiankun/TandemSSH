@@ -1,0 +1,23 @@
+name: Cancel superseded alpha.11 preview
+on:
+  push:
+    branches: [codex/unix-permissions]
+    paths: [.github/workflows/cancel-alpha11.yml]
+permissions:
+  actions: write
+jobs:
+  cancel:
+    if: github.repository == 'Zhqiankun/TandemSSH'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel only the superseded preview run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=$(gh api repos/Zhqiankun/TandemSSH/actions/runs/34679768304 --jq .status)
+          if [ "$status" != "completed" ]; then
+            gh api --method POST repos/Zhqiankun/TandemSSH/actions/runs/34679768304/cancel
+          else
+            echo "The targeted run is already completed; inspect its conclusion."
+          fi
