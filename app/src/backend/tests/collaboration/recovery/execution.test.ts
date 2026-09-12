@@ -1,3 +1,7 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { McpCore } from "../../../mcp/core.js";
+import { createTandemMcpServer } from "../../../mcp/server.js";
 import { WorkflowLibrary } from "../../../collaboration/workflows/library.js";
 import { readCheckpoint } from "../../../collaboration/recovery/schema.js";
 import type { OperationView } from "../../../collaboration/operations/gateway.js";
@@ -695,3 +699,128 @@ it("records the human decision for an unknown parent step and retains the workfl
   });
   expect(next.writes.filter((v) => v !== "context")).toEqual(["printf"]);
 });
+
+it.each(["automatic", "collaborative"] as const)(
+  "%s MCP recovery isolates checkpoints and reconnects without inheriting authorization",
+  async (mode) => {
+    const s = await storage(),
+      f = fixture(s.store);
+    const owner = {
+      userId: user.userId,
+      clientId: randomUUID(),
+      connectionId: randomUUID(),
+      allowedHostIds: [1],
+      readTerminal: false,
+    };
+    f.runtime.connectClient(owner.connectionId);
+    const task = await f.runtime.create(
+      { kind: "mcp", ...owner },
+      {
+        sessionId: f.id,
+        requestId: randomUUID(),
+        title: "恢复权限验证",
+        mode,
+      },
+    );
+    let principal = owner;
+    const compose = (target: ReturnType<typeof fixture>) =>
+      new McpCore({
+        tasks: target.runtime,
+        recovery: target.service,
+        hosts: async () => [],
+        sessions: () => [],
+        output: () => {
+          throw Error("UNEXPECTED_OUTPUT");
+        },
+        open: async () => {
+          throw Error("UNEXPECTED_OPEN");
+        },
+      });
+    let core = compose(f);
+    const server = createTandemMcpServer({
+      invoke: (m, p, signal) =>
+        core.invoke(principal, m, p, signal ?? new AbortController().signal),
+    });
+    const client = new Client({ name: "recovery-permissions", version: "1" });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(b);
+    await client.connect(a);
+    cleanup.push(async () => {
+      await client.close();
+      await server.close();
+    });
+    const call = async (name: string, args: Record<string, unknown>) => {
+      const r = await client.callTool({ name, arguments: args });
+      expect(r.isError, JSON.stringify(r.structuredContent)).not.toBe(true);
+      return r.structuredContent!.result;
+    };
+    const saved = (await call("save_task_progress", { taskId: task.id })) as {
+      id: string;
+    };
+    const record = await s.store.get(user.userId, saved.id);
+    expect(record?.state).toBe("available");
+    const before = structuredClone(f.runtime.get(user, task.id));
+    for (const foreign of [
+      { ...owner, userId: "stranger" },
+      { ...owner, clientId: randomUUID() },
+      { ...owner, allowedHostIds: [2] },
+    ]) {
+      principal = foreign;
+      expect(await call("list_saved_tasks", {})).toEqual([]);
+      for (const attempted of [
+        {
+          name: "get_saved_task",
+          arguments: { id: saved.id },
+          error: "TASK_RECOVERY_NOT_FOUND",
+        },
+        {
+          name: "restore_task_progress",
+          arguments: { id: saved.id, sessionId: f.id },
+          error: "TASK_RECOVERY_NOT_FOUND",
+        },
+        {
+          name: "save_task_progress",
+          arguments: { taskId: task.id },
+          error: "TASK_NOT_FOUND",
+        },
+      ]) {
+        const denied = await client.callTool(attempted);
+        expect(denied.isError).toBe(true);
+        expect(denied.structuredContent).toMatchObject({
+          error: { code: attempted.error },
+        });
+        expect(denied.structuredContent).not.toHaveProperty("result");
+        expect(await s.store.get(user.userId, saved.id)).toEqual(record);
+        expect(f.runtime.get(user, task.id)).toEqual(before);
+        expect(f.writes).toEqual([]);
+      }
+    }
+    const next = fixture(new TaskRecoveryStore(s.root, s.keys));
+    principal = { ...owner, connectionId: randomUUID() };
+    next.runtime.connectClient(principal.connectionId);
+    core = compose(next);
+    expect(await call("list_saved_tasks", {})).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: saved.id })]),
+    );
+    expect(await call("get_saved_task", { id: saved.id })).toMatchObject({
+      summary: { id: saved.id },
+    });
+    const restored = (await call("restore_task_progress", {
+      id: saved.id,
+      sessionId: next.id,
+    })) as TaskView;
+    expect(restored.id).not.toBe(task.id);
+    expect(restored.state).toBe("awaiting-authorization");
+    expect(restored.mode).toBe(mode);
+    expect(next.writes).toEqual([]);
+    expect(next.control.snapshot().controller.kind).toBe("human");
+    expect((await s.store.get(user.userId, saved.id))?.state).toBe("consumed");
+    const duplicate = await client.callTool({
+      name: "restore_task_progress",
+      arguments: { id: saved.id, sessionId: next.id },
+    });
+    expect(duplicate.isError).toBe(true);
+    expect(next.runtime.list(user)).toHaveLength(1);
+    expect(next.writes).toEqual([]);
+  },
+);
