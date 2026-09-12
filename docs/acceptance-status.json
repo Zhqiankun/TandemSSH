@@ -713,7 +713,7 @@
       "id": "B11",
       "requirement": "文件与终端联动",
       "acceptance": "复制远端路径、在此目录打开终端、可信 cwd 跟随、打开本地下载目录",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -736,9 +736,11 @@
         "183-trusted-terminal-cwd.md",
         "185-cwd-client-lifecycle.md",
         "186-download-reveal-errors.md",
-        "187-file-terminal-desktop.md"
+        "187-file-terminal-desktop.md",
+        "188-clipboard-fallback-cleanup.md",
+        "189-file-links-acceptance.md"
       ],
-      "remaining": "根目录父路径与初始目录转义已验证；真实 Windows 桌面与 OpenSSH 已验证目录打开终端、确认式同 PTY cwd 跳转，并修复请求 data 封装。复制远端路径、打开本地下载目录仍需桌面实机归并。"
+      "remaining": "原始四项均有实测证据，详见 187、189；可信 cwd 限确认的空闲 POSIX Shell。后续修复尚待 Actions 发布到新安装包。"
     },
     {
       "id": "B12",
