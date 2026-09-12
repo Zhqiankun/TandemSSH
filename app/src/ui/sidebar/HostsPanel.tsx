@@ -433,7 +433,12 @@ export function HostsPanel({
               const file = e.target.files?.[0];
               if (!file) return;
               e.target.value = "";
+              const overwrite = importOverwriteRef.current;
               try {
+                if (file.size > 8 * 1024 * 1024) {
+                  toast.error(t("hosts.importFileTooLarge"));
+                  return;
+                }
                 const text = await file.text();
                 const parsed = JSON.parse(text);
                 const hostsArray = Array.isArray(parsed)
@@ -466,9 +471,38 @@ export function HostsPanel({
                       h.enableTelnet ?? h.connectionType === "telnet",
                   }),
                 );
+                const entries = normalized
+                  .map((host) => {
+                    const item = host as Record<string, unknown>;
+                    const address =
+                      item.ip ??
+                      item.address ??
+                      item.host ??
+                      item.hostname ??
+                      "—";
+                    return (
+                      String(item.name ?? item.label ?? address).slice(0, 512) +
+                      " · " +
+                      String(address).slice(0, 2048) +
+                      ":" +
+                      String(item.port)
+                    );
+                  })
+                  .join("\n");
+                if (
+                  !window.confirm(
+                    t("hosts.importReview", {
+                      file: file.name,
+                      entries,
+                      overwrite: t(overwrite ? "common.yes" : "common.no"),
+                      credentials: credentialsArray?.length ?? 0,
+                    }),
+                  )
+                )
+                  return;
                 const result = await bulkImportSSHHosts(
                   normalized as unknown as HostData[],
-                  importOverwriteRef.current,
+                  overwrite,
                   credentialsArray,
                 );
                 const hosts = await getSSHHosts();
@@ -497,12 +531,32 @@ export function HostsPanel({
               const file = e.target.files?.[0];
               if (!file) return;
               e.target.value = "";
+              const overwrite = importOverwriteRef.current;
               try {
+                if (file.size > 8 * 1024 * 1024) {
+                  toast.error(t("hosts.importFileTooLarge"));
+                  return;
+                }
                 const text = await file.text();
-                const result = await importSSHConfigHosts(
-                  text,
-                  importOverwriteRef.current,
-                );
+                const entries = [
+                  ...text.matchAll(
+                    /^\s*(Host|HostName|Port|ProxyJump)\s+([^\r\n]+)$/gim,
+                  ),
+                ]
+                  .slice(0, 400)
+                  .map((match) => match[1] + " " + match[2].slice(0, 2048))
+                  .join("\n");
+                if (
+                  !window.confirm(
+                    t("hosts.sshConfigImportReview", {
+                      file: file.name,
+                      entries: entries || "—",
+                      overwrite: t(overwrite ? "common.yes" : "common.no"),
+                    }),
+                  )
+                )
+                  return;
+                const result = await importSSHConfigHosts(text, overwrite);
                 const hosts = await getSSHHosts();
                 setRawHosts(hosts);
                 window.dispatchEvent(new CustomEvent("termix:hosts-changed"));

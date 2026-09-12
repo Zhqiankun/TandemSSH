@@ -789,6 +789,9 @@
     "confirmCloseHost": "Close {{host}}?"
   },
   "hosts": {
+    "importFileTooLarge": "Import files must not exceed 8 MB.",
+    "importReview": "Host import preview\nFile: {{file}}\nOverwrite existing connections: {{overwrite}}\nCredentials included: {{credentials}}\n\nConnections:\n{{entries}}\n\nAdvanced configuration from the file will also be submitted. Review the source and configuration before importing. Continue?",
+    "sshConfigImportReview": "SSH config import preview\nFile: {{file}}\nOverwrite existing connections: {{overwrite}}\n\nConnection declarations (up to 400 lines; final results depend on parsing):\n{{entries}}\n\nReview these connection declarations. Continue importing?",
     "hosts": "Hosts",
     "noHosts": "No SSH Hosts",
     "retry": "Retry",
