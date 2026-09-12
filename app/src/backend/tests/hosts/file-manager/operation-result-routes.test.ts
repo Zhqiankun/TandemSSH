@@ -244,6 +244,7 @@ it.each([
 
 it.each([
   "split-denied",
+  "split-not-permitted",
   "successful-warning",
   "missing-exit",
   "error-then-close",
@@ -272,8 +273,20 @@ it.each([
     vi.mocked(execChannel).mockImplementation(
       (_session, _command, callback) => {
         callback(undefined, stream as never);
-        stream.stderr.emit("data", Buffer.from("Permission "));
-        stream.stderr.emit("data", Buffer.from("denied"));
+        stream.stderr.emit(
+          "data",
+          Buffer.from(
+            scenario === "split-not-permitted"
+              ? "Operation not "
+              : "Permission ",
+          ),
+        );
+        stream.stderr.emit(
+          "data",
+          Buffer.from(
+            scenario === "split-not-permitted" ? "permitted" : "denied",
+          ),
+        );
         if (
           scenario === "successful-warning" ||
           scenario === "close-then-error"
@@ -306,7 +319,7 @@ it.each([
     );
     expect(execChannel).toHaveBeenCalledTimes(1);
     expect(json).toHaveBeenCalledTimes(1);
-    if (scenario === "split-denied") {
+    if (scenario === "split-denied" || scenario === "split-not-permitted") {
       expect(status).toHaveBeenCalledWith(403);
       expect(json.mock.calls[0][0].needsSudo).toBe(true);
     } else if (scenario === "missing-exit" || scenario === "error-then-close") {

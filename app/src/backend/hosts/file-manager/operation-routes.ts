@@ -465,7 +465,7 @@ export function registerFileOperationRoutes(
             if (
               typeof code === "number" &&
               code !== 0 &&
-              /permission denied/i.test(errorData)
+              /permission denied|operation not permitted/i.test(errorData)
             ) {
               if (sshConn.sudoPassword) {
                 executeDelete(true).then(resolve);

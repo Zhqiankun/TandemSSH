@@ -664,9 +664,10 @@
         "167-sudo-stdin-acceptance.md",
         "168-desktop-sudo-delete.md",
         "169-sudo-delete-retry.md",
-        "170-desktop-sudo-retry.md"
+        "170-desktop-sudo-retry.md",
+        "171-desktop-batch-delete.md"
       ],
-      "remaining": "复制防覆盖有真实 Linux SSH 验证；新版目录复制/移动/异地撤销、双栏单文件取消/删除/恢复、桌面 sudo 取消/正确密码删除及错误密码后手动恢复均已通过 Windows→Linux 实测。批量部分失败、重连中止与断线后的完整交互仍需验收。"
+      "remaining": "文件新建/冲突、复制/移动/异地撤销、单文件删除/恢复、sudo 取消及错误密码恢复、三项批次部分失败后仅继续剩余项目均有专项实测。执行中断线/切换、重连后的完整文件操作交互仍需验收。"
     },
     {
       "id": "B10",
