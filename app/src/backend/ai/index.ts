@@ -1,3 +1,4 @@
+import { ChatAdmissions } from "./chat-admissions.js";
 import { parseConversationCursor } from "./conversation-cursor.js";
 import {
   chatTurnOutcome,
@@ -41,6 +42,7 @@ import { isAiProviderType } from "./providers/types.js";
 import { applyProposal } from "./tools/executor.js";
 
 const router = express.Router();
+const chatAdmissions = new ChatAdmissions();
 
 const authManager = AuthManager.getInstance();
 const authenticateJWT = authManager.createAuthMiddleware();
@@ -676,9 +678,38 @@ router.post(
       return res.status(400).json({ error: "providerId is required" });
     }
 
-    const repository = createCurrentAiRepository();
+    const suppliedConversation =
+      conversationId !== undefined && conversationId !== null;
+    const resolvedConversationId = suppliedConversation
+      ? Number(conversationId)
+      : undefined;
+    if (
+      suppliedConversation &&
+      (!(
+        typeof conversationId === "number" ||
+        (typeof conversationId === "string" && /^\d+$/.test(conversationId))
+      ) ||
+        !Number.isSafeInteger(resolvedConversationId) ||
+        resolvedConversationId! < 1)
+    )
+      return res.status(400).json({ error: "Invalid conversation id" });
+    let admission: ReturnType<ChatAdmissions["acquire"]>;
+    try {
+      admission = chatAdmissions.acquire(userId, resolvedConversationId);
+    } catch (error) {
+      const code =
+        error instanceof Error ? error.message : "CHAT_CONCURRENCY_LIMIT";
+      return res.status(code === "CHAT_CONVERSATION_BUSY" ? 409 : 429).json({
+        code,
+        error:
+          code === "CHAT_CONVERSATION_BUSY"
+            ? "本会话正在回复，请等待完成或停止后再发送。"
+            : "同时进行的聊天过多，请等待其他回复结束后重试。",
+      });
+    }
 
     try {
+      const repository = createCurrentAiRepository();
       const provider = await repository.findProviderWithSecret(
         resolvedProviderId,
         userId,
@@ -697,9 +728,11 @@ router.post(
 
       // Resolve or create the conversation before the stream opens, so a
       // failure here is still a normal JSON error the client can render.
-      let conversation = conversationId
-        ? await repository.findConversation(Number(conversationId), userId)
+      let conversation = resolvedConversationId
+        ? await repository.findConversation(resolvedConversationId, userId)
         : null;
+      if (suppliedConversation && !conversation)
+        return res.status(404).json({ error: "Conversation not found" });
       if (!conversation) {
         conversation = await repository.createConversation({
           userId,
@@ -709,6 +742,8 @@ router.post(
         });
       }
 
+      admission.bind(conversation.id);
+      if (res.destroyed) return;
       const history = await repository.listMessages(conversation.id);
       await repository.appendMessage({
         conversationId: conversation.id,
@@ -882,6 +917,8 @@ router.post(
       } else {
         res.status(500).json({ error: "Failed to start the assistant" });
       }
+    } finally {
+      admission.release();
     }
   },
 );

@@ -41,7 +41,7 @@ vi.mock("../../database/repositories/factory.js", () => ({
     createConversation: async () => ({ id: 1 }),
     listMessages: state.history,
     listConversationPage: state.page,
-    findConversation: async () => ({ id: 1 }),
+    findConversation: async (id: number) => ({ id }),
     appendMessage: state.append,
     touchConversation: state.touch,
   }),
@@ -321,4 +321,62 @@ it("validates pagination at HTTP boundary and passes the authenticated owner sep
     error: "INVALID_CONVERSATION_CURSOR",
   });
   expect(state.page).toHaveBeenCalledOnce();
+});
+
+it("rejects a concurrent HTTP turn before appending or calling the model, and releases after disconnect persistence", async () => {
+  state.pause = true;
+  state.history.mockResolvedValue([]);
+  state.append.mockResolvedValue(undefined);
+  const app = express();
+  app.use(express.json());
+  app.use("/ai", router);
+  server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((r) => server!.once("listening", r));
+  const url =
+    "http://127.0.0.1:" +
+    (server.address() as { port: number }).port +
+    "/ai/chat/stream";
+  const options = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      providerId: 1,
+      conversationId: 7,
+      message: "第一轮",
+    }),
+  };
+  const abort = new AbortController();
+  const first = await fetch(url, { ...options, signal: abort.signal });
+  await vi.waitFor(() => expect(state.waiting).toHaveBeenCalledOnce());
+  const second = await fetch(url, options);
+  expect(second.status).toBe(409);
+  expect(await second.json()).toMatchObject({
+    code: "CHAT_CONVERSATION_BUSY",
+    error: expect.stringContaining("正在回复"),
+  });
+  expect(state.engineHistory).toHaveBeenCalledOnce();
+  expect(state.append).toHaveBeenCalledOnce();
+  let release!: () => void;
+  let saving = false;
+  state.append.mockImplementation(async (input: { role: string }) => {
+    if (input.role === "assistant") {
+      saving = true;
+      await new Promise<void>((r) => (release = r));
+    }
+  });
+  abort.abort();
+  await first.body?.cancel().catch(() => {});
+  await vi.waitFor(() => expect(saving).toBe(true));
+  const duringSave = await fetch(url, options);
+  expect(duringSave.status).toBe(409);
+  release();
+  await vi.waitFor(() => expect(state.touch).toHaveBeenCalledOnce());
+  state.pause = false;
+  state.append.mockResolvedValue(undefined);
+  const third = await fetch(url, options);
+  expect(third.status).toBe(200);
+  // Subsequent successful persistence should not reuse the held test barrier.
+  state.append.mockResolvedValue(undefined);
+  const text = await third.text();
+  expect(text).toContain('"type":"done"');
 });
