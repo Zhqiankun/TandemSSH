@@ -1208,9 +1208,10 @@
         "36-workflow-directory-steps.md",
         "43-task-execution-recovery.md",
         "45-parent-workflow-recovery.md",
-        "191-workflow-import-boundaries.md"
+        "191-workflow-import-boundaries.md",
+        "192-configuration-import-policy-boundary.md"
       ],
-      "remaining": "流程导入的严格字段拒绝、仅预览、显式保存不执行及策略/控制权不变已有中文 UI→真实服务集成证据，详见 191；原始 A22 还包含连接与规则导入，仍需分别核对。"
+      "remaining": "流程导入边界见 191；统一配置恢复的预览无写入、剔除策略/启动字段、SQLite 原黑名单不变见 192。旧数据库及其他连接导入入口仍需核对可达性与行为，不能泛化到全部导入。"
     },
     {
       "id": "A23",

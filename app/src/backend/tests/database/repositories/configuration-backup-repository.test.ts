@@ -516,3 +516,78 @@ it("appends a valid theme once and preserves its generated identity on confirmat
     f.request.payload.terminalThemes[0].ref,
   );
 });
+it("keeps imported rule and startup fields inert through preview and real database restore", async () => {
+  const { ConfigurationBackupService } =
+    await import("../../../configuration-backup/service.js");
+  const f = await fixture();
+  const policy = JSON.stringify({
+    revision: 7,
+    sets: [
+      {
+        id: "deny",
+        scope: { type: "global" },
+        strictAllowlist: true,
+        rules: [
+          {
+            id: "deny-rm",
+            effect: "deny",
+            match: { kind: "program", program: "rm" },
+            reason: "保留黑名单",
+          },
+        ],
+      },
+    ],
+  });
+  await adapter.run(
+    sql`INSERT INTO settings (key,value) VALUES ('tandem-policy:owner',${policy})`,
+  );
+  const data = structuredClone(f.request.payload);
+  Object.assign(data, {
+    policy: { revision: 999, sets: [] },
+    rules: [],
+    runAfterImport: "touch unexpected",
+  });
+  Object.assign(data.hosts[0], {
+    terminalConfig: { autoExecute: "touch unexpected" },
+    enableTunnel: true,
+    autoConnect: true,
+    policy: { strictAllowlist: false },
+  });
+  const service = new ConfigurationBackupService({
+    snapshot: (user) => f.repo.snapshot(user),
+    apply: (user, request) => f.repo.apply(user, request),
+    audit: async () => {},
+  });
+  const before = await f.repo.snapshot("owner");
+  const preview = await service.previewImport("owner", JSON.stringify(data));
+  expect((await f.repo.snapshot("owner")).fingerprint).toBe(before.fingerprint);
+  expect(
+    preview.warnings.some(
+      (w) => w.code === "IGNORED_FIELD" && w.path?.endsWith(".policy"),
+    ),
+  ).toBe(true);
+  const result = await service.apply("owner", preview.id, false);
+  expect(result.hostIds).toHaveLength(1);
+  const rows = await adapter.query<{ value: string }>(
+    sql`SELECT value FROM settings WHERE key='tandem-policy:owner'`,
+  );
+  expect(rows).toEqual([{ value: policy }]);
+  const hosts = await adapter.query<{
+    auth_type: string;
+    enable_tunnel: number;
+    terminal_config: string | null;
+    credential_id: number | null;
+  }>(
+    sql`SELECT auth_type,enable_tunnel,terminal_config,credential_id FROM ssh_data WHERE user_id='owner'`,
+  );
+  expect(hosts).toHaveLength(1);
+  expect(hosts[0]).toMatchObject({
+    auth_type: "unconfigured",
+    enable_tunnel: 0,
+    credential_id: null,
+  });
+  expect(hosts[0].terminal_config ?? "").not.toContain("unexpected");
+  expect(JSON.stringify(await f.repo.snapshot("owner"))).not.toContain(
+    "touch unexpected",
+  );
+});
