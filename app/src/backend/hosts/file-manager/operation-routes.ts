@@ -445,9 +445,25 @@ export function registerFileOperationRoutes(
         let settled = false;
         let dispatched = false;
         let deleteStream: import("ssh2").ClientChannel | undefined;
+        const cleanup = () => {
+          clearTimeout(deadline);
+          req.off("aborted", cancel);
+          res.off("close", responseClosed);
+        };
+        const cancel = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve();
+          deleteStream?.destroy();
+        };
+        const responseClosed = () => {
+          if (!res.writableEnded) cancel();
+        };
         const deadline = setTimeout(() => {
           if (settled) return;
           settled = true;
+          cleanup();
           res.status(500).json({
             error: dispatched
               ? "DELETE_RESULT_UNKNOWN"
@@ -456,6 +472,12 @@ export function registerFileOperationRoutes(
           resolve();
           deleteStream?.destroy();
         }, 60000);
+        req.once("aborted", cancel);
+        res.once("close", responseClosed);
+        if (req.aborted || res.destroyed) {
+          cancel();
+          return;
+        }
         execChannel(
           sshConn,
           commandWithSuccess,
@@ -466,7 +488,7 @@ export function registerFileOperationRoutes(
             }
             if (err) {
               settled = true;
-              clearTimeout(deadline);
+              cleanup();
               fileLogger.error("SSH deleteItem error:", err);
               res.status(500).json({
                 error:
@@ -494,7 +516,7 @@ export function registerFileOperationRoutes(
             stream.on("close", (code) => {
               if (settled) return;
               settled = true;
-              clearTimeout(deadline);
+              cleanup();
               if (!Number.isInteger(code)) {
                 res.status(500).json({ error: "DELETE_RESULT_UNKNOWN" });
                 resolve();
@@ -554,7 +576,7 @@ export function registerFileOperationRoutes(
             stream.on("error", (streamErr) => {
               if (settled) return;
               settled = true;
-              clearTimeout(deadline);
+              cleanup();
               fileLogger.error("SSH deleteItem stream error:", streamErr);
               res.status(500).json({ error: "DELETE_RESULT_UNKNOWN" });
               resolve();

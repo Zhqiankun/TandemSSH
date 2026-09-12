@@ -668,7 +668,8 @@
         "171-desktop-batch-delete.md",
         "172-delete-dispatch-state.md",
         "173-sudo-lifecycle.md",
-        "174-delete-timeout.md"
+        "174-delete-timeout.md",
+        "175-delete-http-cancel.md"
       ],
       "remaining": "文件新建/冲突、复制/移动/异地撤销、单文件删除/恢复、sudo 取消及错误密码恢复、三项批次部分失败后仅继续剩余项目均有专项实测。执行中断线/切换、重连后的完整文件操作交互仍需验收。"
     },

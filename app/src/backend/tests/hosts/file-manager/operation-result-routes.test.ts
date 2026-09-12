@@ -49,13 +49,27 @@ vi.mock("../../../hosts/file-manager/trash-service.js", async (original) => ({
   listTrash: vi.fn(),
   moveToTrash: vi.fn(),
 }));
+function withRequestEvents(handler: RequestHandler): RequestHandler {
+  return (req, res, next) => {
+    for (const endpoint of [req, res]) {
+      if (typeof endpoint.once !== "function") {
+        const events = new EventEmitter();
+        Object.assign(endpoint, {
+          once: events.once.bind(events),
+          off: events.off.bind(events),
+        });
+      }
+    }
+    return handler(req, res, next);
+  };
+}
 beforeEach(() => vi.clearAllMocks());
 it.each(["createFile", "createFolder"])(
   "%s maps SFTP conflicts and permission failures",
   async (name) => {
     const routes = new Map<string, RequestHandler>();
     const register = (path: string, handler: RequestHandler) =>
-      routes.set(path, handler);
+      routes.set(path, withRequestEvents(handler));
     registerFileOperationRoutes(
       {
         get: register,
@@ -101,7 +115,7 @@ it.each(["false", "true", 1, 0, null, {}])(
   async (invalid) => {
     const routes = new Map<string, RequestHandler>();
     const register = (path: string, handler: RequestHandler) =>
-      routes.set(path, handler);
+      routes.set(path, withRequestEvents(handler));
     registerFileOperationRoutes(
       {
         get: register,
@@ -137,7 +151,7 @@ it.each(["renameItem", "moveItem"])(
   async (route) => {
     const routes = new Map<string, RequestHandler>();
     const register = (path: string, handler: RequestHandler) =>
-      routes.set(path, handler);
+      routes.set(path, withRequestEvents(handler));
     registerFileOperationRoutes(
       {
         get: register,
@@ -187,7 +201,7 @@ it.each([
   async (scenario) => {
     const routes = new Map<string, RequestHandler>();
     const register = (path: string, handler: RequestHandler) =>
-      routes.set(path, handler);
+      routes.set(path, withRequestEvents(handler));
     registerFileOperationRoutes(
       {
         get: register,
@@ -254,7 +268,7 @@ it.each([
   async (scenario) => {
     const routes = new Map<string, RequestHandler>();
     const register = (path: string, handler: RequestHandler) =>
-      routes.set(path, handler);
+      routes.set(path, withRequestEvents(handler));
     registerFileOperationRoutes(
       {
         get: register,
@@ -338,7 +352,7 @@ it.each(["failure", "rejection", "success", "new-password"] as const)(
   async (scenario) => {
     const routes = new Map<string, RequestHandler>();
     const register = (path: string, handler: RequestHandler) =>
-      routes.set(path, handler);
+      routes.set(path, withRequestEvents(handler));
     const session = {
       isConnected: true,
       sudoPassword: "old-password",
@@ -431,7 +445,7 @@ it.each(["disconnected", "replaced"] as const)(
     const sessions = { session };
     const routes = new Map<string, RequestHandler>();
     const register = (path: string, handler: RequestHandler) =>
-      routes.set(path, handler);
+      routes.set(path, withRequestEvents(handler));
     registerFileOperationRoutes(
       {
         get: register,
@@ -471,7 +485,7 @@ it.each(["queued", "negotiating", "active", "completed"] as const)(
     try {
       const routes = new Map<string, RequestHandler>();
       const register = (path: string, handler: RequestHandler) =>
-        routes.set(path, handler);
+        routes.set(path, withRequestEvents(handler));
       registerFileOperationRoutes(
         {
           get: register,
@@ -541,6 +555,110 @@ it.each(["queued", "negotiating", "active", "completed"] as const)(
         expect(execWithSudo).not.toHaveBeenCalled();
       }
       expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
+it.each([
+  "queued-request",
+  "active-request",
+  "queued-response",
+  "active-response",
+  "already-aborted",
+  "already-destroyed",
+  "completed",
+] as const)(
+  "cleans up ordinary deletion for HTTP lifecycle %s",
+  async (phase) => {
+    vi.useFakeTimers();
+    try {
+      const routes = new Map<string, RequestHandler>();
+      const register = (path: string, handler: RequestHandler) =>
+        routes.set(path, withRequestEvents(handler));
+      registerFileOperationRoutes(
+        {
+          get: register,
+          post: register,
+          put: register,
+          delete: register,
+        } as unknown as Express,
+        {
+          sshSessions: {
+            session: {
+              isConnected: true,
+              sudoPassword: "cached",
+            } as SSHSession,
+          },
+          verifySessionOwnership: () => true,
+        },
+      );
+      const stream = Object.assign(new EventEmitter(), {
+        stderr: new EventEmitter(),
+        destroy: vi.fn(),
+      });
+      let open!: Parameters<typeof execChannel>[2], guard!: () => void;
+      vi.mocked(execChannel).mockImplementation(
+        (_session, _command, callback, beforeOpen) => {
+          open = callback;
+          guard = beforeOpen!;
+          if (phase.startsWith("active") || phase === "completed") {
+            guard();
+            callback(undefined, stream as never);
+            if (phase === "completed") {
+              stream.emit("data", Buffer.from("SUCCESS\n"));
+              stream.emit("close", 0);
+            }
+          }
+        },
+      );
+      const req = Object.assign(new EventEmitter(), {
+        aborted: phase === "already-aborted",
+        userId: "owner",
+        body: { sessionId: "session", path: "/srv/file", permanent: true },
+      });
+      const status = vi.fn().mockReturnThis(),
+        json = vi.fn();
+      const res = Object.assign(new EventEmitter(), {
+        status,
+        json,
+        writableEnded: false,
+        destroyed: phase === "already-destroyed",
+      });
+      json.mockImplementation(() => {
+        res.writableEnded = true;
+        res.emit("close");
+      });
+      const request = routes.get("/ssh/file_manager/ssh/deleteItem")!(
+        req as never,
+        res as never,
+        vi.fn(),
+      );
+      if (phase.endsWith("-request")) req.emit("aborted");
+      if (phase.endsWith("-response")) res.emit("close");
+      await request;
+      if (phase === "completed") {
+        expect(json).toHaveBeenCalledTimes(1);
+        expect(stream.destroy).not.toHaveBeenCalled();
+      } else {
+        expect(json).not.toHaveBeenCalled();
+        if (phase.startsWith("already"))
+          expect(execChannel).not.toHaveBeenCalled();
+        else {
+          expect(() => guard()).toThrow("DELETE_NOT_DISPATCHED");
+          if (phase.startsWith("queued")) open(undefined, stream as never);
+          expect(stream.destroy).toHaveBeenCalledTimes(1);
+          stream.stderr.emit("data", Buffer.from("Permission denied"));
+          stream.emit("close", 1);
+          expect(execWithSudo).not.toHaveBeenCalled();
+        }
+      }
+      expect(req.listenerCount("aborted")).toBe(0);
+      expect(res.listenerCount("close")).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(json).toHaveBeenCalledTimes(phase === "completed" ? 1 : 0);
     } finally {
       vi.useRealTimers();
     }
