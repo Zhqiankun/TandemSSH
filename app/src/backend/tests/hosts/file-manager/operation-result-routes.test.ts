@@ -325,6 +325,7 @@ it.each([
     } else if (scenario === "missing-exit" || scenario === "error-then-close") {
       expect(status).toHaveBeenCalledWith(500);
       expect(json.mock.calls[0][0].needsSudo).not.toBe(true);
+      expect(json.mock.calls[0][0].error).toBe("DELETE_RESULT_UNKNOWN");
     } else {
       expect(status).not.toHaveBeenCalled();
       expect(json.mock.calls[0][0].message).toBe("Item deleted successfully");
@@ -402,5 +403,63 @@ it.each(["failure", "rejection", "success", "new-password"] as const)(
         expect(execWithSudo).toHaveBeenCalledTimes(1);
       }
     }
+  },
+);
+
+it.each(["disconnected", "replaced"] as const)(
+  "does not dispatch a queued delete after its session is %s",
+  async (change) => {
+    const actual = await vi.importActual<
+      typeof import("../../../hosts/file-manager/session.js")
+    >("../../../hosts/file-manager/session.js");
+    vi.mocked(execChannel).mockImplementation(actual.execChannel);
+    const opener = new actual.ChannelOpenSerializer();
+    let release!: () => void;
+    const held = opener.run(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    await Promise.resolve();
+    const clientExec = vi.fn();
+    const session = {
+      isConnected: true,
+      channelOpener: opener,
+      client: { exec: clientExec },
+    } as unknown as SSHSession;
+    const sessions = { session };
+    const routes = new Map<string, RequestHandler>();
+    const register = (path: string, handler: RequestHandler) =>
+      routes.set(path, handler);
+    registerFileOperationRoutes(
+      {
+        get: register,
+        post: register,
+        put: register,
+        delete: register,
+      } as unknown as Express,
+      { sshSessions: sessions, verifySessionOwnership: () => true },
+    );
+    const status = vi.fn().mockReturnThis(),
+      json = vi.fn();
+    const request = routes.get("/ssh/file_manager/ssh/deleteItem")!(
+      {
+        userId: "owner",
+        body: { sessionId: "session", path: "/srv/file", permanent: true },
+      } as never,
+      { status, json } as never,
+      vi.fn(),
+    );
+    if (change === "disconnected") session.isConnected = false;
+    else sessions.session = { ...session };
+    release();
+    await held;
+    await request;
+    expect(clientExec).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(500);
+    expect(json).toHaveBeenCalledExactlyOnceWith({
+      error: "DELETE_NOT_DISPATCHED",
+    });
   },
 );

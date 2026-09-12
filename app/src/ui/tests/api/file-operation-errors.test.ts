@@ -64,7 +64,12 @@ it("retains the existing handling for unrelated and authentication errors", () =
   expect(generic).toHaveBeenCalledWith(error, "copy");
 });
 
-it.each(["TRASH_RESULT_UNKNOWN", "SUDO_DELETE_FAILED"])(
+it.each([
+  "TRASH_RESULT_UNKNOWN",
+  "SUDO_DELETE_FAILED",
+  "DELETE_RESULT_UNKNOWN",
+  "DELETE_NOT_DISPATCHED",
+])(
   "passes %s through deleteSSHItem without retaining credentials",
   async (code) => {
     remove.mockRejectedValue({

@@ -2126,6 +2126,8 @@
     "sudoPasswordRequired": "Administrator Password Required",
     "enterSudoPassword": "Enter sudo password to continue this operation",
     "sudoPassword": "Sudo password",
+    "deleteResultUnknown": "The deletion result could not be confirmed. Some changes may already have occurred. Reconnect and refresh before retrying.",
+    "deleteNotDispatched": "The connection changed before deletion started. No delete command was dispatched; reconnect before trying again.",
     "sudoDeleteFailedRetry": "Elevated deletion could not be confirmed. Check the file state, then start the operation again and enter your password.",
     "sudoOperationFailed": "Sudo operation failed",
     "sudoAuthFailed": "Sudo authentication failed",

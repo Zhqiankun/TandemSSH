@@ -1384,7 +1384,12 @@ function FileManagerContent({
               t(
                 axiosError.response?.data?.error === "SUDO_DELETE_FAILED"
                   ? "fileManager.sudoDeleteFailedRetry"
-                  : "fileManager.failedToDeleteItems",
+                  : axiosError.response?.data?.error === "DELETE_RESULT_UNKNOWN"
+                    ? "fileManager.deleteResultUnknown"
+                    : axiosError.response?.data?.error ===
+                        "DELETE_NOT_DISPATCHED"
+                      ? "fileManager.deleteNotDispatched"
+                      : "fileManager.failedToDeleteItems",
               ),
             );
           }

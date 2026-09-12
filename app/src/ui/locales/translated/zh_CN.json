@@ -2126,6 +2126,8 @@
     "sudoPasswordRequired": "需要管理员密码",
     "enterSudoPassword": "输入 sudo 密码以继续此操作",
     "sudoPassword": "Sudo 密码",
+    "deleteResultUnknown": "删除结果未能确认，部分更改可能已经发生。请重新连接并刷新核对后再重试。",
+    "deleteNotDispatched": "删除开始前连接已变化，未派发删除命令。请重新连接后再操作。",
     "sudoDeleteFailedRetry": "提权删除未能确认成功。请先核对文件状态，再重新发起操作并输入密码。",
     "sudoOperationFailed": "Sudo 操作失败",
     "sudoAuthFailed": "Sudo 认证失败",
