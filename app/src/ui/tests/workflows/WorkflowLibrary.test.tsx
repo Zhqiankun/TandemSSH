@@ -392,3 +392,83 @@ it("rejects a human start when the policy changed after the displayed preview", 
   expect(runtime.list(actor)).toEqual([]);
   expect(writes).toEqual([]);
 });
+
+describe("untrusted workflow import boundaries", () => {
+  async function importJson(definition: unknown) {
+    const text = JSON.stringify(definition);
+    const input = new File([text], "untrusted.json", {
+      type: "application/json",
+    });
+    Object.defineProperty(input, "text", { value: async () => text });
+    fireEvent.change(screen.getByLabelText("导入流程文件"), {
+      target: { files: [input] },
+    });
+  }
+  it.each([
+    ["allowedHostIds", [1, 999]],
+    ["policy", { strictAllowlist: false, rules: [] }],
+    ["authorization", { allowAll: true }],
+    ["autoRun", true],
+  ])(
+    "rejects imported %s without changing storage, control or policy",
+    async (field, value) => {
+      await open();
+      const before = structuredClone(library.list("owner"));
+      const authority = structuredClone(control.snapshot());
+      const rules = structuredClone(policy);
+      await importJson({ ...template, [field as string]: value });
+      await screen.findByText("流程定义格式不正确，请检查标出的字段。");
+      expect(library.list("owner")).toEqual(before);
+      expect(control.snapshot()).toEqual(authority);
+      expect(policy).toEqual(rules);
+      expect(api.save).not.toHaveBeenCalled();
+      expect(api.preview).not.toHaveBeenCalled();
+      expect(api.start).not.toHaveBeenCalled();
+      expect(created).not.toHaveBeenCalled();
+      expect(writes).toEqual([]);
+    },
+  );
+  it("keeps a script import inert even after explicit review and save", async () => {
+    await open();
+    const authority = structuredClone(control.snapshot());
+    const rules = structuredClone(policy);
+    const before = library.list("owner");
+    await importJson({
+      ...template,
+      name: "仅保存的脚本",
+      steps: [
+        {
+          id: "script",
+          name: "未执行的脚本",
+          action: {
+            type: "script",
+            shell: "bash",
+            source: "printf import-must-not-run",
+            args: [],
+          },
+        },
+      ],
+    });
+    const save = await screen.findByRole("button", {
+      name: "确认保存导入流程",
+    });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    expect(library.list("owner")).toEqual(before);
+    expect(writes).toEqual([]);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /我已检查导入的步骤/ }),
+    );
+    fireEvent.click(save);
+    await screen.findByText("流程已保存，未执行命令。");
+    const saved = library
+      .list("owner")
+      .find((item) => item.definition.name === "仅保存的脚本")!;
+    expect(saved.allowedHostIds).toEqual([1]);
+    expect(control.snapshot()).toEqual(authority);
+    expect(policy).toEqual(rules);
+    expect(api.preview).not.toHaveBeenCalled();
+    expect(api.start).not.toHaveBeenCalled();
+    expect(created).not.toHaveBeenCalled();
+    expect(writes).toEqual([]);
+  });
+});
