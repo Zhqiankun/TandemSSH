@@ -180,3 +180,49 @@ describe("readFromClipboard", () => {
     expect(text).toBe("");
   });
 });
+
+describe("legacy clipboard temporary DOM lifecycle", () => {
+  it.each(["copy", "paste"])(
+    "removes its own textarea when %s throws and preserves existing inputs",
+    async (operation) => {
+      const original = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+      const originalCommand = Object.getOwnPropertyDescriptor(
+        document,
+        "execCommand",
+      );
+      const bridge = window.electronClipboard;
+      const existing = document.createElement("textarea");
+      existing.value = "existing draft";
+      document.body.appendChild(existing);
+      delete window.electronClipboard;
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: undefined,
+      });
+      Object.defineProperty(document, "execCommand", {
+        configurable: true,
+        value: () => {
+          expect(document.querySelectorAll("textarea")).toHaveLength(2);
+          throw Error("clipboard unavailable");
+        },
+      });
+      try {
+        const result =
+          operation === "copy"
+            ? await copyToClipboard("/中文 ' quoted/secret-path")
+            : await readFromClipboard();
+        expect(result).toBe(operation === "copy" ? false : "");
+        expect([...document.querySelectorAll("textarea")]).toEqual([existing]);
+        expect(existing.value).toBe("existing draft");
+      } finally {
+        existing.remove();
+        if (original) Object.defineProperty(navigator, "clipboard", original);
+        else Reflect.deleteProperty(navigator, "clipboard");
+        if (originalCommand)
+          Object.defineProperty(document, "execCommand", originalCommand);
+        else Reflect.deleteProperty(document, "execCommand");
+        if (bridge) window.electronClipboard = bridge;
+      }
+    },
+  );
+});

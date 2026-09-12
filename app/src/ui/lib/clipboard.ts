@@ -30,8 +30,9 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 }
 
 function legacyCopy(text: string): boolean {
+  let textarea: HTMLTextAreaElement | undefined;
   try {
-    const textarea = document.createElement("textarea");
+    textarea = document.createElement("textarea");
     textarea.value = text;
     textarea.setAttribute("readonly", "");
     textarea.style.position = "fixed";
@@ -39,11 +40,11 @@ function legacyCopy(text: string): boolean {
     textarea.style.left = "-9999px";
     document.body.appendChild(textarea);
     textarea.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(textarea);
-    return ok;
+    return document.execCommand("copy");
   } catch {
     return false;
+  } finally {
+    textarea?.remove();
   }
 }
 
@@ -77,8 +78,9 @@ export async function readFromClipboard(): Promise<string> {
 }
 
 function legacyPaste(): string {
+  let textarea: HTMLTextAreaElement | undefined;
   try {
-    const textarea = document.createElement("textarea");
+    textarea = document.createElement("textarea");
     textarea.setAttribute("readonly", "");
     textarea.style.position = "fixed";
     textarea.style.top = "-9999px";
@@ -86,10 +88,10 @@ function legacyPaste(): string {
     document.body.appendChild(textarea);
     textarea.focus();
     const ok = document.execCommand("paste");
-    const text = ok ? textarea.value : "";
-    document.body.removeChild(textarea);
-    return text;
+    return ok ? textarea.value : "";
   } catch {
     return "";
+  } finally {
+    textarea?.remove();
   }
 }
