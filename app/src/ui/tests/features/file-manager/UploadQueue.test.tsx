@@ -392,65 +392,84 @@ it.each(["completed", "committing"] as const)(
     );
   },
 );
-it("honors concurrency and continues queued files after one preparation fails", async () => {
-  const f = fixture(),
-    first = deferred(),
-    second = deferred();
-  const original = vi.mocked(f.api.prepare).getMockImplementation()!;
-  let active = 0,
-    peak = 0,
-    started = 0;
-  vi.mocked(f.api.prepare).mockImplementation(async (...args) => {
-    const index = started++;
-    active++;
-    peak = Math.max(peak, active);
-    try {
-      if (index === 0) {
-        await first.promise;
-        throw Error("UPLOAD_PERMISSION_DENIED");
+it.each([false, true])(
+  "honors concurrency after preparation failure with reversed hashing=%s",
+  async (reverseHashing) => {
+    const f = fixture(),
+      first = deferred(),
+      second = deferred(),
+      firstHash = deferred();
+    const original = vi.mocked(f.api.prepare).getMockImplementation()!;
+    let active = 0,
+      peak = 0,
+      started = 0;
+    vi.mocked(f.api.prepare).mockImplementation(async (...args) => {
+      if (reverseHashing && args[0].path === "/srv/file-1") firstHash.resolve();
+      started++;
+      active++;
+      peak = Math.max(peak, active);
+      try {
+        if (args[0].path === "/srv/file-0") {
+          await first.promise;
+          throw Error("UPLOAD_PERMISSION_DENIED");
+        }
+        if (args[0].path === "/srv/file-1") await second.promise;
+        return await original(...args);
+      } finally {
+        active--;
       }
-      if (index === 1) await second.promise;
-      return await original(...args);
-    } finally {
-      active--;
-    }
-  });
-  f.queue.setConcurrency(2);
-  const ids = [0, 1, 2].map((index) =>
-    f.queue.add({
-      file: file(Buffer.from("payload-" + index)),
-      sessionId: "session",
-      path: "/srv/file-" + index,
-      hostLabel: "fixture",
-    }),
-  );
-  await vi.waitFor(() => expect(started).toBe(2));
-  expect(f.queue.getSnapshot()[2].state).toBe("queued");
-  expect(active).toBe(2);
-  first.resolve();
-  await vi.waitFor(() => expect(started).toBe(3));
-  expect(f.queue.getSnapshot()[0].state).toBe("failed");
-  second.resolve();
-  await vi.waitFor(() =>
-    expect(
-      f.queue
-        .getSnapshot()
-        .slice(1)
-        .every((job) => job.state === "awaiting-review"),
-    ).toBe(true),
-  );
-  for (const id of ids.slice(1)) f.queue.start(id, false);
-  await vi.waitFor(() =>
-    expect(f.queue.getSnapshot().map((job) => job.state)).toEqual([
-      "failed",
-      "completed",
-      "completed",
-    ]),
-  );
-  expect(peak).toBe(2);
-  expect(f.queue.getSnapshot().map((job) => job.path)).toEqual([
-    "/srv/file-0",
-    "/srv/file-1",
-    "/srv/file-2",
-  ]);
-});
+    });
+    f.queue.setConcurrency(2);
+    const ids = [0, 1, 2].map((index) => {
+      const native = file(Buffer.from("payload-" + index));
+      const source: UploadSource = {
+        name: native.name,
+        size: native.size,
+        lastModified: native.lastModified,
+        slice: async (start, end) => {
+          if (reverseHashing && index === 0) await firstHash.promise;
+          return native.slice(start, end);
+        },
+      };
+      return f.queue.add({
+        file: source,
+        sessionId: "session",
+        path: "/srv/file-" + index,
+        hostLabel: "fixture",
+      });
+    });
+    await vi.waitFor(() => expect(started).toBe(2));
+    if (reverseHashing)
+      expect(vi.mocked(f.api.prepare).mock.calls[0][0].path).toBe(
+        "/srv/file-1",
+      );
+    expect(f.queue.getSnapshot()[2].state).toBe("queued");
+    expect(active).toBe(2);
+    first.resolve();
+    await vi.waitFor(() => expect(started).toBe(3));
+    expect(f.queue.getSnapshot()[0].state).toBe("failed");
+    second.resolve();
+    await vi.waitFor(() =>
+      expect(
+        f.queue
+          .getSnapshot()
+          .slice(1)
+          .every((job) => job.state === "awaiting-review"),
+      ).toBe(true),
+    );
+    for (const id of ids.slice(1)) f.queue.start(id, false);
+    await vi.waitFor(() =>
+      expect(f.queue.getSnapshot().map((job) => job.state)).toEqual([
+        "failed",
+        "completed",
+        "completed",
+      ]),
+    );
+    expect(peak).toBe(2);
+    expect(f.queue.getSnapshot().map((job) => job.path)).toEqual([
+      "/srv/file-0",
+      "/srv/file-1",
+      "/srv/file-2",
+    ]);
+  },
+);
