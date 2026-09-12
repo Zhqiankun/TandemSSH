@@ -35,10 +35,11 @@ it.each([
       await f.remote.mkdir("/srv/source-tree/空目录");
       await f.remote.write("/srv/source-tree/产物.bin", f.bytes);
     }
+    let activePrincipal = f.principal;
     const server = createTandemMcpServer({
       invoke: (method, params, signal) =>
         f.core.invoke(
-          f.principal,
+          activePrincipal,
           method,
           params,
           signal ?? new AbortController().signal,
@@ -242,6 +243,61 @@ it.each([
         new AbortController().signal,
       ),
     ).rejects.toThrow("CLIENT_CONNECTION_CHANGED");
+
+    const taskBefore = structuredClone(f.runtime.get(f.human, taskId));
+    const controlBefore = structuredClone(f.control.snapshot());
+    const writesBefore = [...f.writes];
+    for (const foreign of [
+      { ...f.principal, userId: "different-owner" },
+      { ...f.principal, clientId: randomUUID() },
+      { ...f.principal, allowedHostIds: [8] },
+    ]) {
+      activePrincipal = foreign;
+      try {
+        for (const attempted of [
+          {
+            name: "preview_directory_transfer",
+            arguments: { ...request, requestId: "foreign-preview" },
+          },
+          { name: "get_directory_transfer", arguments: { taskId, previewId } },
+          {
+            name: "run_directory_transfer",
+            arguments: { ...args, requestId: "foreign-run" },
+          },
+          { name: "get_directory_run", arguments: { taskId, runId: run.id } },
+          {
+            name: "release_directory_transfer",
+            arguments: { taskId, previewId },
+          },
+        ]) {
+          const denied = await client.callTool(attempted);
+          expect(denied.isError, attempted.name).toBe(true);
+          expect(denied.structuredContent, attempted.name).toMatchObject({
+            error: { code: "TASK_NOT_FOUND" },
+          });
+          expect(denied.structuredContent).not.toHaveProperty("result");
+          expect(f.runtime.get(f.human, taskId)).toEqual(taskBefore);
+          expect(f.control.snapshot()).toEqual(controlBefore);
+          expect(f.writes).toEqual(writesBefore);
+        }
+      } finally {
+        activePrincipal = f.principal;
+      }
+      expect(
+        await call("get_directory_transfer", { taskId, previewId }),
+      ).toEqual(completed);
+      expect(
+        await call("get_directory_run", { taskId, runId: run.id }),
+      ).toEqual(final);
+      if (direction === "upload")
+        expect(await f.remote.read("/srv/source-tree/产物.bin")).toEqual(
+          f.bytes,
+        );
+      else
+        expect(
+          await fs.readFile(path.join(local, "source-tree", "产物.bin")),
+        ).toEqual(f.bytes);
+    }
     await call("release_directory_transfer", { taskId, previewId });
     expect(
       (

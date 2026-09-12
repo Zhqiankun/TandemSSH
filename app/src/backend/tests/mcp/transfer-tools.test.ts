@@ -14,10 +14,11 @@ it.each(["automatic", "collaborative"] as const)(
   async (mode) => {
     const f = await transferToolsFixture();
     cleanup.push(f.close);
+    let activePrincipal = f.principal;
     const server = createTandemMcpServer({
         invoke: (method, params, signal) =>
           f.core.invoke(
-            f.principal,
+            activePrincipal,
             method,
             params,
             signal ?? new AbortController().signal,
@@ -139,6 +140,50 @@ it.each(["automatic", "collaborative"] as const)(
           .get(f.human, taskId)
           .operations.filter((op) => op.action.type === "file." + direction),
       ).toHaveLength(1);
+
+      const taskBefore = structuredClone(f.runtime.get(f.human, taskId));
+      const controlBefore = structuredClone(f.control.snapshot());
+      const writesBefore = [...f.writes];
+      for (const foreign of [
+        { ...f.principal, userId: "different-owner" },
+        { ...f.principal, clientId: randomUUID() },
+        { ...f.principal, allowedHostIds: [8] },
+      ]) {
+        activePrincipal = foreign;
+        try {
+          for (const request of [
+            { name: "list_authorized_files", arguments: { taskId } },
+            {
+              name: "upload_file",
+              arguments: { ...args, requestId: "foreign-upload" },
+            },
+            {
+              name: "download_file",
+              arguments: { ...args, requestId: "foreign-download" },
+            },
+            { name: "get_transfer_status", arguments: { taskId, operationId } },
+            { name: "release_transfer", arguments: { taskId, operationId } },
+          ]) {
+            const denied = await client.callTool(request);
+            expect(denied.isError, request.name).toBe(true);
+            expect(denied.structuredContent, request.name).toMatchObject({
+              error: { code: "TASK_NOT_FOUND" },
+            });
+            expect(denied.structuredContent).not.toHaveProperty("result");
+            expect(f.runtime.get(f.human, taskId)).toEqual(taskBefore);
+            expect(f.control.snapshot()).toEqual(controlBefore);
+            expect(f.writes).toEqual(writesBefore);
+          }
+        } finally {
+          activePrincipal = f.principal;
+        }
+        expect(
+          await call("get_transfer_status", { taskId, operationId }),
+        ).toEqual(status);
+        if (direction === "upload")
+          expect(await f.remote.read("/srv/data.bin")).toEqual(f.bytes);
+        else expect(await fs.readFile(f.destination)).toEqual(f.bytes);
+      }
       await call("release_transfer", { taskId, operationId });
       expect(
         (await call("get_transfer_status", { taskId, operationId })).status,
