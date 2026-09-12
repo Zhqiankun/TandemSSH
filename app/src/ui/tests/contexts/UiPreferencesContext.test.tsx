@@ -199,3 +199,47 @@ describe("UiPreferencesProvider", () => {
     expect(result.current?.preferences.overrides).toEqual({});
   });
 });
+it("keeps locally completed onboarding and preset after remount without replacing them with server defaults", async () => {
+  const first = renderHook(() => useUiPreferencesContext(), { wrapper });
+  await waitFor(() => expect(first.result.current?.loaded).toBe(true));
+  act(() => {
+    first.result.current?.setPreset("advanced");
+    first.result.current?.completeOnboarding(true);
+  });
+  const saved = first.result.current!.preferences;
+  first.unmount();
+  api.getUiPreferences.mockClear();
+  const next = renderHook(() => useUiPreferencesContext(), { wrapper });
+  await waitFor(() => expect(next.result.current?.loaded).toBe(true));
+  expect(next.result.current?.preferences).toEqual(saved);
+  expect(next.result.current?.preferences.onboarding.skipped).toBe(true);
+  expect(api.getUiPreferences).not.toHaveBeenCalled();
+});
+it("does not let a late cloud read overwrite a newer local edit", async () => {
+  api.getUserPreferences.mockResolvedValue({ storageMode: "cloud" });
+  let resolve!: (value: ReturnType<typeof defaultUiPreferences>) => void;
+  api.getUiPreferences.mockReturnValue(new Promise((r) => (resolve = r)));
+  const view = renderHook(() => useUiPreferencesContext(), { wrapper });
+  await waitFor(() => expect(api.getUiPreferences).toHaveBeenCalledOnce());
+  act(() => view.result.current?.setPreset("advanced"));
+  await act(async () =>
+    resolve({ ...defaultUiPreferences(), preset: "simple" }),
+  );
+  await waitFor(() => expect(view.result.current?.loaded).toBe(true));
+  expect(view.result.current?.preferences.preset).toBe("advanced");
+});
+it("still loads authoritative cloud preferences when no newer local edit occurs", async () => {
+  api.getUserPreferences.mockResolvedValue({ storageMode: "cloud" });
+  localStorage.setItem(
+    "uiPreferences",
+    JSON.stringify({ ...defaultUiPreferences(), preset: "advanced" }),
+  );
+  api.getUiPreferences.mockResolvedValue({
+    ...defaultUiPreferences(),
+    preset: "simple",
+  });
+  const view = renderHook(() => useUiPreferencesContext(), { wrapper });
+  await waitFor(() => expect(view.result.current?.loaded).toBe(true));
+  expect(view.result.current?.preferences.preset).toBe("simple");
+  expect(api.getUiPreferences).toHaveBeenCalledOnce();
+});

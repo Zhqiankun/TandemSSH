@@ -85,13 +85,20 @@ export function UiPreferencesProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPatch = useRef<Record<string, unknown>>({});
+  const localRevision = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
 
-    getUiPreferences()
+    const revision = localRevision.current;
+    getUserPreferences()
+      .then((settings) => {
+        if (cancelled) return null;
+        if (settings.storageMode === "local" && readCache()) return null;
+        return getUiPreferences();
+      })
       .then((remote) => {
-        if (cancelled) return;
+        if (cancelled || !remote || revision !== localRevision.current) return;
         setPreferences(remote);
         writeCache(remote);
       })
@@ -110,7 +117,10 @@ export function UiPreferencesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handler = () => {
       const cached = readCache();
-      if (cached) setPreferences(cached);
+      if (cached) {
+        localRevision.current++;
+        setPreferences(cached);
+      }
     };
     window.addEventListener(SYNC_EVENT, handler);
     return () => window.removeEventListener(SYNC_EVENT, handler);
@@ -159,6 +169,7 @@ export function UiPreferencesProvider({ children }: { children: ReactNode }) {
       mutate: (prev: UiPreferences) => UiPreferences,
       patch: Record<string, unknown>,
     ) => {
+      localRevision.current++;
       setPreferences((prev) => {
         const next = sanitizeUiPreferences(mutate(prev));
         writeCache(next);
