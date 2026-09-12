@@ -101,3 +101,70 @@ for (const mode of ["automatic", "collaborative"] as const) {
     },
   );
 }
+it.each(["automatic", "collaborative"] as const)(
+  "%s start_task checks session ownership before creating work or taking control",
+  async (mode) => {
+    const f = await transferToolsFixture();
+    cleanup.push(f.close);
+    let principal = f.principal;
+    const server = createTandemMcpServer({
+      invoke: (method, input, signal) =>
+        f.core.invoke(
+          principal,
+          method,
+          input,
+          signal ?? new AbortController().signal,
+        ),
+    });
+    const client = new Client({ name: "task-start-permissions", version: "1" });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(b);
+    await client.connect(a);
+    cleanup.push(async () => {
+      await client.close();
+      await server.close();
+    });
+    const control = structuredClone(f.control.snapshot());
+    for (const boundary of ["user", "host", "session"] as const) {
+      principal = {
+        ...f.principal,
+        ...(boundary === "user" ? { userId: "stranger" } : {}),
+        ...(boundary === "host" ? { allowedHostIds: [8] } : {}),
+      };
+      const r = await client.callTool({
+        name: "start_task",
+        arguments: {
+          sessionId: boundary === "session" ? randomUUID() : f.sessionId,
+          requestId: boundary,
+          goal: "尝试创建任务",
+          mode,
+        },
+      });
+      expect(r.isError).toBe(true);
+      expect(r.structuredContent).toMatchObject({
+        error: { code: "SESSION_NOT_FOUND" },
+      });
+      expect(f.runtime.list(f.human)).toEqual([]);
+      expect(f.control.snapshot()).toEqual(control);
+      expect(f.writes).toEqual([]);
+    }
+    // A separately paired client may request its own task on an allowed host.
+    principal = { ...f.principal, clientId: randomUUID() };
+    const created = await client.callTool({
+      name: "start_task",
+      arguments: {
+        sessionId: f.sessionId,
+        requestId: "allowed",
+        goal: "等待用户授权",
+        mode,
+      },
+    });
+    expect(created.isError).not.toBe(true);
+    expect(created.structuredContent).toMatchObject({
+      result: { mode, state: "awaiting-authorization" },
+    });
+    expect(f.runtime.list(f.human)).toHaveLength(1);
+    expect(f.control.snapshot().controller.kind).toBe("human");
+    expect(f.writes).toEqual([]);
+  },
+);
