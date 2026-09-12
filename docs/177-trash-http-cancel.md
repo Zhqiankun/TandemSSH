@@ -18,3 +18,5 @@
 
 文件责任：operation-routes.ts 拥有 HTTP 等待和会话身份，trash-service.ts 拥有目标移动与恢复记录一致性；通过可选检查回调单向调用，没有新增共享模块或依赖。公开 alpha.8 不包含本轮开发修复。
 最终 tsc -b、ESLint、git diff --check 均通过。
+
+后续恢复记录顺序已在 [178](178-trash-recovery-intent.md) 改为预写意图、移动后确认，以该记录中的最终协议为准。

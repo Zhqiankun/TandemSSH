@@ -126,11 +126,15 @@ async function readStoredItem(
   id: string,
 ): Promise<StoredTrashItem> {
   if (!ID_PATTERN.test(id)) throw new Error("Invalid trash item id");
-  const parsed = JSON.parse(
-    (await readFile(sftp, path.posix.join(dirs.info, `${id}.json`))).toString(
-      "utf8",
-    ),
-  ) as StoredTrashItem;
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(sftp, path.posix.join(dirs.info, id + ".json"));
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    if (code !== 2 && code !== "ENOENT") throw error;
+    bytes = await readFile(sftp, path.posix.join(dirs.info, id + ".pending"));
+  }
+  const parsed = JSON.parse(bytes.toString("utf8")) as StoredTrashItem;
   if (
     parsed.id !== id ||
     parsed.trashPath !== path.posix.join(dirs.files, id) ||
@@ -165,22 +169,31 @@ export async function moveToTrash(
     size: itemStat.size,
   };
 
+  // Persist recovery intent before changing the source. Older clients ignore
+  // .pending files; current clients recover interrupted publication.
+  assertActive();
+  const pendingPath = path.posix.join(dirs.info, id + ".pending");
+  await writeFile(sftp, pendingPath, JSON.stringify(item));
   assertActive();
   await rename(sftp, itemPath, trashPath);
-  // Once the move is dispatched, finish its recovery record even if the caller leaves.
-  try {
-    await writeFile(
-      sftp,
-      path.posix.join(dirs.info, `${id}.json`),
-      JSON.stringify(item),
-    );
-  } catch (error) {
-    await rename(sftp, trashPath, itemPath).catch(() => {});
-    throw error;
-  }
+  await rename(sftp, pendingPath, path.posix.join(dirs.info, id + ".json"));
   return publicItem(item);
 }
 
+async function removeMetadata(
+  sftp: SFTPWrapper,
+  dirs: { info: string },
+  id: string,
+) {
+  for (const suffix of [".json", ".pending"]) {
+    try {
+      await unlink(sftp, path.posix.join(dirs.info, id + suffix));
+    } catch (error) {
+      const code = (error as { code?: unknown }).code;
+      if (code !== 2 && code !== "ENOENT") throw error;
+    }
+  }
+}
 export async function listTrash(
   sftp: SFTPWrapper,
   retentionDays: number,
@@ -188,19 +201,27 @@ export async function listTrash(
   const dirs = await trashPaths(sftp);
   const cutoff = Date.now() - retentionDays * 86_400_000;
   const items: TrashItem[] = [];
+  const seen = new Set<string>();
   for (const entry of await readdir(sftp, dirs.info)) {
-    if (!entry.filename.endsWith(".json")) continue;
-    const id = entry.filename.slice(0, -5);
+    const suffix = entry.filename.endsWith(".json")
+      ? ".json"
+      : entry.filename.endsWith(".pending")
+        ? ".pending"
+        : null;
+    if (!suffix) continue;
+    const id = entry.filename.slice(0, -suffix.length);
+    if (seen.has(id)) continue;
+    seen.add(id);
     try {
       const item = await readStoredItem(sftp, dirs, id);
       if (new Date(item.deletedAt).getTime() < cutoff) {
         if (await exists(sftp, item.trashPath))
           await removeTree(sftp, item.trashPath);
-        await unlink(sftp, path.posix.join(dirs.info, entry.filename));
+        await removeMetadata(sftp, dirs, id);
         continue;
       }
       if (await exists(sftp, item.trashPath)) items.push(publicItem(item));
-      else await unlink(sftp, path.posix.join(dirs.info, entry.filename));
+      // Unexpired intent may belong to an in-flight move. Retention handles it later.
     } catch {
       // Ignore corrupt metadata without exposing arbitrary paths to deletion.
     }
@@ -215,7 +236,7 @@ export async function restoreTrashItem(sftp: SFTPWrapper, id: string) {
     throw new Error("A file already exists at the original path");
   }
   await rename(sftp, item.trashPath, item.originalPath);
-  await unlink(sftp, path.posix.join(dirs.info, `${id}.json`));
+  await removeMetadata(sftp, dirs, id);
   return publicItem(item);
 }
 
@@ -227,7 +248,7 @@ export async function permanentlyDeleteTrashItem(
   const item = await readStoredItem(sftp, dirs, id);
   if (await exists(sftp, item.trashPath))
     await removeTree(sftp, item.trashPath);
-  await unlink(sftp, path.posix.join(dirs.info, `${id}.json`));
+  await removeMetadata(sftp, dirs, id);
 }
 
 export async function emptyTrash(sftp: SFTPWrapper) {

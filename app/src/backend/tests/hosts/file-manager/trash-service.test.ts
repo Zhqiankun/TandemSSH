@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { SFTPWrapper } from "ssh2";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isSafeTrashSource,
   listTrash,
@@ -193,28 +193,36 @@ describe("file manager trash safety", () => {
     },
   );
 
-  it("refuses tampered metadata instead of deleting an arbitrary path", async () => {
-    const { home, sftp } = await fixture();
-    const original = path.join(home, "discard.txt");
-    const protectedFile = path.join(home, "keep.txt");
-    await fs.promises.writeFile(original, "discard");
-    await fs.promises.writeFile(protectedFile, "keep");
-    const trashed = await moveToTrash(sftp, original);
-    const metadata = path.join(
-      home,
-      ".termix-trash",
-      "info",
-      `${trashed.id}.json`,
-    );
-    const data = JSON.parse(await fs.promises.readFile(metadata, "utf8"));
-    data.trashPath = protectedFile;
-    await fs.promises.writeFile(metadata, JSON.stringify(data));
+  it.each([".json", ".pending"])(
+    "refuses tampered %s metadata instead of deleting an arbitrary path",
+    async (suffix) => {
+      const { home, sftp } = await fixture();
+      const original = path.join(home, "discard.txt");
+      const protectedFile = path.join(home, "keep.txt");
+      await fs.promises.writeFile(original, "discard");
+      await fs.promises.writeFile(protectedFile, "keep");
+      const trashed = await moveToTrash(sftp, original);
+      const metadata = path.join(
+        home,
+        ".termix-trash",
+        "info",
+        `${trashed.id}.json`,
+      );
+      const data = JSON.parse(await fs.promises.readFile(metadata, "utf8"));
+      data.trashPath = protectedFile;
+      await fs.promises.writeFile(metadata, JSON.stringify(data));
+      if (suffix === ".pending")
+        await fs.promises.rename(
+          metadata,
+          path.join(path.dirname(metadata), trashed.id + suffix),
+        );
 
-    await expect(permanentlyDeleteTrashItem(sftp, trashed.id)).rejects.toThrow(
-      "Invalid trash metadata",
-    );
-    expect(await fs.promises.readFile(protectedFile, "utf8")).toBe("keep");
-  });
+      await expect(
+        permanentlyDeleteTrashItem(sftp, trashed.id),
+      ).rejects.toThrow("Invalid trash metadata");
+      expect(await fs.promises.readFile(protectedFile, "utf8")).toBe("keep");
+    },
+  );
 
   it("prunes items after the configured retention period", async () => {
     const { home, sftp } = await fixture();
@@ -366,4 +374,148 @@ it("finishes recovery metadata when cancellation follows the source move", async
   expect(await listTrash(sftp, 7)).toEqual([item]);
   await restoreTrashItem(sftp, item.id);
   expect(await fs.promises.readFile(original, "utf8")).toBe("recoverable");
+});
+
+it("does not move the source when recovery intent cannot be written", async () => {
+  const { home, sftp } = await fixture();
+  const source = path.join(home, "source.txt");
+  await fs.promises.writeFile(source, "keep");
+  const rename = vi.fn(sftp.rename.bind(sftp));
+  const failing = {
+    ...sftp,
+    rename,
+    writeFile: (_path: string, _data: string, done: (error?: Error) => void) =>
+      done(Error("metadata denied")),
+  } as unknown as SFTPWrapper;
+  await expect(moveToTrash(failing, source)).rejects.toThrow("metadata denied");
+  expect(rename).not.toHaveBeenCalled();
+  expect(await fs.promises.readFile(source, "utf8")).toBe("keep");
+});
+
+it.each(["source", "publication"] as const)(
+  "recovers after the %s rename acknowledgement is lost",
+  async (phase) => {
+    const { home, sftp } = await fixture();
+    const source = path.join(home, "source.txt");
+    await fs.promises.writeFile(source, "recover");
+    const unreliable = {
+      ...sftp,
+      rename: (from: string, to: string, done: (error?: Error) => void) => {
+        sftp.rename(from, to, (error) => {
+          const lose =
+            phase === "source" ? from === source : from.endsWith(".pending");
+          done(error || (lose ? Error("response lost") : undefined));
+        });
+      },
+    } as unknown as SFTPWrapper;
+    await expect(moveToTrash(unreliable, source)).rejects.toThrow(
+      "response lost",
+    );
+    expect(fs.existsSync(source)).toBe(false);
+    const items = await listTrash(sftp, 7);
+    expect(items).toHaveLength(1);
+    await restoreTrashItem(sftp, items[0].id);
+    expect(await fs.promises.readFile(source, "utf8")).toBe("recover");
+    expect(
+      await fs.promises.readdir(path.join(home, ".termix-trash", "info")),
+    ).toEqual([]);
+  },
+);
+
+it("restores directly from pending metadata when publication fails before applying", async () => {
+  const { home, sftp } = await fixture();
+  const source = path.join(home, "source.txt");
+  await fs.promises.writeFile(source, "recover");
+  const blocked = {
+    ...sftp,
+    rename: (from: string, to: string, done: (error?: Error) => void) => {
+      if (from.endsWith(".pending")) done(Error("publication denied"));
+      else sftp.rename(from, to, done);
+    },
+  } as unknown as SFTPWrapper;
+  await expect(moveToTrash(blocked, source)).rejects.toThrow(
+    "publication denied",
+  );
+  const entries = await fs.promises.readdir(
+    path.join(home, ".termix-trash", "info"),
+  );
+  expect(entries).toHaveLength(1);
+  expect(entries[0]).toMatch(/.pending$/);
+  const [item] = await listTrash(sftp, 7);
+  expect(item.originalPath).toBe(source);
+  await restoreTrashItem(sftp, item.id);
+  expect(await fs.promises.readFile(source, "utf8")).toBe("recover");
+});
+
+it("a concurrent listing does not discard intent before the source move", async () => {
+  const { home, sftp } = await fixture();
+  const source = path.join(home, "source.txt");
+  await fs.promises.writeFile(source, "keep");
+  let entered!: () => void, release!: () => void;
+  const reached = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const held = {
+    ...sftp,
+    writeFile: (
+      target: string,
+      data: string,
+      done: (error?: Error) => void,
+    ) => {
+      sftp.writeFile(target, data, (error) => {
+        if (error) return done(error);
+        entered();
+        void gate.then(() => done());
+      });
+    },
+  } as unknown as SFTPWrapper;
+  const moving = moveToTrash(held, source);
+  await reached;
+  expect(await listTrash(sftp, 7)).toEqual([]);
+  expect(
+    (await fs.promises.readdir(path.join(home, ".termix-trash", "info")))[0],
+  ).toMatch(/.pending$/);
+  release();
+  const item = await moving;
+  expect(await listTrash(sftp, 7)).toEqual([item]);
+  await restoreTrashItem(sftp, item.id);
+  expect(await fs.promises.readFile(source, "utf8")).toBe("keep");
+});
+
+it("retention removes abandoned intent without touching the unmoved source", async () => {
+  const { home, sftp } = await fixture();
+  const source = path.join(home, "source.txt");
+  await fs.promises.writeFile(source, "keep");
+  let cancelled = false;
+  const stopped = {
+    ...sftp,
+    writeFile: (
+      target: string,
+      data: string,
+      done: (error?: Error) => void,
+    ) => {
+      sftp.writeFile(target, data, (error) => {
+        cancelled = true;
+        done(error);
+      });
+    },
+  } as unknown as SFTPWrapper;
+  await expect(
+    moveToTrash(stopped, source, () => {
+      if (cancelled) throw Error("cancelled");
+    }),
+  ).rejects.toThrow("cancelled");
+  const info = path.join(home, ".termix-trash", "info");
+  const [name] = await fs.promises.readdir(info);
+  const record = JSON.parse(
+    await fs.promises.readFile(path.join(info, name), "utf8"),
+  );
+  record.deletedAt = new Date(Date.now() - 8 * 86400000).toISOString();
+  await fs.promises.writeFile(path.join(info, name), JSON.stringify(record));
+  expect(await listTrash(sftp, 7)).toEqual([]);
+  expect(await fs.promises.readdir(info)).toEqual([]);
+  expect(await fs.promises.readFile(source, "utf8")).toBe("keep");
 });
