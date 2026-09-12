@@ -372,7 +372,8 @@
         "211-mcp-configuration-ownership.md",
         "212-mcp-task-permissions.md",
         "213-mcp-transfer-permissions.md",
-        "214-mcp-workflow-permissions.md"
+        "214-mcp-workflow-permissions.md",
+        "215-mcp-file-body-permissions.md"
       ],
       "remaining": "已存在 38 工具及打包 Codex 发现证据；真实 stdio 接管拒写见 208，活动撤销、排队前复核和迟到结果阻断见 209。配置格式转义与中文复制反馈已验证（210）；配置 API 所有权、撤销时点和秘密隔离已验证（211）；所有工具权限矩阵仍需逐项闭环。"
     },

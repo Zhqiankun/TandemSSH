@@ -316,6 +316,114 @@ describe("production file tools over a reused SSH connection", () => {
         });
         expect(body.content).toBe("原始内容\n");
         expect(body.document.hostIdentity).toBe(terminal.hostName);
+
+        // Inject foreign identities only at a separate SDK test boundary;
+        // the owner's native signed transport remains unchanged.
+        const beforeTask = structuredClone(tasks.get(human, task.id));
+        const beforeControl = structuredClone(control.snapshot());
+        const beforeWrites = [...writes];
+        const beforeBytes = await remote.read("/目录/配置%2F.txt");
+        if (liveActor.kind !== "mcp") throw Error("MCP_ACTOR_REQUIRED");
+        for (const boundary of [
+          "user",
+          "pairing",
+          "host",
+          "connection",
+        ] as const) {
+          const foreign = {
+            ...principal,
+            connectionId: liveActor.connectionId,
+            ...(boundary === "user" ? { userId: "stranger" } : {}),
+            ...(boundary === "pairing" ? { clientId: randomUUID() } : {}),
+            ...(boundary === "host" ? { allowedHostIds: [8] } : {}),
+            ...(boundary === "connection"
+              ? { connectionId: randomUUID() }
+              : {}),
+          };
+          const foreignServer = createTandemMcpServer({
+            invoke: (method, input, signal) =>
+              core.invoke(
+                foreign,
+                method,
+                input,
+                signal ?? new AbortController().signal,
+              ),
+          });
+          const foreignClient = new McpClient({
+            name: "file-permission-matrix",
+            version: "1",
+          });
+          const [left, right] = InMemoryTransport.createLinkedPair();
+          try {
+            await foreignServer.connect(right);
+            await foreignClient.connect(left);
+            for (const attempted of [
+              {
+                name: "list_directory",
+                arguments: {
+                  taskId: task.id,
+                  path: "/目录",
+                  requestId: "foreign-list",
+                },
+              },
+              {
+                name: "stat_file",
+                arguments: { ...readInput, requestId: "foreign-stat" },
+              },
+              {
+                name: "read_file",
+                arguments: { ...readInput, requestId: "foreign-read" },
+              },
+              {
+                name: "get_file_content",
+                arguments: { taskId: task.id, version },
+              },
+              {
+                name: "propose_file_edit",
+                arguments: {
+                  taskId: task.id,
+                  version,
+                  edits: [{ before: "原始内容", after: "越权修改" }],
+                  requestId: "foreign-edit",
+                },
+              },
+              {
+                name: "propose_file_write",
+                arguments: {
+                  taskId: task.id,
+                  version,
+                  content: "越权覆盖",
+                  requestId: "foreign-write",
+                },
+              },
+            ]) {
+              const denied = await foreignClient.callTool(attempted);
+              expect(denied.isError, attempted.name).toBe(true);
+              expect(denied.structuredContent, attempted.name).toMatchObject({
+                error: {
+                  code:
+                    boundary === "connection"
+                      ? "CLIENT_CONNECTION_CHANGED"
+                      : "TASK_NOT_FOUND",
+                },
+              });
+              expect(denied.structuredContent).not.toHaveProperty("result");
+              expect(tasks.get(human, task.id)).toEqual(beforeTask);
+              expect(control.snapshot()).toEqual(beforeControl);
+              expect(writes).toEqual(beforeWrites);
+            }
+          } finally {
+            await foreignClient.close();
+            await foreignServer.close();
+          }
+          expect(await remote.read("/目录/配置%2F.txt")).toEqual(beforeBytes);
+          expect(
+            await call<FileBodyView>("get_file_content", {
+              taskId: task.id,
+              version,
+            }),
+          ).toEqual(body);
+        }
         const editTool =
           changeKind === "edit" ? "propose_file_edit" : "propose_file_write";
         const editInput = {
