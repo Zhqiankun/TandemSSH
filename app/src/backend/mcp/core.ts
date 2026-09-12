@@ -447,9 +447,17 @@ export class McpCore {
           (item) => item.requestId === p.requestId,
         );
         if (!op) throw new Error("OPERATION_NOT_FOUND");
+        const current = this.ports.tasks.get(identity, view.id);
+        if (op.decision.outcome === "deny") throw new Error("POLICY_DENIED");
+        if (
+          op.status === "awaiting-approval" &&
+          current.state === "paused-error" &&
+          current.error
+        )
+          throw new Error(current.error);
         return {
           taskId: view.id,
-          taskState: this.ports.tasks.get(identity, view.id).state,
+          taskState: current.state,
           operation: operation(op),
         };
       }

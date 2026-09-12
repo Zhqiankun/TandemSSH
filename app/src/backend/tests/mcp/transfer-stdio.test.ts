@@ -28,6 +28,19 @@ describe.runIf(
       expect(fs.existsSync(entry)).toBe(true);
       const f = await transferToolsFixture();
       cleanup.push(f.close);
+      f.policy.sets.push({
+        id: "native-policy-test",
+        scope: { type: "global" },
+        strictAllowlist: false,
+        rules: [
+          {
+            id: "blocked-pwd-argument",
+            effect: "deny",
+            match: { kind: "program-args", program: "pwd", args: ["-P"] },
+            reason: "测试明确拒绝规则",
+          },
+        ],
+      });
       const profileId = randomUUID(),
         clientId = f.principal.clientId,
         reference = { profileId, clientId },
@@ -83,6 +96,49 @@ describe.runIf(
         expect(r.isError, JSON.stringify(r.structuredContent)).not.toBe(true);
         return r.structuredContent!.result as Record<string, unknown>;
       };
+      for (const blocked of [
+        {
+          requestId: "blacklist",
+          args: ["-P"],
+          cwd: "/srv",
+          code: "POLICY_DENIED",
+        },
+        {
+          requestId: "outside-task-directory",
+          args: [],
+          cwd: "/outside",
+          code: "TASK_SCOPE_EXCEEDED",
+        },
+      ]) {
+        const blockedTask = await call("start_task", {
+          sessionId: f.sessionId,
+          requestId: blocked.requestId,
+          goal: "拒写验收",
+          mode,
+        });
+        const blockedId = blockedTask.id as string;
+        await f.authorize(blockedId);
+        const beforeWrites = [...f.writes];
+        const denied = await client.callTool({
+          name: "run_command",
+          arguments: {
+            taskId: blockedId,
+            requestId: blocked.requestId,
+            program: "pwd",
+            args: blocked.args,
+            cwd: blocked.cwd,
+          },
+        });
+        expect(denied.isError, JSON.stringify(denied.structuredContent)).toBe(
+          true,
+        );
+        expect(denied.structuredContent).toMatchObject({
+          error: { code: blocked.code },
+        });
+        expect(f.writes).toEqual(beforeWrites);
+        await call("cancel_task", { taskId: blockedId });
+      }
+      f.writes.length = 0;
       const task = await call("start_task", {
           sessionId: f.sessionId,
           requestId: randomUUID(),

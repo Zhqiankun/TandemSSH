@@ -357,7 +357,7 @@
       "id": "F10",
       "requirement": "外部 MCP",
       "acceptance": "本机接入，共用策略和会话控制；首版仅开放有限工具",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/mcp",
       "records": [
         "13-mcp.md",
@@ -376,9 +376,12 @@
         "215-mcp-file-body-permissions.md",
         "216-mcp-recovery-permissions.md",
         "217-mcp-session-access.md",
-        "218-mcp-tool-evidence-map.md"
+        "218-mcp-tool-evidence-map.md",
+        "219-mcp-policy-result.md"
       ],
-      "remaining": "已存在 38 工具及打包 Codex 发现证据；真实 stdio 接管拒写见 208，活动撤销、排队前复核和迟到结果阻断见 209。配置格式转义与中文复制反馈已验证（210）；配置 API 所有权、撤销时点和秘密隔离已验证（211）；38 项工具的身份权限与合法行为已逐组核对（212–218）；仍需收尾核对 MCP 实际共享策略入口的黑名单和任务范围拒写证据。"
+      "remaining": "",
+      "verifiedAt": "2026-09-12",
+      "verification": "当前开发源码：38 项有限中文工具、原生 stdio/系统凭据/签名管道、撤销、共用策略黑名单和目录拒写、双模式人工接管及逐组权限矩阵已验证，见 208–219。新修复尚未进入 alpha.12；独立产品验收项不由此替代。"
     },
     {
       "id": "F11",
