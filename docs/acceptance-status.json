@@ -931,7 +931,7 @@
       "id": "A07",
       "requirement": "外部 MCP 抢写",
       "acceptance": "不具控制权时返回 CONTROL_BUSY/STALE_CONTROL",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/mcp",
       "records": [
         "13-mcp.md",
@@ -940,9 +940,10 @@
         "43-task-execution-recovery.md",
         "48-task-download-directory-recovery.md",
         "64-jump-combined-acceptance.md",
-        "97-mcp-control-errors.md"
+        "97-mcp-control-errors.md",
+        "208-native-mcp-control.md"
       ],
-      "remaining": "自动/协作两种模式的 MCP SDK→核心服务→任务运行时接管后拒写已验证，并修正 STALE_CONTROL 错误契约；其余并发入口及实际 stdio 对应场景仍需核对。"
+      "remaining": "自动/协作的真实 stdio、签名管道与系统配对链路已验证接管后并发拒写、错误契约、状态读取及 MCP 断开后人工继续输入，详见 208；F10 全工具权限矩阵仍单独验收。"
     },
     {
       "id": "A08",

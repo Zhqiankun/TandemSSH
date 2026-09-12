@@ -140,10 +140,72 @@ describe.runIf(
       expect(await fsp.readFile(f.destination)).toEqual(f.bytes);
       expect(f.writes).toEqual(["context"]);
       expect(stderr).not.toContain(f.folder);
+      const command = await call("run_command", {
+        taskId,
+        requestId: "before-human-takeover",
+        program: "pwd",
+        args: [],
+      });
+      const commandId = (command.operation as { id: string }).id;
+      await vi.waitFor(() =>
+        expect(f.runtime.operation(f.human, taskId, commandId).status).toBe(
+          mode === "automatic" ? "succeeded" : "awaiting-approval",
+        ),
+      );
+      f.control.humanInput(Buffer.from("manual\r"));
+      const expected =
+        mode === "automatic" ? "succeeded" : "cancelled-before-send";
+      await vi.waitFor(() =>
+        expect(f.runtime.operation(f.human, taskId, commandId).status).toBe(
+          expected,
+        ),
+      );
+      const before = [...f.writes];
+      const rejected = await Promise.all(
+        [0, 1].map((index) =>
+          client.callTool({
+            name: "run_command",
+            arguments: {
+              taskId,
+              requestId: "after-human-takeover-" + index,
+              program: "pwd",
+              args: [],
+            },
+          }),
+        ),
+      );
+      for (const result of rejected) {
+        expect(result.isError).toBe(true);
+        expect(result.structuredContent).toMatchObject({
+          error: {
+            code: expect.stringMatching(/^(CONTROL_BUSY|STALE_CONTROL)$/),
+          },
+        });
+      }
+      expect(f.writes).toEqual(before);
+      expect(f.writes.filter((value) => value === "pwd")).toHaveLength(
+        mode === "automatic" ? 1 : 0,
+      );
+      expect(f.control.snapshot().controller.kind).toBe("human");
+      for (const name of ["get_operation", "wait_operation"]) {
+        const observed = await call(name, {
+          taskId,
+          operationId: commandId,
+          ...(name === "wait_operation" ? { timeoutMs: 0 } : {}),
+        });
+        expect(observed).toMatchObject({ id: commandId, status: expected });
+      }
       await client.close();
       await vi.waitFor(() =>
         expect(f.runtime.get(f.human, taskId).state).toBe("cancelled"),
       );
+      expect(f.writes).toEqual(before);
+      expect(f.control.snapshot()).toMatchObject({
+        closed: false,
+        controller: { kind: "human" },
+      });
+      f.control.humanInput(Buffer.from("manual-after-mcp-close\r"));
+      expect(f.writes).toEqual([...before, "manual-after-mcp-close\r"]);
     },
     30000,
   );
