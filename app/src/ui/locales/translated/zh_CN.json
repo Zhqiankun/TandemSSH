@@ -2126,6 +2126,7 @@
     "sudoPasswordRequired": "需要管理员密码",
     "enterSudoPassword": "输入 sudo 密码以继续此操作",
     "sudoPassword": "Sudo 密码",
+    "sudoDeleteFailedRetry": "提权删除未能确认成功。请先核对文件状态，再重新发起操作并输入密码。",
     "sudoOperationFailed": "Sudo 操作失败",
     "sudoAuthFailed": "Sudo 认证失败",
     "dragFilesToUpload": "将文件拖放到此处以上传",

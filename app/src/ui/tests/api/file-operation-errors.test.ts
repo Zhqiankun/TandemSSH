@@ -64,23 +64,26 @@ it("retains the existing handling for unrelated and authentication errors", () =
   expect(generic).toHaveBeenCalledWith(error, "copy");
 });
 
-it("passes an unconfirmed trash result through deleteSSHItem without retaining credentials", async () => {
-  remove.mockRejectedValue({
-    isAxiosError: true,
-    config: { headers: { Authorization: "fixture-secret" } },
-    response: {
-      status: 500,
-      data: { error: "TRASH_RESULT_UNKNOWN", trashUnavailable: false },
-    },
-  });
-  const error = await deleteSSHItem("s", "/file", false).catch(
-    (error) => error,
-  );
-  expect(error).toMatchObject({
-    response: { status: 500, data: { error: "TRASH_RESULT_UNKNOWN" } },
-  });
-  expect(error.config).toBeUndefined();
-  expect(error.response.data.trashUnavailable).not.toBe(true);
-  expect(JSON.stringify(error)).not.toContain("fixture-secret");
-  expect(generic).not.toHaveBeenCalled();
-});
+it.each(["TRASH_RESULT_UNKNOWN", "SUDO_DELETE_FAILED"])(
+  "passes %s through deleteSSHItem without retaining credentials",
+  async (code) => {
+    remove.mockRejectedValue({
+      isAxiosError: true,
+      config: { headers: { Authorization: "fixture-secret" } },
+      response: {
+        status: 500,
+        data: { error: code, trashUnavailable: false },
+      },
+    });
+    const error = await deleteSSHItem("s", "/file", false).catch(
+      (error) => error,
+    );
+    expect(error).toMatchObject({
+      response: { status: 500, data: { error: code } },
+    });
+    expect(error.config).toBeUndefined();
+    expect(error.response.data.trashUnavailable).not.toBe(true);
+    expect(JSON.stringify(error)).not.toContain("fixture-secret");
+    expect(generic).not.toHaveBeenCalled();
+  },
+);

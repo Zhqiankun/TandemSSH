@@ -1,6 +1,7 @@
 import axios from "axios";
 import { handleApiError } from "@/main-axios";
 const fileResultCodes = new Set([
+  "SUDO_DELETE_FAILED",
   "TRASH_RESULT_UNKNOWN",
   "FILE_TARGET_EXISTS",
   "CREATE_RESULT_UNKNOWN",

@@ -406,7 +406,12 @@ export function registerFileOperationRoutes(
     const executeDelete = (useSudo: boolean): Promise<void> => {
       return new Promise((resolve) => {
         if (useSudo && sshConn.sudoPassword) {
-          execWithSudo(sshConn, deleteCommand, sshConn.sudoPassword).then(
+          const attemptedPassword = sshConn.sudoPassword;
+          const discardFailedPassword = () => {
+            if (sshConn.sudoPassword === attemptedPassword)
+              delete sshConn.sudoPassword;
+          };
+          execWithSudo(sshConn, deleteCommand, attemptedPassword).then(
             (result) => {
               if (fileCommandSucceeded(result.code)) {
                 res.json({
@@ -418,13 +423,15 @@ export function registerFileOperationRoutes(
                   },
                 });
               } else {
+                discardFailedPassword();
                 res.status(500).json({
-                  error: `Delete failed: ${result.stderr || result.stdout}`,
+                  error: "SUDO_DELETE_FAILED",
                 });
               }
               resolve();
             },
             () => {
+              discardFailedPassword();
               res.status(500).json({ error: "SUDO_DELETE_FAILED" });
               resolve();
             },

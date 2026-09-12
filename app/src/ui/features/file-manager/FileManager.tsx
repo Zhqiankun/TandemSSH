@@ -1380,7 +1380,13 @@ function FileManagerContent({
           ) {
             toast.error(t("fileManager.trashResultUnknown"));
           } else {
-            toast.error(t("fileManager.failedToDeleteItems"));
+            toast.error(
+              t(
+                axiosError.response?.data?.error === "SUDO_DELETE_FAILED"
+                  ? "fileManager.sudoDeleteFailedRetry"
+                  : "fileManager.failedToDeleteItems",
+              ),
+            );
           }
           console.error("Delete failed:", error);
         }
@@ -1458,7 +1464,9 @@ function FileManagerContent({
         return;
       }
       const axiosError = error as {
-        response?: { data?: { needsSudo?: boolean; sudoFailed?: boolean } };
+        response?: {
+          data?: { needsSudo?: boolean; sudoFailed?: boolean; error?: string };
+        };
         message?: string;
       };
 
@@ -1485,7 +1493,13 @@ function FileManagerContent({
         return;
       }
 
-      toast.error(t("fileManager.sudoOperationFailed"));
+      toast.error(
+        t(
+          axiosError.response?.data?.error === "SUDO_DELETE_FAILED"
+            ? "fileManager.sudoDeleteFailedRetry"
+            : "fileManager.sudoOperationFailed",
+        ),
+      );
       setPendingSudoOperation(null);
     }
   }
