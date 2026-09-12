@@ -445,7 +445,7 @@ let cachedSqliteSchema: string | null = null;
  * generation order, so replaying every file in that (lexical) order
  * reconstructs the current schema exactly like a real migration run would.
  */
-function sqliteSchemaSql(): string {
+export function sqliteSchemaSql(): string {
   if (cachedSqliteSchema) return cachedSqliteSchema;
 
   const dir = path.resolve(process.cwd(), "drizzle", "sqlite");
