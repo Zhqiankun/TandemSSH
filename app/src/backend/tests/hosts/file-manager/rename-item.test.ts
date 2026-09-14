@@ -94,3 +94,18 @@ it("does not fall back to destructive copying when the server refuses a move", a
   expect(f.files.get("/srv/source")).toBe("source");
   expect(f.rename).toHaveBeenCalledTimes(1);
 });
+
+it("keeps a generic SFTP failure unknown when the source vanished after rename", async () => {
+  const f = fixture(),
+    fallback = vi.fn();
+  f.rename.mockImplementation((old, next, done) => {
+    f.files.set(next, f.files.get(old)!);
+    f.files.delete(old);
+    done(Object.assign(Error("failure"), { code: 4 }));
+  });
+  await expect(
+    moveFileItem(f.sftp, "/srv/source", "/srv/target", fallback),
+  ).rejects.toThrow("RENAME_RESULT_UNKNOWN");
+  expect(fallback).not.toHaveBeenCalled();
+  expect(f.rename).toHaveBeenCalledOnce();
+});

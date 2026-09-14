@@ -308,3 +308,178 @@ it("releases a failed preparation slot without dropping the remaining download j
     f.queue.setOwner(null);
   }
 });
+
+it("changes download concurrency live without aborting active sources or mixing local files", async () => {
+  const { createHash } = await import("node:crypto");
+  const data = new Map(
+    Array.from({ length: 5 }, (_, i) => [
+      "file-" + i,
+      Buffer.from("download-payload-" + i),
+    ]),
+  );
+  const hash = (bytes: Uint8Array) =>
+    createHash("sha256").update(bytes).digest("hex");
+  const sources = new Map<string, DownloadSource>();
+  const locals = new Map<
+    string,
+    { view: LocalDownloadView; bytes: Buffer; expected: Buffer }
+  >();
+  const gates = new Map<string, () => void>(),
+    started: string[] = [],
+    signals: AbortSignal[] = [];
+  let active = 0,
+    peak = 0;
+  const api: DownloadApiPort = {
+    prepare: async (input) => {
+      const id = input.path.slice(1),
+        bytes = data.get(id)!;
+      const source: DownloadSource = {
+        id,
+        sessionId: input.sessionId,
+        path: input.path,
+        canonicalPath: input.path,
+        size: bytes.length,
+        sha256: hash(bytes),
+        hashes: [hash(bytes)],
+        chunkBytes: 4194304,
+        state: "ready",
+        expiresAt: Date.now() + 60000,
+      };
+      sources.set(id, source);
+      return structuredClone(source);
+    },
+    chunk: async (_session, id, offset, signal) => {
+      expect(offset).toBe(0);
+      signals.push(signal);
+      started.push(id);
+      active++;
+      peak = Math.max(peak, active);
+      try {
+        await new Promise<void>((resolve) => gates.set(id, resolve));
+        expect(signal.aborted).toBe(false);
+        return Uint8Array.from(data.get(id)!);
+      } finally {
+        active--;
+      }
+    },
+    action: vi.fn(async (_session, id, action) => ({
+      ...sources.get(id)!,
+      state: action === "verify" ? ("verified" as const) : ("ready" as const),
+    })),
+  };
+  const native: DesktopDownloadApi = {
+    reset: async () => ({ ok: true, value: null }),
+    choose: async (spec) => {
+      const expected = data.get(spec.name)!;
+      expect(spec.sha256).toBe(hash(expected));
+      const view: LocalDownloadView = {
+        id: spec.name,
+        path: "C:/chosen/" + spec.name,
+        size: spec.size,
+        writtenBytes: 0,
+        state: "preview",
+      };
+      locals.set(spec.name, { view, bytes: Buffer.alloc(0), expected });
+      return { ok: true, value: { ...view } };
+    },
+    start: async (id) => {
+      const row = locals.get(id)!;
+      row.view.state = "writing";
+      return { ok: true, value: { ...row.view } };
+    },
+    append: async (id, offset, bytes) => {
+      const row = locals.get(id)!;
+      expect(offset).toBe(row.bytes.length);
+      row.bytes = Buffer.concat([row.bytes, Buffer.from(bytes)]);
+      expect(row.bytes).toEqual(row.expected.subarray(0, row.bytes.length));
+      row.view.writtenBytes = row.bytes.length;
+      return { ok: true, value: { ...row.view } };
+    },
+    action: vi.fn(async (id, action) => {
+      const row = locals.get(id)!;
+      if (action === "finish") {
+        expect(row.bytes).toEqual(row.expected);
+        row.view.state = "completed";
+        row.view.sha256 = hash(row.bytes);
+      }
+      return { ok: true as const, value: { ...row.view } };
+    }),
+  };
+  const queue = new DownloadQueue(api, () => native);
+  queue.setOwner("owner");
+  queue.setConcurrency(1);
+  const ids = [...data.keys()].map((name) =>
+    queue.add({
+      name,
+      path: "/" + name,
+      sessionId: "session",
+      hostLabel: "独立下载目标",
+    }),
+  );
+  try {
+    await waitFor(() =>
+      expect(
+        queue.getSnapshot().every((j) => j.state === "awaiting-review"),
+      ).toBe(true),
+    );
+    ids.forEach((id) => queue.start(id, false));
+    await waitFor(() => expect(started).toHaveLength(1));
+    queue.setConcurrency(3);
+    await waitFor(() => expect(started).toHaveLength(3));
+    expect(active).toBe(3);
+    queue.setConcurrency(1);
+    expect(active).toBe(3);
+    expect(signals.every((s) => !s.aborted)).toBe(true);
+    gates.get(started[0])!();
+    gates.get(started[1])!();
+    await waitFor(() =>
+      expect(
+        queue.getSnapshot().filter((j) => j.state === "completed"),
+      ).toHaveLength(2),
+    );
+    expect(started).toHaveLength(3);
+    gates.get(started[2])!();
+    await waitFor(() => expect(started).toHaveLength(4));
+    expect(active).toBe(1);
+    gates.get(started[3])!();
+    await waitFor(() => expect(started).toHaveLength(5));
+    expect(active).toBe(1);
+    gates.get(started[4])!();
+    await waitFor(() =>
+      expect(queue.getSnapshot().every((j) => j.state === "completed")).toBe(
+        true,
+      ),
+    );
+    expect(peak).toBe(3);
+    expect(locals.size).toBe(5);
+    for (const row of locals.values()) expect(row.bytes).toEqual(row.expected);
+    expect(
+      vi
+        .mocked(native.action)
+        .mock.calls.some((c) => c[1] === "pause" || c[1] === "cancel"),
+    ).toBe(false);
+  } finally {
+    for (const release of gates.values()) release();
+    queue.setOwner(null);
+  }
+});
+
+it("cleans the local target before waiting for a delayed remote cancellation", async () => {
+  const f = fixture();
+  await waitFor(() => expect(f.queue.getSnapshot()[0].state).toBe("awaiting-review"));
+  let release!: () => void;
+  const delayed = new Promise<void>((resolve) => { release = resolve; });
+  const original = vi.mocked(f.api.action).getMockImplementation()!;
+  vi.mocked(f.api.action).mockImplementation(async (...args) => {
+    if (args[2] === "cancel") await delayed;
+    return original(...args);
+  });
+  const cancelling = f.queue.cancel(f.id);
+  try {
+    await waitFor(() => expect(f.native.action).toHaveBeenCalledWith("local", "cancel"));
+  } finally {
+    release();
+    await cancelling;
+    f.queue.setOwner(null);
+  }
+});

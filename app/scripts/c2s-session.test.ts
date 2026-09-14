@@ -5,18 +5,20 @@ import path from "node:path";
 const require = createRequire(import.meta.url),
   { C2sSession } = require("./../electron/c2s-session.cjs");
 function fixture() {
+  const active = new Set<string>();
   const root = path.resolve("fixture-app"),
     frame = { url: pathToFileURL(path.join(root, "dist/index.html")).href },
     sender = { mainFrame: frame },
     window = { webContents: sender, isDestroyed: () => false },
     changed = vi.fn(),
     context = new C2sSession({
+      getActiveTunnelNames: () => active,
       getWindow: () => window,
       appRoot: root,
       isDev: false,
       onChange: changed,
     });
-  return { context, event: { sender, senderFrame: frame }, changed };
+  return { context, event: { sender, senderFrame: frame }, changed, active };
 }
 const tunnel = {
   relayOrigin: "local",
@@ -124,4 +126,22 @@ it("keeps the replacement start alive while cancelling the failed instance's pro
   old.release();
   replacement.release();
   expect(f.context.requests.size).toBe(0);
+});
+
+it("counts active and pending names together without blocking an existing runtime", () => {
+  const f=fixture();f.context.set(f.event,"token");const bound=f.context.bind(tunnel);
+  for(let i=0;i<31;i++)f.active.add("active-"+i);
+  const pending=f.context.request(bound,"pending");
+  expect(()=>f.context.request(bound,"extra")).toThrow("C2S_TUNNEL_LIMIT");
+  const existing=f.context.request(bound,"active-0");existing.release();
+  expect(()=>f.context.request(bound,"extra")).toThrow("C2S_TUNNEL_LIMIT");
+  pending.release();const replacement=f.context.request(bound,"extra");replacement.release();
+});
+it("limits same-name in-flight requests and returns slots after cancellation", () => {
+  const f=fixture();f.context.set(f.event,"token");const bound=f.context.bind(tunnel);
+  const requests=Array.from({length:8},()=>f.context.request(bound,"same"));
+  expect(()=>f.context.request(bound,"same")).toThrow("C2S_REQUEST_LIMIT");
+  f.context.cancel("same");expect(requests.every(r=>r.signal.aborted)).toBe(true);
+  const next=f.context.request(bound,"same");requests.forEach(r=>r.release());
+  expect(next.signal.aborted).toBe(false);next.release();expect(f.context.requests.size).toBe(0);
 });

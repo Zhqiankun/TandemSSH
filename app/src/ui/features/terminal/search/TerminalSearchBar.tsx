@@ -96,6 +96,9 @@ export function TerminalSearchBar({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Search owns keyboard events; composing Enter/Escape belongs to the IME.
+    e.stopPropagation();
+    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
     if (e.key === "Enter") {
       e.preventDefault();
       if (e.shiftKey) {
@@ -111,10 +114,6 @@ export function TerminalSearchBar({
       onClose();
       return;
     }
-
-    // Stop keys like Ctrl+C/Ctrl+V from bubbling up to xterm's document-level
-    // paste/clipboard handling while the search input is focused.
-    e.stopPropagation();
   };
 
   const hasQuery = query.length > 0;

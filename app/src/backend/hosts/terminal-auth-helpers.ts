@@ -132,7 +132,7 @@ export class FilteredAgent extends BaseAgent {
     try {
       const blob =
         typeof key === "string"
-          ? Buffer.from(key)
+          ? parseAgentIdentityBlob(key)
           : Buffer.isBuffer(key)
             ? key
             : "getPublicSSH" in key
@@ -169,6 +169,11 @@ export class FilteredAgent extends BaseAgent {
     optionsOrCb: SigningRequestOptions | SignCallback,
     cb?: SignCallback,
   ): void {
+    if (!this.matches(pubKey)) {
+      const callback = typeof optionsOrCb === "function" ? optionsOrCb : cb!;
+      callback(new Error("SSH_AGENT_IDENTITY_MISMATCH"));
+      return;
+    }
     this.inner.sign(
       pubKey,
       data,

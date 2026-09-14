@@ -1,0 +1,55 @@
+[
+  {
+    "name": "abstract-logging",
+    "version": "2.0.1",
+    "readme": "Readme.md",
+    "author": "jsumners",
+    "packageSha256": "33f6c3a8ec869b76fba4173cd688d1865ae74d746cc3f3b5d85abf9f40ab4038",
+    "source": {
+      "kind": "installed-readme-linked-author-license",
+      "file": "Readme.md",
+      "readmeSha256": "e1a86711fb5055c0e66901276b7d2c843554bf5f1dab218c069c8b9d17148e81",
+      "url": "https://jsumners.mit-license.org/license.txt",
+      "observedAt": "2026-09-14",
+      "linkedTextSha256": "af15a41ce02371f77476b7a201e036c0ae6c5d6d2a233b4e5f0fd5fca123457e",
+      "dynamicYearDocumentation": "https://github.com/remy/mit-license/blob/master/README.md"
+    },
+    "authorConfiguration": {
+      "name": "jsumners",
+      "url": "https://raw.githubusercontent.com/remy/mit-license/master/users/jsumners.json",
+      "status": 200,
+      "text": "{\n  \"copyright\": \"James Sumners\",\n  \"url\": \"http://jrfom.com\",\n  \"email\": \"james.sumners@gmail.com\",\n  \"gravatar\": true,\n  \"theme\": \"friendly\"\n}\n"
+    },
+    "noticeSha256": "af15a41ce02371f77476b7a201e036c0ae6c5d6d2a233b4e5f0fd5fca123457e",
+    "noticeBytes": 1112
+  },
+  {
+    "name": "precond",
+    "version": "0.2.3",
+    "readme": "README.md",
+    "author": "mturcotte",
+    "packageSha256": "0b6848b23b35c916a8db5228d27e29a50c850a4350b875a370bc9d1a1833a4fc",
+    "source": {
+      "kind": "installed-readme-linked-author-license",
+      "file": "README.md",
+      "readmeSha256": "3856ff320dda1ad54de03d10bcb299a27c29391ebf9ad1cde41113d30aaa1846",
+      "url": "https://mturcotte.mit-license.org/license.txt",
+      "observedAt": "2026-09-14",
+      "linkedTextSha256": "a5fb4d8df6c205c34029922ce9c641c7d3749b2366f2cec895d793a613ab7809",
+      "dynamicYearDocumentation": "https://github.com/remy/mit-license/blob/master/README.md",
+      "sourceNotice": {
+        "file": "lib/checks.js",
+        "sha256": "c4d9cf144c6a41aad8d55b81a40e1fa16d851c56dc383b7c01a9f3ec6441c934",
+        "header": "/*\n * Copyright (c) 2012 Mathieu Turcotte\n * Licensed under the MIT license.\n */"
+      }
+    },
+    "authorConfiguration": {
+      "name": "mturcotte",
+      "url": "https://raw.githubusercontent.com/remy/mit-license/master/users/mturcotte.json",
+      "status": 200,
+      "text": "{\n  \"copyright\": \"Mathieu Turcotte, http://mathieuturcotte.ca\",\n  \"url\": \"http://mathieuturcotte.ca\"\n}\n"
+    },
+    "noticeSha256": "437f61f6754e66b029d4e5ef25b21d03b68b6d3b84561e6d570ede652a1d01c4",
+    "noticeBytes": 1412
+  }
+]

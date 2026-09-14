@@ -418,3 +418,55 @@ it("binds drafts to the human editor baseline and accepted server key", async ()
   ).rejects.toThrow("FILE_VERSION_EXPIRED");
   expect(f.io.createExclusive).not.toHaveBeenCalled();
 });
+describe("independent editor connection retention", () => {
+  it("closing one document preserves another document and its save capability", async () => {
+    const f = fixture();
+    f.put("/second", "second original");
+    const first = await f.read();
+    const second = await f.service.read(
+      actor,
+      "session",
+      "/second",
+      undefined,
+      true,
+    );
+    expect(f.leases()).toBe(2);
+    f.service.close(actor, first.document.documentId);
+    f.service.close(actor, first.document.documentId);
+    expect(f.leases()).toBe(1);
+    const result = await f.service.save(actor, {
+      ...input(second.document.version, "仍可保存"),
+      path: "/second",
+    });
+    expect(f.files.get("/second")!.bytes.toString()).toBe("仍可保存");
+    expect(f.leases()).toBe(1);
+    f.service.close(actor, result.document.documentId);
+    expect(f.leases()).toBe(0);
+  });
+  it("cannot release another owner's editor lease or invalidate its baseline", async () => {
+    const f = fixture(),
+      document = await f.read();
+    f.service.close(
+      { userId: "other", source: "human" },
+      document.document.documentId,
+    );
+    expect(f.leases()).toBe(1);
+    const result = await f.service.save(
+      actor,
+      input(document.document.version, "保留草稿内容"),
+    );
+    expect(f.files.get("/file")!.bytes.toString()).toBe("保留草稿内容");
+    f.service.close(actor, result.document.documentId);
+    expect(f.leases()).toBe(0);
+  });
+  it("service shutdown releases remaining editor holds exactly once", async () => {
+    const f = fixture();
+    f.put("/second", "second");
+    await f.read();
+    await f.service.read(actor, "session", "/second", undefined, true);
+    expect(f.leases()).toBe(2);
+    f.service.dispose();
+    f.service.dispose();
+    expect(f.leases()).toBe(0);
+  });
+});

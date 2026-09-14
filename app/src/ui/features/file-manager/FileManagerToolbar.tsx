@@ -21,6 +21,7 @@ import { Input } from "@/components/input.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuCheckboxItem,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
@@ -42,6 +43,8 @@ type FileManagerToolbarProps = {
   isLoading: boolean;
   sshSessionId: string | null;
   selectedFiles: FileItem[];
+  showHiddenFiles: boolean;
+  onShowHiddenFilesChange: (visible: boolean) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   viewMode: ViewMode;
@@ -194,6 +197,8 @@ export function FileManagerToolbar({
   isLoading,
   sshSessionId,
   selectedFiles,
+  showHiddenFiles,
+  onShowHiddenFilesChange,
   searchQuery,
   setSearchQuery,
   viewMode,
@@ -388,6 +393,16 @@ export function FileManagerToolbar({
                 <FilePlus className="size-4 text-muted-foreground" />
                 {t("fileManager.newFile")}
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={showHiddenFiles}
+                onCheckedChange={(checked) =>
+                  onShowHiddenFilesChange(checked === true)
+                }
+                className="rounded-none text-xs"
+              >
+                {t("fileManager.showHiddenFiles")}
+              </DropdownMenuCheckboxItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-muted-foreground py-1">
                 {t("fileManager.sortBy")}

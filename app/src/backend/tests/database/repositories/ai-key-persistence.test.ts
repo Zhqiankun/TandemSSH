@@ -1,3 +1,4 @@
+import { aiSessionKeys } from "../../../database/repositories/ai-session-keys.js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import { TestSqliteDatabase } from "./test-support.js";
@@ -21,6 +22,7 @@ beforeEach(async () => {
   repo = new AiRepository(context);
 });
 afterEach(async () => {
+  aiSessionKeys.clear();
   vi.restoreAllMocks();
   await db?.close();
 });
@@ -117,4 +119,81 @@ it("reads numeric-context ciphertext after rotating a pre-encrypted new provider
     (await repo.findProviderWithSecret(provider.id, "owner"))?.apiKey,
   ).toBe("rotated-fixture-key");
   expect(await repo.findProviderWithSecret(provider.id, "other")).toBeNull();
+});
+
+it("uses a memory-only Key without requiring encryption or writing secret fields", async () => {
+  vi.mocked(DataCrypto.getUserDataKey).mockReturnValue(null);
+  const created = await repo.createProvider({
+    ...input,
+    apiKeyStorage: "memory",
+  });
+  expect(created).toMatchObject({
+    apiKey: null,
+    apiKeyStorage: "memory",
+    apiKeyPrefix: "fixtur",
+  });
+  const stored = await db.query<{
+    api_key: string | null;
+    api_key_prefix: string | null;
+  }>(sql`SELECT api_key,api_key_prefix FROM ai_providers`);
+  expect(stored).toEqual([{ api_key: null, api_key_prefix: null }]);
+  expect((await repo.findProviderWithSecret(created.id, "owner"))?.apiKey).toBe(
+    input.apiKey,
+  );
+  expect(await repo.findProviderWithSecret(created.id, "other")).toBeNull();
+  aiSessionKeys.clear("owner");
+  expect(
+    (await repo.findProviderWithSecret(created.id, "owner"))?.apiKey,
+  ).toBeNull();
+  expect((await repo.findProvider(created.id, "owner"))?.apiKeyStorage).toBe(
+    "none",
+  );
+});
+it("rotates encrypted keys to memory and clears temporary keys on endpoint changes and deletion", async () => {
+  const created = await repo.createProvider(input);
+  vi.mocked(DataCrypto.getUserDataKey).mockReturnValue(null);
+  await repo.updateProvider(created.id, "owner", {
+    apiKey: "temporary",
+    apiKeyStorage: "memory",
+  });
+  expect((await repo.findProviderWithSecret(created.id, "owner"))?.apiKey).toBe(
+    "temporary",
+  );
+  expect(
+    (
+      await db.query<{ api_key: string | null }>(
+        sql`SELECT api_key FROM ai_providers`,
+      )
+    )[0].api_key,
+  ).toBeNull();
+  await repo.updateProvider(created.id, "owner", {
+    baseUrl: "http://127.0.0.1/new",
+  });
+  expect(aiSessionKeys.get("owner", created.id)).toBeUndefined();
+  await repo.updateProvider(created.id, "owner", {
+    apiKey: "second",
+    apiKeyStorage: "memory",
+  });
+  await repo.deleteProvider(created.id, "owner");
+  expect(aiSessionKeys.get("owner", created.id)).toBeUndefined();
+});
+it("does not resurrect a Key if logout clears it while database persistence is pending", async () => {
+  let release!: () => void,
+    entered = false;
+  const pending = new Promise<void>((r) => (release = r));
+  const delayed = new AiRepository(await db.connect(), async () => {
+    entered = true;
+    await pending;
+  });
+  const creating = delayed.createProvider({
+    ...input,
+    apiKeyStorage: "memory",
+  });
+  await vi.waitFor(() => expect(entered).toBe(true));
+  aiSessionKeys.clear("owner");
+  release();
+  await expect(creating).rejects.toThrow("AI_SESSION_KEY_EXPIRED");
+  const rows = await repo.listProviders("owner");
+  expect(rows).toHaveLength(1);
+  expect(rows[0].apiKeyStorage).toBe("none");
 });

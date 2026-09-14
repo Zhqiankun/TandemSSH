@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/CascadiaCode.zip",
+    "version": "3.4.0",
+    "archiveSha256": "8d80993351a0a6b69a998e5c72060b7200c4f1af1f32b3ad4d8cad27c245940e"
+  },
+  "fonts": [
+    {
+      "file": "CaskaydiaCoveNerdFontMono-Bold.ttf",
+      "sourcePath": "CaskaydiaCoveNerdFontMono-Bold.ttf",
+      "sha256": "3b7960d16d56bc3e0fd109c3f0e18b0ef547c863144dbf79e2ec71ab6ff3dd1e",
+      "bytes": 2866368
+    },
+    {
+      "file": "CaskaydiaCoveNerdFontMono-BoldItalic.ttf",
+      "sourcePath": "CaskaydiaCoveNerdFontMono-BoldItalic.ttf",
+      "sha256": "ffab6a5d33af895174b9cce1dca9ae36ce5d393c2485982252e29d85a2dfe98d",
+      "bytes": 2730644
+    },
+    {
+      "file": "CaskaydiaCoveNerdFontMono-Italic.ttf",
+      "sourcePath": "CaskaydiaCoveNerdFontMono-Italic.ttf",
+      "sha256": "df6d1d5ce896fc2337d9d921415a55978e932b810e5dbea39a8cc16a1b675afb",
+      "bytes": 2729400
+    },
+    {
+      "file": "CaskaydiaCoveNerdFontMono-Regular.ttf",
+      "sourcePath": "CaskaydiaCoveNerdFontMono-Regular.ttf",
+      "sha256": "32aa528c1d9be2240ceac90aa05f4e554679cabeb11b93684eb24ec4930bd0ea",
+      "bytes": 2864668
+    }
+  ],
+  "notices": [
+    {
+      "file": "LICENSE",
+      "bytes": 4395,
+      "sha256": "82c05d6c53dfa0c9025985c19e371810020b74ed2c61d51d370f2a8ab2506d52"
+    },
+    {
+      "file": "README.md",
+      "bytes": 3610,
+      "sha256": "f992bb966c1bb8403e8b2d9fac2b8c482261034df65331dcb17b2f1a0dfdbb4c"
+    }
+  ]
+}

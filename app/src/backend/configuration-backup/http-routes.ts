@@ -1,5 +1,6 @@
 import express from "express";
 import { z } from "zod";
+import { desktopLayoutSchema } from "../../types/desktop-layout.js";
 import { desktopAppearanceSchema } from "../../types/desktop-preferences.js";
 import { sanitizeUiPreferences } from "../../types/ui-preferences.js";
 import type { AuthenticatedRequest } from "../../types/index.js";
@@ -37,11 +38,13 @@ export function configurationBackupRoutes(
               : "BACKUP_FAILED";
         res
           .status(
-            code.includes("NOT_FOUND")
-              ? 404
-              : code.includes("CHANGED")
-                ? 409
-                : 400,
+            code === "BACKUP_ADMIN_REQUIRED"
+              ? 403
+              : code.includes("NOT_FOUND")
+                ? 404
+                : code.includes("CHANGED")
+                  ? 409
+                  : 400,
           )
           .json({ code });
       });
@@ -54,6 +57,8 @@ export function configurationBackupRoutes(
           desktop: z
             .object({
               appearance: desktopAppearanceSchema.optional(),
+              layout: desktopLayoutSchema.optional(),
+              localTunnels: z.array(z.unknown()).max(128).optional(),
               preferences: z.unknown().optional(),
             })
             .strict()
@@ -64,6 +69,8 @@ export function configurationBackupRoutes(
       const desktop = body.desktop
         ? {
             appearance: body.desktop.appearance,
+            layout: body.desktop.layout,
+            localTunnels: body.desktop.localTunnels,
             preferences:
               body.desktop.preferences === undefined
                 ? undefined
@@ -107,6 +114,8 @@ export function configurationBackupRoutes(
           confirmed: z.literal(true),
           restorePreferences: z.boolean(),
           restoreKeybindings: z.boolean().default(false),
+          restoreHostDefaults: z.boolean().default(false),
+          restoreLocalTunnels: z.boolean().default(false),
         })
         .strict()
         .parse(req.body);
@@ -116,8 +125,26 @@ export function configurationBackupRoutes(
           z.string().uuid().parse(req.params.id),
           input.restorePreferences,
           input.restoreKeybindings,
+          input.restoreHostDefaults,
+          input.restoreLocalTunnels,
         ),
       );
+    }),
+  );
+  router.get(
+    "/local/pending",
+    handle(async (_req, res, user) =>
+      res.json(await service.pendingLocal(user)),
+    ),
+  );
+  router.post(
+    "/local/:id/complete",
+    handle(async (req, res, user) => {
+      z.object({ confirmed: z.literal(true) })
+        .strict()
+        .parse(req.body);
+      await service.completeLocal(user, z.string().uuid().parse(req.params.id));
+      res.json({ success: true });
     }),
   );
   const bodyError: express.ErrorRequestHandler = (error, _req, res, next) => {

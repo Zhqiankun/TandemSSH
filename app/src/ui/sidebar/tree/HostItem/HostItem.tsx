@@ -69,7 +69,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/tooltip";
-import { hostMatchesQuery } from "../visible-rows";
+import { hostHasMatch } from "../visible-rows";
 import { markTabSurfaceUsed, preloadTabSurface } from "@/shell/tabUtils";
 import {
   getPreferredHostAction,
@@ -411,7 +411,7 @@ export function HostItem({
     }
   }
 
-  if (query && !hostMatchesQuery(host, query)) return null;
+  if (query && !hostHasMatch(host, query)) return null;
 
   const depthStyle =
     depth > 0 ? ({ paddingLeft: depth * 12 } as const) : undefined;

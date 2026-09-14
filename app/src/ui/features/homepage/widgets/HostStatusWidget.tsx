@@ -345,7 +345,7 @@ function HostStatusWidget({
                       {proc.command}
                     </span>
                     <span className="text-foreground shrink-0">
-                      {proc.cpu}%
+                      {proc.cpu === "—" ? "—" : `${proc.cpu}%`}
                     </span>
                   </div>
                 ))}

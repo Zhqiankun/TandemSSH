@@ -234,13 +234,19 @@ export class AiTaskCoordinator {
         createdAt: Date.now(),
       },
     };
-    await this.ports.audit(userId, "agent.created", {
-      id,
-      taskId: task.id,
-      providerId: input.providerId,
-      model: input.model,
-      goal: input.goal,
-    });
+    try {
+      await this.ports.audit(userId, "agent.created", {
+        id,
+        taskId: task.id,
+        providerId: input.providerId,
+        model: input.model,
+        goal: input.goal,
+      });
+    } catch (error) {
+      // The task exists, but no coordinator run can execute it yet.
+      this.ports.tasks.cancel(actor, task.id);
+      throw error;
+    }
     if (this.globalDisabled || this.disabledUsers.has(userId)) {
       this.ports.tasks.cancel(actor, task.id);
       throw new Error("AI_DISABLED");

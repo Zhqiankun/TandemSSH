@@ -8,6 +8,7 @@ import {
   renameFolderPath,
   sanitizeHostForRecipient,
   stripSensitiveFields,
+  stripHostExportSecrets,
   transformHostResponse,
 } from "../../../database/routes/host-normalizers.js";
 
@@ -420,5 +421,78 @@ describe("sanitizeHostForRecipient", () => {
     expect(result.notes).toBeUndefined();
     expect(result.quickActions).toBeUndefined();
     expect(result.password).toBeUndefined();
+  });
+});
+
+describe("stripHostExportSecrets", () => {
+  it("clears top-level and nested authentication while preserving export references", () => {
+    const source = {
+      name: "共享配置",
+      authType: "credential",
+      credentialId: 8,
+      credentialAlias: "配置凭据",
+      password: "PASSWORD",
+      key: "KEY",
+      keyPassword: "KEY_PASS",
+      privateKey: "PRIVATE",
+      sudoPassword: "SUDO",
+      autostartKey: "AUTO",
+      rdpPassword: "RDP",
+      socks5Password: "PROXY",
+      terminalConfig: { sudoPassword: "TERMINAL_SUDO", fontSize: 14 },
+      guacamoleConfig: {
+        "gateway-password": "GATEWAY",
+        "gateway-hostname": "gateway.local",
+      },
+      socks5ProxyChain: [
+        { host: "proxy.local", port: 1080, password: "CHAIN" },
+        { host: "direct.local", port: 1080 },
+      ],
+    };
+    const before = JSON.stringify(source),
+      result = stripHostExportSecrets(source);
+    for (const secret of [
+      "PASSWORD",
+      "KEY_PASS",
+      "PRIVATE",
+      "SUDO",
+      "AUTO",
+      "RDP",
+      "PROXY",
+      "TERMINAL_SUDO",
+      "GATEWAY",
+      "CHAIN",
+    ])
+      expect(JSON.stringify(result)).not.toContain(secret);
+    expect(result).toMatchObject({
+      name: "共享配置",
+      authType: "unconfigured",
+      credentialId: 8,
+      credentialAlias: "配置凭据",
+      key: null,
+    });
+    expect(result.terminalConfig).toEqual({ sudoPassword: null, fontSize: 14 });
+    expect(result.guacamoleConfig).toEqual({
+      "gateway-password": null,
+      "gateway-hostname": "gateway.local",
+    });
+    expect(result.socks5ProxyChain).toEqual([
+      { host: "proxy.local", port: 1080, password: null },
+      { host: "direct.local", port: 1080 },
+    ]);
+    expect(result).not.toHaveProperty("hasPassword");
+    expect(JSON.stringify(source)).toBe(before);
+  });
+  it("accepts absent optional configurations without adding credentials", () => {
+    const source = {
+      name: "旧配置",
+      terminalConfig: null,
+      guacamoleConfig: null,
+      socks5ProxyChain: null,
+    };
+    expect(stripHostExportSecrets(source)).toEqual({
+      ...source,
+      authType: "unconfigured",
+    });
   });
 });

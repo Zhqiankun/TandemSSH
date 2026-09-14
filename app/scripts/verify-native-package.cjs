@@ -9,12 +9,15 @@ async function probe(root) {
     path.join(root, "TandemSSH.exe").toLowerCase()
   )
     throw Error("Probe must run in the packaged executable");
+  const runtimeNotices = await require("./verify-runtime-notices.cjs").verifyRuntimeNotices(root);
   const notices =
     require("./verify-distribution-notices.cjs").verifyDistributionNotices(
       root,
     );
   if (notices.length !== 4) throw Error("Distribution notices incomplete");
   require("./distribution-dependencies.cjs").verifyDependencyNotices(root);
+  await require("./verify-frontend-notices.cjs").verifyFrontendNotices(root);
+  await require("./verify-font-notices.cjs").verifyFontNotices(root);
   const { extractFile } = await import("@electron/asar");
   const applicationMetadata = JSON.parse(
     extractFile(path.join(root, "resources/app.asar"), "package.json").toString(
@@ -202,6 +205,7 @@ async function probe(root) {
     PREFIX +
       JSON.stringify({
         dependenciesVerified: verified.size,
+        runtimeNotices,
         fileCapabilities: true,
         directoryCapabilities: true,
         directoryRecovery: true,

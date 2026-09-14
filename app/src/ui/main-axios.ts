@@ -1503,6 +1503,7 @@ export async function addTransferRecent(
 export {
   getSSHHosts,
   createSSHHost,
+  duplicateSSHHost,
   updateSSHHost,
   wakeOnLan,
   bulkImportSSHHosts,

@@ -7,7 +7,10 @@ import {
 } from "../../test-helpers/linux-ssh-fixture.js";
 import { TaskRuntime } from "../../collaboration/tasks/runtime.js";
 import { quoteShellWord } from "../../collaboration/adapters/pty-command.js";
-import { DocumentService } from "../../files/document-service.js";
+import {
+  DocumentService,
+  DocumentError,
+} from "../../files/document-service.js";
 import { HostFileFence } from "../../collaboration/sessions/host-file-fence.js";
 const enabled = !!process.env.TANDEM_LINUX_MANIFEST,
   closers: Array<() => void | Promise<void>> = [];
@@ -258,16 +261,43 @@ describe.runIf(enabled)("actual Linux OpenSSH acceptance", () => {
           undefined,
           true,
         );
-      await expect(
-        service.save(actor, {
+      let failure: unknown;
+      try {
+        await service.save(actor, {
           sessionId: "linux-session",
           path: file,
           version: base.document.version,
           content: "x".repeat(2 * 1024 * 1024),
           requestId: randomUUID(),
-        }),
-      ).rejects.toThrow("FILE_IO_FAILED");
+        });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(DocumentError);
+      expect(failure).toMatchObject({
+        message: "FILE_IO_FAILED",
+        details: { commitMayHaveOccurred: false },
+      });
+      const temporaryPath = (failure as DocumentError).details.temporaryPath;
+      expect(temporaryPath).toMatch(
+        /^\/mnt\/tandem-full\/\.tandem-save-[a-f0-9-]{36}$/,
+      );
+      const stage = await f.io.stat(temporaryPath!);
+      expect(stage.size).toBeGreaterThan(0);
+      expect(stage.size).toBeLessThan(2 * 1024 * 1024);
       expect((await f.read(file)).toString()).toBe("original");
+      // This is explicit test-operator cleanup of the reported owned stage.
+      await f.io.remove(temporaryPath!, () => {});
+      expect(await f.exists(temporaryPath!)).toBe(false);
+      const saved = await service.save(actor, {
+        sessionId: "linux-session",
+        path: file,
+        version: base.document.version,
+        content: "空间恢复后明确保存",
+        requestId: randomUUID(),
+      });
+      expect(saved.atomic).toBe(true);
+      expect((await f.read(file)).toString()).toBe("空间恢复后明确保存");
     } finally {
       await f.io.remove(file, () => {});
     }

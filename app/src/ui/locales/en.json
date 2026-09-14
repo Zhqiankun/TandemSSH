@@ -1818,7 +1818,25 @@
     "useUserDefaults": "Use user defaults",
     "useUserTerminalDefaultsDesc": "Keep this host synchronized with Terminal defaults from User Profile.",
     "rdpDefaults": "RDP defaults",
-    "useUserRdpDefaultsDesc": "Inherit performance, redirection, and clipboard settings from User Profile."
+    "useUserRdpDefaultsDesc": "Inherit performance, redirection, and clipboard settings from User Profile.",
+    "duplicateName": "{{name}} (copy)",
+    "duplicateInactive": "Authentication settings were retained. Automatic monitoring and startup are off for the copy; verify the server identity when first connecting.",
+    "terminalEncodingLabel": "Terminal character encoding",
+    "terminalEncodingHint": "Match the remote terminal encoding. Reconnect after changing. Default: UTF-8.",
+    "importSettingGroups": {
+      "authentication": "Authentication / credential references",
+      "proxy": "Proxy",
+      "jump": "Jump hosts / parent connection",
+      "terminal": "Terminal / quick actions",
+      "tunnels": "Tunnels",
+      "monitoring": "Monitoring",
+      "docker": "Docker",
+      "proxmox": "Proxmox",
+      "portKnocking": "Port knocking"
+    },
+    "importSettings": "Settings supplied in file (not necessarily enabled): {{settings}}",
+    "importNoAdvancedSettings": "None of the listed advanced settings",
+    "importSSHConfigOverwrite": "Import SSH Config (Overwrite)"
   },
   "commandPalette": {
     "searchPlaceholder": "Search hosts, commands, or settings...",
@@ -2092,7 +2110,8 @@
     "split": {
       "splitTab": "Split Tab",
       "addToSplit": "Add to Split",
-      "removeFromSplit": "Remove from Split"
+      "removeFromSplit": "Remove from Split",
+      "defaultTitle": "Split #{{number}}"
     },
     "retry": "Retry",
     "outputGapHistory": "Only recent terminal output is retained. Earlier output has been truncated.",
@@ -2100,7 +2119,18 @@
     "outputGapDismiss": "Dismiss",
     "recordingStopped": "Full terminal recording has stopped and may be incomplete. Manual terminal input remains available. Check the state before authorizing automation again; start a new session to record again.",
     "recordingIncomplete": "Incomplete recording",
-    "recordingIncompleteDetails": "Recording stopped before the session ended. The saved file may be incomplete or unavailable."
+    "recordingIncompleteDetails": "Recording stopped before the session ended. The saved file may be incomplete or unavailable.",
+    "privateKeyInvalid": "Unable to load the SSH private key. Check its format and passphrase. Automatic retry is disabled.",
+    "sshAuthenticationRejected": "SSH authentication failed. Check the username, password or key, then retry manually.",
+    "pastePreviewTitle": "Multiline paste preview",
+    "pastePreviewHint": "Target: {{target}}. Line breaks may execute commands immediately. Review the full text before pasting.",
+    "pasteConnectionChanged": "The connection changed. Nothing was sent. Cancel and paste again.",
+    "confirmPaste": "Confirm paste",
+    "pasteReadFailed": "Unable to read the clipboard. Please try again.",
+    "encodingInputRejected": "The text contains characters unavailable in this terminal encoding and was not sent. Edit the text or change the encoding and reconnect.",
+    "snippetConnectionChanged": "The connection changed or this confirmation was already used. No command was sent. Start the snippet again.",
+    "shortcutActionFailed": "Shortcut action failed. Check the connection or clipboard permissions and confirm the terminal state before retrying.",
+    "tmuxEncodingRequired": "Managed tmux connections require UTF-8. Select UTF-8 terminal encoding or disable automatic tmux."
   },
   "fileManager": {
     "noHostSelected": "No host selected",
@@ -2428,7 +2458,15 @@
     "renameTargetExists": "A file or folder with that name already exists. Choose another name; nothing was overwritten.",
     "renameResultUnknown": "The rename result is unconfirmed. Refresh the directory before trying again.",
     "moveTargetExists": "The destination already exists. No target was overwritten; choose another destination.",
-    "moveResultUnknown": "The move result is unconfirmed. Refresh both directories before trying again."
+    "moveResultUnknown": "The move result is unconfirmed. Refresh both directories before trying again.",
+    "symlinkPermissionsReadOnly": "These are the symbolic link’s own attributes. Permission bits cannot be changed here. To change target permissions, open the target’s directory and edit its properties. Owner/group changes apply to the link itself.",
+    "editorTabs": "Open editor files",
+    "backToFileList": "File list",
+    "showHiddenFiles": "Show hidden files",
+    "moveBatchStopped": "Move stopped: {{completed}}/{{total}} items confirmed. Unconfirmed results may be unknown; check the remote state",
+    "dropFileTooLarge": "File \"{{name}}\" exceeds the maximum size of {{size}} MB.",
+    "dropTypeNotAllowed": "File type \"{{type}}\" is not allowed.",
+    "dropUnknownType": "Unknown type"
   },
   "transfer": {
     "copyToHost": "Copy to host…",
@@ -2628,15 +2666,32 @@
     "remoteBindDenied": "The remote server refused the listener binding. Check port availability and SSH forwarding permissions.",
     "c2sReviewRequired": "Select the SSH host from this desktop again and review the existing configuration before starting.",
     "c2sErrors": {
+      "C2S_CONFIG_CHANGED": "Local tunnel configuration changed. Reload and review it before retrying.",
+      "C2S_CONFIG_INVALID": "Local tunnel configuration is invalid. The original file was not overwritten.",
+      "C2S_CONFIG_TOO_LARGE": "Local tunnel configuration exceeds the size limit and was not saved.",
+      "C2S_CONFIG_WRITE_FAILED": "Writing local tunnel configuration failed. Retry and verify the result.",
+      "C2S_IMPORT_INVALID": "Imported local tunnel configuration is invalid and was not written.",
+      "C2S_IMPORT_CONFIRMATION_CHANGED": "This import differs from the previous confirmation. Preview it again.",
+      "C2S_IMPORT_LIMIT": "Local tunnel configuration or import receipts reached the limit; nothing was written.",
       "C2S_REVIEW_REQUIRED": "Select the SSH host from this desktop again and review the existing configuration before starting.",
       "C2S_AUTH_REQUIRED": "Sign in to the local workspace before starting a client tunnel.",
       "C2S_SESSION_CHANGED": "The local session changed. Restart the tunnel request.",
       "C2S_SOURCE_CHANGED": "The host configuration changed. Select and review the host again.",
       "C2S_TRUSTED_WINDOW_REQUIRED": "Use the main application window to manage client tunnels.",
-      "C2S_CANCELLED": "Tunnel operation cancelled."
+      "C2S_CANCELLED": "Tunnel operation cancelled.",
+      "C2S_CONNECTION_LIMIT": "The relay connection limit has been reached. Close unused connections and retry.",
+      "C2S_TUNNEL_LIMIT": "The limit of 32 active or pending tunnels has been reached. Stop unused tunnels first.",
+      "C2S_REQUEST_LIMIT": "This tunnel has too many pending requests. Wait or cancel them before retrying."
     },
     "c2sLocalRelayHint": "Client tunnels use this local workspace to connect to the selected SSH host; no remote sync server is required. Re-select and review the host for older configurations.",
-    "stopBeforeEditing": "Stop tunnels before editing their parameters or loading a preset."
+    "stopBeforeEditing": "Stop tunnels before editing their parameters or loading a preset.",
+    "invalidForwardPort": "Invalid forwarding target or port. Enter a valid address and an integer port from 1 to 65535.",
+    "hostAccessDenied": "Host access is not available for this tunnel. Check your permissions before retrying.",
+    "clientRemoteReconnectHint": "Remote forwarding does not reconnect on a timer. Check the connection and click Start again.",
+    "clientListenerReconnectHint": "This tunnel does not retry on a timer. While the listener is open, each new client connection opens a forwarding channel. Stop the tunnel while troubleshooting if needed.",
+    "c2sMessageTooLarge": "The relay message exceeded the size limit and the connection was closed. Check the sender before retrying.",
+    "s2sTunnelLimit": "The limit of 32 active or pending S2S tunnels has been reached. Stop unused tunnels first.",
+    "s2sStartLimit": "This S2S tunnel has too many pending starts. Wait or cancel before retrying."
   },
   "cardGrid": {
     "dragToMove": "Drag to move",
@@ -3924,7 +3979,8 @@
         "variablesDialogTitle": "Run \"{{name}}\"",
         "variablesDialogDescription": "Fill in the values this snippet needs before running it.",
         "variablesPreviewLabel": "Preview",
-        "variablesConfirmButton": "Run"
+        "variablesConfirmButton": "Run",
+        "inputLabel": "Input {{number}}"
       },
       "automations": {
         "title": "Automations",
@@ -4691,6 +4747,12 @@
     "discordAvatar": "Avatar URL (optional)"
   },
   "ai": {
+    "memoryKeyFailed": "The temporary Key was not saved. Check its length, release unused temporary Keys, and enter it again in the current login.",
+    "memoryKeyOnly": "Use Key for this run only",
+    "memoryKeyHint": "The Key is not written to the database. Enter it again after logout or restart. Provider address and model settings are still saved.",
+    "replaceKey": "Replace API Key",
+    "keepKeyBlank": "Leave blank to keep the current Key",
+    "memoryKeyActive": "Temporary Key",
     "loadOlderConversations": "Load older chats",
     "chatHistory": "Chat history",
     "newConversation": "New chat",
@@ -5163,7 +5225,12 @@
         "DOWNLOAD_RESULT_UNVERIFIED": "A completed local file does not match its saved verification receipt. Recovery stopped.",
         "DOWNLOAD_SOURCE_CHANGED": "The remote source no longer matches the saved directory manifest. Recovery stopped.",
         "DOWNLOAD_TARGET_CHANGED": "The local download directory or file identity changed. Recovery stopped.",
-        "MODEL_RESPONSE_TIMEOUT": "Model response timed out. The request was stopped. Check the provider before retrying; the manual terminal remains available."
+        "MODEL_RESPONSE_TIMEOUT": "Model response timed out. The request was stopped. Check the provider before retrying; the manual terminal remains available.",
+        "TASK_PAUSED_BY_USER": "You paused this task. Sent actions may still be running; review before authorizing again.",
+        "MODEL_AUTH_FAILED": "The model service rejected authentication or access (401/403). Check your key and model permissions. Manual SSH remains available.",
+        "MODEL_RATE_LIMITED": "The model service is rate limited or out of quota (429). Automation is paused. Wait or check the service quota before authorizing again.",
+        "TERMINAL_INPUT_NOT_REPRESENTABLE": "The text contains characters unavailable in this terminal encoding and was not sent. Edit the text or change the encoding and reconnect.",
+        "COMMAND_OUTPUT_INCOMPLETE": "The command exit status is known, but its output is incomplete. Automation is paused; review the result manually."
       },
       "allowedPrograms": "Programs allowed for this task (one per line)",
       "operationProgress": "{{done}} / {{total}} commands completed",
@@ -5179,7 +5246,12 @@
           "confirm": "Confirm directory manifest",
           "entry": "Transfer directory entry"
         }
-      }
+      },
+      "pause": "Pause task",
+      "pauseHint": "Stop further AI requests and actions and return control. Does not send Ctrl+C. Review results and authorize again to continue.",
+      "interrupt": "Send Ctrl+C",
+      "interruptHint": "Take control of this session and send Ctrl+C once. Verify whether the remote program stopped.",
+      "cancelledUnknownHint": "This task is cancelled and will not dispatch more actions. Manually verify the actual results of actions already sent."
     },
     "mcp": {
       "settings": "MCP connection",
@@ -5273,7 +5345,10 @@
         "MODEL_STREAM_INVALID": "Invalid chat response. Receiving stopped; the displayed content may be incomplete.",
         "MODEL_STREAM_INTERRUPTED": "The chat response ended without confirmed completion. Review the retained content before retrying.",
         "MODEL_TOOL_LIMIT": "Tool count or arguments exceeded the limit. Further operations were stopped.",
-        "MODEL_TOOL_RESULT_LIMIT": "Tool results exceeded the retention limit. Further operations were stopped; narrow the query."
+        "MODEL_TOOL_RESULT_LIMIT": "Tool results exceeded the retention limit. Further operations were stopped; narrow the query.",
+        "MODEL_AUTH_FAILED": "The model service rejected authentication or access (401/403). Check your key and model permissions. Manual SSH remains available.",
+        "MODEL_RATE_LIMITED": "The model service is rate limited or out of quota (429). Automation is paused. Wait or check the service quota before authorizing again.",
+        "COMMAND_OUTPUT_INCOMPLETE": "The command exit status is known, but its output is incomplete. Automation is paused; review the result manually."
       },
       "budget": "Model call budget (including planning)"
     },
@@ -5923,7 +5998,8 @@
       "batchProgress": "Completed {{completed}} / {{total}} · Skipped {{skipped}} · Failed {{failed}} · Uncertain {{unknown}}",
       "batchNotice": "{{name}}: {{completed}} completed, {{skipped}} skipped, {{failed}} failed, {{unknown}} uncertain.",
       "downloadDirectory": "Download directory",
-      "downloadSelection": "Download {{count}} selected entries"
+      "downloadSelection": "Download {{count}} selected entries",
+      "recheckAfterFailure": "This start did not complete. Recheck the destination and confirm the choices before starting again."
     },
     "uploadTree": {
       "title": "Review directory upload",
@@ -6103,11 +6179,21 @@
         "mcp.pairing.revoked": "MCP pairing revoked",
         "mcp.pairing.create-requested": "MCP pairing requested",
         "host.trust.intent": "Host identity review requested",
-        "host.trust.decision": "Host identity decision"
+        "host.trust.decision": "Host identity decision",
+        "task.paused": "Task paused by user",
+        "session.interrupt_requested": "User requested terminal interrupt"
       },
       "archive": "Archive and release resources",
       "archiveHint": "Keep local redacted operation logs and a task summary. Release task memory, temporary chat state and local grants without deleting transferred files.",
       "archiveBlocked": "Unknown results, audit gaps or cleanup work must be resolved before archiving.",
+      "storageTitle": "Operation log storage and cleanup",
+      "storagePath": "Current user log location",
+      "storageUsage": "{{files}} files · {{mib}} MiB; retain {{days}} days, up to {{max}} MiB.",
+      "cleanupRetention": "Clean up using retention rules",
+      "cleanupConfirm": "Delete expired or excess operation log files for the current user. Other files are preserved. Cleanup cannot be undone; export first if needed.",
+      "confirmCleanup": "Confirm cleanup",
+      "cleanupResult": "Removed {{files}} log files and freed {{kib}} KiB.",
+      "storageError": "Log storage or cleanup results could not be confirmed. Refresh and verify.",
       "exportTitle": "Export redacted history",
       "exportHint": "Exports all retained records matching the task filter, not just this page. Redacts records again; full terminal recordings are not included.",
       "exportTask": "Export this task",
@@ -6152,7 +6238,10 @@
       "transferDirection": "Transfer direction",
       "directoryPhase": "Directory phase",
       "entryResult": "Entry result",
-      "transferDirections": { "upload": "Upload", "download": "Download" },
+      "transferDirections": {
+        "upload": "Upload",
+        "download": "Download"
+      },
       "directoryPhases": {
         "preview": "Preview",
         "confirmed": "Manifest confirmed",
@@ -6172,7 +6261,10 @@
         "allow": "Allow",
         "confirm": "Confirmation required",
         "deny": "Deny"
-      }
+      },
+      "archiveUnknownConfirm": "{{count}} command results remain unknown. Check their actual effects on the server before continuing. Confirm you have checked them and archive? Unknown states and your acknowledgement are retained; no command is rerun.",
+      "archivedUnknownReviewed": "A human has reviewed {{count}} unknown command results; their original execution outcomes remain unknown.",
+      "retainedOutput": "View retained output"
     },
     "tunnelTrustRejected": "Server identity verification did not succeed. Review the address and fingerprint in Host Trust, then reconnect the tunnel manually.",
     "localBrowser": {
@@ -6666,7 +6758,17 @@
     "steps_one": "{{count}} step",
     "steps_other": "{{count}} steps",
     "inspectContent": "View exact backup content",
-    "restorePreferences": "Also restore appearance, interface preferences, terminal defaults and theme library (reload manually)",
+    "restoreHostDefaults": "Also restore host creation defaults (admin only; replaces global defaults, disables proxy, credentials require setup)",
+    "hostDefaultsRestored": "Host creation defaults restored. Proxy remains disabled; reconfigure credentials and review in administrator settings before enabling.",
+    "restoreLocalTunnels": "Also append local C2S configurations (desktop only; disabled, reselect the host and review before starting)",
+    "localTunnelsRestored": "Local C2S configurations appended and disabled. Reload, reselect the SSH host and review before starting.",
+    "retryAppendLocalTunnels": "Keep current local configuration and retry append",
+    "pendingLocalTitle": "Pending local tunnel restores",
+    "pendingLocalHint": "Database import is complete. Review the pending configuration. Continuing preserves current local settings and appends disabled tunnels without importing hosts again.",
+    "pendingLocalCount": "{{count}} tunnel configurations",
+    "inspectPendingLocal": "Inspect pending configuration",
+    "continuePendingLocal": "Keep current configuration and continue",
+    "restorePreferences": "Also restore appearance, dashboard layout, sidebar visibility, interface preferences, terminal defaults and theme library (reload manually)",
     "confirmExport": "Confirm and download",
     "confirmImport": "Confirm and import",
     "completed": "Added {{hosts}} hosts and {{workflows}} workflows.",
@@ -6709,6 +6811,11 @@
     },
     "errors": {
       "BACKUP_FAILED": "The operation failed. Retry or create a new preview.",
+      "BACKUP_ADMIN_REQUIRED": "Administrator permission is required to restore host creation defaults.",
+      "BACKUP_LOCAL_TUNNELS_CHANGED": "Database import completed, but local tunnels changed afterward. Retrying append preserves current settings and does not import hosts again.",
+      "BACKUP_LOCAL_TUNNELS_FAILED": "Database import completed; local tunnel storage is not confirmed. Retry local restore instead of importing the whole backup again.",
+      "BACKUP_LOCAL_RECOVERY_UNAVAILABLE": "Local recovery records cannot be queried or acknowledged. Reopen this page later.",
+      "BACKUP_PENDING_LOCAL_LIMIT": "Too many local restores are pending. Complete existing records first.",
       "BACKUP_INVALID": "This is not a supported configuration backup file.",
       "BACKUP_TOO_LARGE": "The backup exceeds the 8 MB limit.",
       "BACKUP_DUPLICATE_REFERENCE": "The backup contains duplicate references.",
@@ -6744,8 +6851,8 @@
     "keybindingsCount": "{{count}} custom shortcuts",
     "keybindingsRestored": "Added {{count}} shortcuts, all disabled. Edit and save them in shortcut settings to enable them.",
     "keybindingNeedsReview": "Restored from backup; disabled until reviewed and saved",
-    "localRestorePending": "Database configuration was restored, but local display settings could not be written. Retrying will not import again.",
-    "retryLocalRestore": "Retry applying display settings",
+    "localRestorePending": "Database configuration was restored, but local settings or tunnels still need to be saved. Retrying will not import again.",
+    "retryLocalRestore": "Retry local restore",
     "editShortcut": "Edit shortcut {{combo}}",
     "networkSummary": "{{jumps}} jump references · {{tunnels}} tunnels · {{presets}} C2S presets",
     "terminalSummary": "Terminal defaults: {{defaults}} · {{themes}} custom themes"
@@ -6773,5 +6880,27 @@
       "monitoring": "Server monitoring",
       "jump": "Jump host"
     }
+  },
+  "historyDialog": {
+    "title": "Command history",
+    "hint": "Preview and manage this host’s saved input. Appending never presses Enter.",
+    "search": "Search history",
+    "refresh": "Refresh",
+    "entries": "Saved commands",
+    "preview": "Full command preview",
+    "empty": "No matching history",
+    "loadFailed": "Could not load history. Try refreshing.",
+    "changeFailed": "Could not confirm the result. Refresh to check.",
+    "copied": "Copied",
+    "copyFailed": "Could not copy this command.",
+    "controls": "This record contains control characters. Copy and review it before using it.",
+    "sessionChanged": "The original session is unavailable or has changed. Reopen history from the current session to append.",
+    "clearConfirm": "Clear all saved command history for this host? This cannot be undone.",
+    "confirmClear": "Confirm clear",
+    "clear": "Clear history",
+    "delete": "Delete selected",
+    "copy": "Copy",
+    "append": "Append to terminal",
+    "updating": "Updating history…"
   }
 }

@@ -67,6 +67,7 @@ export const SECRET_KEYS = [
   "password",
   "key",
   "keyPassword",
+  "privateKey",
   "sudoPassword",
   "socks5Password",
 ];
@@ -84,6 +85,7 @@ const TUPLE_KEYS = ["name", "ip", "port", "username", "connectionType"];
 
 const NESTED_SECRETS: { container: string; field: string }[] = [
   { container: "guacamoleConfig", field: "gateway-password" },
+  { container: "terminalConfig", field: "sudoPassword" },
 ];
 
 const NESTED_SECRET_ARRAYS: { container: string; field: string }[] = [
@@ -127,6 +129,13 @@ export function buildExportPayload(
         if (allowed.has(key)) shaped[key] = value;
       }
       if (!withCredentials) {
+        if (
+          (!shaped.connectionType || shaped.connectionType === "ssh") &&
+          shaped.authType !== "none"
+        )
+          shaped.authType = "unconfigured";
+        delete shaped.credentialId;
+        for (const key of SECRET_KEYS) if (key in shaped) shaped[key] = null;
         for (const { container, field } of NESTED_SECRETS) {
           const record = nestedSecret(shaped, container, field);
           if (record) shaped[container] = { ...record, [field]: null };
@@ -151,9 +160,14 @@ export function buildExportPayload(
     const used = new Set(
       hosts.map((host) => host.credentialAlias).filter(Boolean),
     );
-    result.credentials = raw.credentials.filter((entry) =>
-      used.has(entry.alias),
-    );
+    result.credentials = raw.credentials
+      .filter((entry) => used.has(entry.alias))
+      .map((entry) => {
+        if (withCredentials) return entry;
+        const safe = { ...entry };
+        for (const key of SECRET_KEYS) if (key in safe) safe[key] = null;
+        return safe;
+      });
   }
 
   return result;
@@ -162,6 +176,21 @@ export function buildExportPayload(
 export function maskSecrets(payload: ExportPayload): ExportPayload {
   return {
     ...payload,
+    ...(payload.credentials
+      ? {
+          credentials: payload.credentials.map((entry) => {
+            const safe = { ...entry };
+            for (const key of SECRET_KEYS)
+              if (
+                safe[key] !== undefined &&
+                safe[key] !== null &&
+                safe[key] !== ""
+              )
+                safe[key] = "<included>";
+            return safe;
+          }),
+        }
+      : {}),
     hosts: payload.hosts.map((host) => {
       const masked = { ...host };
       for (const key of SECRET_KEYS) {

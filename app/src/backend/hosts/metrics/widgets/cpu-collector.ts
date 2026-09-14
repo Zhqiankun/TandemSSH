@@ -4,85 +4,87 @@ import { toFixedNum } from "./common-utils.js";
 
 export function parseCpuLine(
   cpuLine: string,
-): { total: number; idle: number } | undefined {
+): { total: number; idle: number; counters: number[] } | undefined {
   const parts = cpuLine.trim().split(/\s+/);
-  if (parts[0] !== "cpu") return undefined;
-  const nums = parts
-    .slice(1)
-    .map((n) => Number(n))
-    .filter((n) => Number.isFinite(n));
-  if (nums.length < 4) return undefined;
-  const idle = (nums[3] ?? 0) + (nums[4] ?? 0);
-  const total = nums.reduce((a, b) => a + b, 0);
-  return { total, idle };
+  if (parts[0] !== "cpu" || parts.length < 5) return undefined;
+  const values = parts.slice(1);
+  if (!values.every((value) => /^\d+$/.test(value))) return undefined;
+  const nums = values.map(Number);
+  if (!nums.every(Number.isSafeInteger)) return undefined;
+  // Linux guest and guest_nice are already charged to user and nice.
+  const counters = Array.from({ length: 8 }, (_, index) => nums[index] ?? 0);
+  const total = counters.reduce((sum, value) => sum + value, 0),
+    idle = counters[3] + counters[4];
+  if (!Number.isSafeInteger(total) || !Number.isSafeInteger(idle))
+    return undefined;
+  return { total, idle, counters };
 }
 
-export async function collectCpuMetrics(client: Client): Promise<{
+export async function collectCpuMetrics(
+  client: Client,
+): Promise<{
   percent: number | null;
   cores: number | null;
   load: [number, number, number] | null;
 }> {
-  let cpuPercent: number | null = null;
-  let cores: number | null = null;
-  let loadTriplet: [number, number, number] | null = null;
-
+  let cpuPercent: number | null = null,
+    cores: number | null = null,
+    loadTriplet: [number, number, number] | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const [stat1, loadAvgOut, coresOut] = await Promise.race([
       Promise.all([
-        execMetricCommand(client, "cpu.1"),
-        execMetricCommand(client, "cpu.2"),
-        execMetricCommand(client, "cpu.3"),
+        execMetricCommand(client, "cpu.1").catch(() => null),
+        execMetricCommand(client, "cpu.2").catch(() => null),
+        execMetricCommand(client, "cpu.3").catch(() => null),
       ]),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("CPU metrics collection timeout")),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(Error("CPU metrics collection timeout")),
           25000,
-        ),
-      ),
+        );
+        timer.unref?.();
+      }),
     ]);
-
-    await new Promise((r) => setTimeout(r, 500));
-    const stat2 = await execMetricCommand(client, "cpu.1");
-
-    const cpuLine1 = (
-      stat1.stdout.split("\n").find((l) => l.startsWith("cpu ")) || ""
-    ).trim();
-    const cpuLine2 = (
-      stat2.stdout.split("\n").find((l) => l.startsWith("cpu ")) || ""
-    ).trim();
-    const a = parseCpuLine(cpuLine1);
-    const b = parseCpuLine(cpuLine2);
-    if (a && b) {
-      const totalDiff = b.total - a.total;
-      const idleDiff = b.idle - a.idle;
-      const used = totalDiff - idleDiff;
-      if (totalDiff > 0)
-        cpuPercent = Math.max(0, Math.min(100, (used / totalDiff) * 100));
+    const laParts = loadAvgOut?.stdout.trim().split(/\s+/).slice(0, 3) ?? [];
+    if (
+      laParts.length === 3 &&
+      laParts.every(
+        (value) =>
+          /^\d+(?:\.\d+)?$/.test(value) && Number.isFinite(Number(value)),
+      )
+    )
+      loadTriplet = laParts.map(Number) as [number, number, number];
+    const coreText = coresOut?.stdout.trim() ?? "",
+      coreValue = Number(coreText);
+    if (
+      /^\d+$/.test(coreText) &&
+      Number.isSafeInteger(coreValue) &&
+      coreValue > 0
+    )
+      cores = coreValue;
+    if (stat1) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const stat2 = await execMetricCommand(client, "cpu.1");
+      const line = (output: string) =>
+        output.split("\n").find((value) => /^\s*cpu\s/.test(value)) ?? "";
+      const first = parseCpuLine(line(stat1.stdout)),
+        second = parseCpuLine(line(stat2.stdout));
+      if (
+        first &&
+        second &&
+        second.counters.every((value, index) => value >= first.counters[index])
+      ) {
+        const total = second.total - first.total,
+          idle = second.idle - first.idle;
+        if (total > 0 && idle >= 0 && idle <= total)
+          cpuPercent = ((total - idle) / total) * 100;
+      }
     }
-
-    const laParts = loadAvgOut.stdout.trim().split(/\s+/);
-    if (laParts.length >= 3) {
-      loadTriplet = [
-        Number(laParts[0]),
-        Number(laParts[1]),
-        Number(laParts[2]),
-      ].map((v) => (Number.isFinite(v) ? Number(v) : 0)) as [
-        number,
-        number,
-        number,
-      ];
-    }
-
-    const coresNum = Number((coresOut.stdout || "").trim());
-    cores = Number.isFinite(coresNum) && coresNum > 0 ? coresNum : null;
   } catch {
     cpuPercent = null;
-    loadTriplet = null;
+  } finally {
+    clearTimeout(timer);
   }
-
-  return {
-    percent: toFixedNum(cpuPercent, 0),
-    cores,
-    load: loadTriplet,
-  };
+  return { percent: toFixedNum(cpuPercent, 0), cores, load: loadTriplet };
 }

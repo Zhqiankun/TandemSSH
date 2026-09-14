@@ -1,3 +1,4 @@
+import { frontendNotices } from "./scripts/frontend-notices";
 import path from "path";
 import fs from "fs";
 import tailwindcss from "@tailwindcss/vite";
@@ -99,7 +100,7 @@ function getManualChunk(id: string): string | undefined {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), svgr()],
+  plugins: [react(), tailwindcss(), svgr(), frontendNotices()],
   define: {
     "import.meta.env.VITE_APP_VERSION": JSON.stringify(
       packageJson.version || "0.0.0",

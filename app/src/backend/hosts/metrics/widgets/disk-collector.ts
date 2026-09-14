@@ -35,20 +35,37 @@ export interface MonitoredMount {
 // callers filter network shares out by filesystem type rather than guessing
 // from the source path.
 export function parseDfLines(output: string): DfRow[] {
-  return output
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const parts = line.split(/\s+/);
-      return {
-        filesystem: parts[0] || "",
-        type: parts[1] || "",
-        mount: parts[6] || "",
-        parts,
-      };
-    })
-    .filter((row) => row.parts.length >= 7 && !PSEUDO_FS_RE.test(row.type));
+  const rows: DfRow[] = [];
+  const size = /^(?:-?\d+(?:[.,]\d+)?[KMGTPEZY]?(?:i?B)?|-)$/i;
+  for (const raw of output.split("\n")) {
+    const line = raw.replace(/\r$/, "");
+    const tokens = [...line.matchAll(/\S+/g)];
+    for (let index = 5; index < tokens.length - 1; index++) {
+      if (!/^(?:\d+(?:[.,]\d+)?%|-)$/.test(tokens[index][0])) continue;
+      if (!tokens.slice(index - 3, index).every((token) => size.test(token[0])))
+        continue;
+      const mount = line
+        .slice(tokens[index].index! + tokens[index][0].length)
+        .replace(/^\s+/, "");
+      if (!mount.startsWith("/")) continue;
+      const type = tokens[index - 4][0];
+      const filesystem = line.slice(0, tokens[index - 4].index).trim();
+      if (filesystem && !PSEUDO_FS_RE.test(type))
+        rows.push({
+          filesystem,
+          type,
+          mount,
+          parts: [
+            filesystem,
+            type,
+            ...tokens.slice(index - 3, index + 1).map((token) => token[0]),
+            mount,
+          ],
+        });
+      break;
+    }
+  }
+  return rows;
 }
 
 // Finds the index of the most-utilized real filesystem in a `df -T -B1`-style
@@ -97,18 +114,19 @@ export function buildFilesystemList(
   bytesRows: DfRow[],
   humanRows: DfRow[],
 ): DiskFilesystem[] {
-  const aligned = humanRows.length === bytesRows.length;
-
   return bytesRows
-    .map((row, index) => {
+    .map((row) => {
       const totalBytes = Number(row.parts[2]);
       const usedBytes = Number(row.parts[3]);
       const availableBytes = Number(row.parts[4]);
       if (!Number.isFinite(totalBytes) || totalBytes <= 0) return null;
 
-      const humanRow = aligned
-        ? humanRows[index]
-        : humanRows.find((h) => h.mount === row.mount);
+      const humanRow = humanRows.find(
+        (h) =>
+          h.mount === row.mount &&
+          h.filesystem === row.filesystem &&
+          h.type === row.type,
+      );
 
       const percent = Number.isFinite(usedBytes)
         ? Math.max(0, Math.min(100, (usedBytes / totalBytes) * 100))
@@ -213,11 +231,11 @@ export async function collectDiskMetrics(
 }> {
   try {
     const [diskOutHuman, diskOutBytes] = await Promise.all([
-      execMetricCommand(client, "disk.1"),
+      execMetricCommand(client, "disk.1").catch(() => null),
       execMetricCommand(client, "disk.2"),
     ]);
 
-    const humanRows = parseDfLines(diskOutHuman.stdout);
+    const humanRows = parseDfLines(diskOutHuman?.stdout ?? "");
     const bytesRows = parseDfLines(diskOutBytes.stdout);
     let detected = buildFilesystemList(bytesRows, humanRows);
     const monitored = (monitoredMounts ?? []).filter((entry) =>
@@ -228,13 +246,15 @@ export async function collectDiskMetrics(
         monitored.map(async (entry) => {
           try {
             const [customHuman, customBytes] = await Promise.all([
-              execMetricCommand(client, "disk.3", { path: entry.path.trim() }),
+              execMetricCommand(client, "disk.3", {
+                path: entry.path.trim(),
+              }).catch(() => null),
               execMetricCommand(client, "disk.4", { path: entry.path.trim() }),
             ]);
             return (
               buildFilesystemList(
                 parseDfLines(customBytes.stdout),
-                parseDfLines(customHuman.stdout),
+                parseDfLines(customHuman?.stdout ?? ""),
               )[0] ?? null
             );
           } catch {

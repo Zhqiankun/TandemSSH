@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useLayoutEffect } from "react";
 import { saveCommandToHistory } from "@/main-axios.ts";
 
 const SENSITIVE_PATTERNS = [
@@ -19,11 +19,13 @@ const SENSITIVE_PATTERNS = [
 interface UseCommandTrackerOptions {
   hostId?: number;
   enabled?: boolean;
-  onCommandExecuted?: (command: string) => void;
+  persist?: boolean;
+  onHistorySaved?: (command: string) => void;
 }
 
 interface CommandTrackerResult {
   trackInput: (data: string) => void;
+  bindSession: (sessionId: string) => void;
   getCurrentCommand: () => string;
   clearCurrentCommand: () => void;
   updateCurrentCommand: (command: string) => void;
@@ -32,10 +34,31 @@ interface CommandTrackerResult {
 export function useCommandTracker({
   hostId,
   enabled = true,
-  onCommandExecuted,
+  persist = true,
+  onHistorySaved,
 }: UseCommandTrackerOptions): CommandTrackerResult {
   const currentCommandRef = useRef<string>("");
+  const boundSessionRef = useRef<string | null>(null);
+  const historyScopeRef = useRef(0);
   const isInEscapeSequenceRef = useRef<boolean>(false);
+
+  useLayoutEffect(() => {
+    historyScopeRef.current++;
+    boundSessionRef.current = null;
+    currentCommandRef.current = "";
+    isInEscapeSequenceRef.current = false;
+    return () => {
+      historyScopeRef.current++;
+    };
+  }, [hostId, enabled, persist]);
+
+  const bindSession = useCallback((sessionId: string) => {
+    if (boundSessionRef.current === sessionId) return;
+    boundSessionRef.current = sessionId;
+    historyScopeRef.current++;
+    currentCommandRef.current = "";
+    isInEscapeSequenceRef.current = false;
+  }, []);
 
   const trackInput = useCallback(
     (data: string) => {
@@ -43,9 +66,8 @@ export function useCommandTracker({
         return;
       }
 
-      for (let i = 0; i < data.length; i++) {
-        const char = data[i];
-        const charCode = char.charCodeAt(0);
+      for (const char of data) {
+        const charCode = char.codePointAt(0)!;
 
         if (charCode === 27) {
           isInEscapeSequenceRef.current = true;
@@ -69,14 +91,16 @@ export function useCommandTracker({
           if (command.length > 0) {
             const isSensitive = SENSITIVE_PATTERNS.some((p) => p.test(command));
 
-            if (!isSensitive) {
-              saveCommandToHistory(hostId, command).catch((error) => {
-                console.error("Failed to save command to history:", error);
-              });
-            }
-
-            if (onCommandExecuted) {
-              onCommandExecuted(command);
+            if (!isSensitive && persist) {
+              const scope = historyScopeRef.current;
+              void saveCommandToHistory(hostId, command)
+                .then((saved) => {
+                  if (saved.id > 0 && historyScopeRef.current === scope)
+                    onHistorySaved?.(command);
+                })
+                .catch((error) => {
+                  console.error("Failed to save command to history:", error);
+                });
             }
           }
 
@@ -86,7 +110,9 @@ export function useCommandTracker({
 
         if (charCode === 8 || charCode === 127) {
           if (currentCommandRef.current.length > 0) {
-            currentCommandRef.current = currentCommandRef.current.slice(0, -1);
+            currentCommandRef.current = Array.from(currentCommandRef.current)
+              .slice(0, -1)
+              .join("");
           }
           continue;
         }
@@ -101,12 +127,12 @@ export function useCommandTracker({
           continue;
         }
 
-        if (charCode >= 32 && charCode <= 126) {
+        if (charCode >= 32 && !(charCode >= 127 && charCode <= 159)) {
           currentCommandRef.current += char;
         }
       }
     },
-    [enabled, hostId, onCommandExecuted],
+    [enabled, hostId, onHistorySaved, persist],
   );
 
   const getCurrentCommand = useCallback(() => {
@@ -123,6 +149,7 @@ export function useCommandTracker({
 
   return {
     trackInput,
+    bindSession,
     getCurrentCommand,
     clearCurrentCommand,
     updateCurrentCommand,

@@ -57,6 +57,20 @@ export interface ElectronAPI {
     allowInvalidCertificate?: boolean,
   ) => Promise<ConnectionTestResult>;
   getC2STunnelConfig: () => Promise<unknown[]>;
+  snapshotC2STunnelConfig: () => Promise<{
+    config: unknown[];
+    revision: string;
+  }>;
+  importC2STunnelConfig: (request: {
+    id: string;
+    revision: string;
+    config: unknown[];
+  }) => Promise<{
+    success: boolean;
+    imported?: number;
+    replayed?: boolean;
+    error?: string;
+  }>;
   saveC2STunnelConfig: (
     config: unknown[],
   ) => Promise<{ success: boolean; error?: string }>;

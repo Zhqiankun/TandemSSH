@@ -382,8 +382,12 @@ function RunCommandTab({ fleetId }: { fleetId: number }) {
   const [results, setResults] = useState<FleetHostResult[] | null>(null);
 
   useEffect(() => {
-    setInputs(extractSnippetInputs(command));
-  }, [command]);
+    setInputs(
+      extractSnippetInputs(command, (number) =>
+        t("newUi.sidebar.snippets.inputLabel", { number }),
+      ),
+    );
+  }, [command, t]);
 
   async function handleRun() {
     if (!command.trim()) {

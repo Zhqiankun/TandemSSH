@@ -185,3 +185,48 @@ describe("HostItem density parity", () => {
     expect(preloadTabSurfaceMock).toHaveBeenCalledWith("files");
   });
 });
+
+it.each(["数据库", "夜间备份"])(
+  "retains ancestor host rows when only a descendant matches %s",
+  async (query) => {
+    const { collectVisibleRows } =
+      await import("../../../../sidebar/tree/visible-rows");
+    const leaf = { ...baseHost, id: "leaf", name: "数据库", notes: "夜间备份" };
+    const parent = {
+      ...baseHost,
+      id: "parent",
+      name: "物理服务器",
+      childHosts: [
+        { ...baseHost, id: "vm", name: "应用虚拟机", childHosts: [leaf] },
+      ],
+    };
+    const unrelated = { ...baseHost, id: "other", name: "其他服务器" };
+    const rows = collectVisibleRows(
+      [parent, unrelated],
+      query,
+      new Set(),
+      [],
+      0,
+      new Set(["host:parent", "host:vm"]),
+    );
+    render(
+      <>
+        {rows.map(({ item, depth }) => (
+          <HostItem
+            key={(item as Host).id}
+            host={item as Host}
+            depth={depth}
+            query={query}
+            onOpenTab={noop}
+            onDelete={noop}
+            onDuplicate={noop}
+          />
+        ))}
+      </>,
+    );
+    expect(screen.getByText("物理服务器")).toBeTruthy();
+    expect(screen.getByText("应用虚拟机")).toBeTruthy();
+    expect(screen.getByText("数据库")).toBeTruthy();
+    expect(screen.queryByText("其他服务器")).toBeNull();
+  },
+);

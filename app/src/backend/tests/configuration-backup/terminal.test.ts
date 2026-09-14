@@ -143,3 +143,66 @@ it("retains an explicit host choice to inherit user terminal appearance", () => 
     fontSize: 15,
   });
 });
+it.each(["utf-8", "gb18030", "big5", "shift_jis"] as const)(
+  "round trips host %s independently of appearance inheritance",
+  (encoding) => {
+    const { payload } = projectConfigurationBackup(
+      [
+        {
+          ...host,
+          terminalConfig: JSON.stringify({
+            encoding,
+            inheritTerminalAppearance: true,
+            startupSnippetId: 88,
+          }),
+        },
+      ],
+      [],
+    );
+    expect(payload.hosts[0].terminalEncoding).toBe(encoding);
+    const restored = parseConfigurationBackup(
+      JSON.parse(JSON.stringify(payload)),
+    ).payload;
+    expect(restored.hosts[0].terminalEncoding).toBe(encoding);
+    expect(restored.hosts[0].terminalAppearance).toEqual({
+      inheritTerminalAppearance: true,
+    });
+    expect(JSON.stringify(restored)).not.toContain("startupSnippetId");
+  },
+);
+it("keeps missing legacy encodings unset and rejects unsupported imported encodings", () => {
+  const { payload } = projectConfigurationBackup([host], []);
+  expect(payload.hosts[0].terminalEncoding).toBeUndefined();
+  expect(() =>
+    parseConfigurationBackup({
+      ...payload,
+      hosts: [{ ...payload.hosts[0], terminalEncoding: "utf-16" }],
+    }),
+  ).toThrow();
+  for (const version of [1, 2]) {
+    const result = parseConfigurationBackup({
+      ...payload,
+      version,
+      hosts: [
+        { ...payload.hosts[0], terminalEncoding: "arbitrary-old-extension" },
+      ],
+    });
+    expect(result.payload.hosts[0].terminalEncoding).toBeUndefined();
+    expect(result.warnings).toContainEqual({
+      code: "IGNORED_FIELD",
+      path: "backup.hosts[0].terminalEncoding",
+    });
+  }
+});
+it("warns about invalid saved encoding without exporting arbitrary fields", () => {
+  const result = projectConfigurationBackup(
+    [{ ...host, terminalConfig: { encoding: "invalid", fontSize: 17 } }],
+    [],
+  );
+  expect(result.payload.hosts[0].terminalEncoding).toBeUndefined();
+  expect(result.payload.hosts[0].terminalAppearance?.fontSize).toBe(17);
+  expect(result.warnings).toContainEqual({
+    code: "TERMINAL_FIELDS_EXCLUDED",
+    path: "hosts[0].terminalEncoding",
+  });
+});

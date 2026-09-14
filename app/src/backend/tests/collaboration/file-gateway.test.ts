@@ -345,6 +345,7 @@ describe("file actions in the shared gateway", () => {
     gate.resolve();
     const result = await pending;
     expect(result.status).toBe("unknown");
+    expect(f.gateway.canDiscard(op.id, true)).toBe(false);
     expect(chunks).toEqual(["first"]);
     expect(f.writes).toEqual([]);
   });
@@ -567,3 +568,153 @@ it.each(["automatic", "collaborative"] as const)(
     }
   },
 );
+
+it.each(
+  (["automatic", "collaborative"] as const).flatMap((mode) =>
+    (["mcp", "agent", "workflow"] as const).flatMap((origin) =>
+      (["failed", "takeover", "timeout"] as const).map((outcome) => ({
+        mode,
+        origin,
+        outcome,
+      })),
+    ),
+  ),
+)(
+  "persists $origin $mode file $outcome with its real gateway result",
+  async ({ mode, origin, outcome }) => {
+    const fs = await import("node:fs/promises"),
+      path = await import("node:path"),
+      os = await import("node:os");
+    const { AuditJournal } =
+      await import("../../collaboration/audit/journal.js");
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "tandem-file-history-"),
+    );
+    const journal = new AuditJournal(root, "owner"),
+      entered = deferred(),
+      release = deferred();
+    let chunks = 0;
+    const f = fixture(
+      mode,
+      {
+        prepare: async (action) => ({
+          execute: async (guard) => {
+            guard(action.path);
+            entered.resolve();
+            if (outcome === "failed")
+              return { status: "failed", error: "FILE_PERMISSION_DENIED" };
+            chunks++;
+            await release.promise;
+            guard(action.path);
+            chunks++;
+            return { status: "succeeded", result: { bytes: 100 } };
+          },
+          dispose: () => release.resolve(),
+        }),
+      },
+      (event) => journal.append(event),
+    );
+    try {
+      f.grant();
+      const op = await f.gateway.propose(
+        {
+          ...f.context(randomUUID()),
+          origin,
+          hostId: 1,
+          hostName: "审计测试服务器",
+        },
+        { ...write, timeoutMs: 1000 },
+      );
+      if (mode === "collaborative") {
+        await expect(f.gateway.dispatch(op.id)).rejects.toThrow(
+          "APPROVAL_REQUIRED",
+        );
+        f.gateway.approveOnce(op.id, op.digest, 1);
+      }
+      const pending = f.gateway.dispatch(op.id);
+      await entered.promise;
+      if (outcome === "takeover") {
+        f.control.takeover();
+        release.resolve();
+      }
+      const result = await pending;
+      const status = outcome === "failed" ? "failed" : "unknown",
+        error =
+          outcome === "failed"
+            ? "FILE_PERMISSION_DENIED"
+            : outcome === "timeout"
+              ? "FILE_OPERATION_TIMEOUT"
+              : "STALE_CONTROL";
+      expect(result).toMatchObject({ status, error });
+      const reopened = new AuditJournal(root, "owner"),
+        page = await reopened.queryHistory({ taskId: "task", limit: 50 });
+      const history = page.items.find(
+        (i) => i.type === "operation.completed" && i.operationId === op.id,
+      )!;
+      expect(history).toMatchObject({
+        origin,
+        mode,
+        status,
+        error,
+        hostId: 1,
+        hostName: "审计测试服务器",
+        path: "/srv/config",
+        actionType: "file.write",
+        policyRevision: 1,
+      });
+      expect(history.exitCode).toBeUndefined();
+      expect(history.outputPreview).toBeUndefined();
+      const detail = JSON.parse(
+        (await reopened.historyDetail(history.detail)).text,
+      );
+      expect(detail.data.status).toBe(status);
+      expect(detail.data.error).toBe(error);
+      if (outcome === "timeout") expect(detail.data.timedOut).toBe(true);
+      expect(chunks).toBe(outcome === "failed" ? 0 : 1);
+      expect(f.writes).toEqual([]);
+    } finally {
+      release.resolve();
+      f.control.close();
+      await journal.queryHistory({});
+      const resolved = await fs.realpath(root);
+      expect(path.dirname(resolved)).toBe(await fs.realpath(os.tmpdir()));
+      expect(path.basename(resolved)).toMatch(
+        /^tandem-file-history-[A-Za-z0-9]+$/,
+      );
+      await fs.rm(resolved, { recursive: true, force: true });
+    }
+  },
+);
+
+it.each(["automatic", "collaborative"] as const)("keeps confirmed file writes and pauses after completion audit fails in %s mode", async (mode) => {
+  const fs = await import("node:fs/promises"), path = await import("node:path"), os = await import("node:os");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "tandem-completion-audit-"));
+  const target = path.join(root, "confirmed.bin"), bytes = Buffer.alloc(100, 88);
+  let executions = 0;
+  const f = fixture(mode, { prepare: async () => ({ execute: async guard => {
+    guard("/srv/config"); executions++;
+    await fs.writeFile(target, bytes);
+    return { status: "succeeded", result: { bytes: bytes.length } };
+  }, dispose: () => {} }) }, async event => { if (event.type === "operation.completed") throw Error("AUDIT_UNAVAILABLE"); });
+  try {
+    f.grant();
+    const op = await f.gateway.propose(f.context("confirmed-write"), write);
+    if (mode === "collaborative") f.gateway.approveOnce(op.id, op.digest, 1);
+    const result = await f.gateway.dispatch(op.id);
+    expect(result).toMatchObject({ status: "succeeded", auditGap: true, fileResult: { bytes: 100 } });
+    expect((await fs.readFile(target)).equals(bytes)).toBe(true);
+    expect(f.control.snapshot().controller.kind).toBe("human");
+    await expect(f.gateway.propose(f.context("after-gap"), write)).rejects.toThrow("STALE_CONTROL");
+    expect(await f.gateway.dispatch(op.id)).toMatchObject({ status: "succeeded", auditGap: true });
+    expect(executions).toBe(1);
+    f.control.humanInput(Buffer.from("manual"));
+    expect(f.writes).toEqual(["manual"]);
+    expect((await fs.readFile(target)).equals(bytes)).toBe(true);
+  } finally {
+    f.control.close();
+    const actual = await fs.realpath(root);
+    expect(path.dirname(actual)).toBe(await fs.realpath(os.tmpdir()));
+    expect(path.basename(actual)).toMatch(/^tandem-completion-audit-[A-Za-z0-9]+$/);
+    await fs.rm(actual, { recursive: true, force: true });
+  }
+});

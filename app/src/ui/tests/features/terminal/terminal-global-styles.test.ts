@@ -1,3 +1,4 @@
+import { resolveTerminalFontFamily } from "@/lib/terminal-themes";
 import { describe, expect, it, vi } from "vitest";
 import { ensureTerminalFontsLoaded } from "../../../features/terminal/terminal-global-styles";
 
@@ -14,16 +15,16 @@ describe("ensureTerminalFontsLoaded", () => {
       ensureTerminalFontsLoaded("Caskaydia Cove Nerd Font Mono");
 
       expect(load).toHaveBeenCalledWith(
-        '400 16px "Caskaydia Cove Nerd Font Mono"',
+        `400 16px ${resolveTerminalFontFamily("Caskaydia Cove Nerd Font Mono")}`,
       );
       expect(load).toHaveBeenCalledWith(
-        '700 16px "Caskaydia Cove Nerd Font Mono"',
+        `700 16px ${resolveTerminalFontFamily("Caskaydia Cove Nerd Font Mono")}`,
       );
       expect(load).toHaveBeenCalledWith(
-        'italic 400 16px "Caskaydia Cove Nerd Font Mono"',
+        `italic 400 16px ${resolveTerminalFontFamily("Caskaydia Cove Nerd Font Mono")}`,
       );
       expect(load).toHaveBeenCalledWith(
-        'italic 700 16px "Caskaydia Cove Nerd Font Mono"',
+        `italic 700 16px ${resolveTerminalFontFamily("Caskaydia Cove Nerd Font Mono")}`,
       );
       expect(load).toHaveBeenCalledTimes(4);
     } finally {
@@ -69,4 +70,27 @@ describe("ensureTerminalFontsLoaded", () => {
       });
     }
   });
+});
+
+it("loads special custom names using the renderer's escaped fallback list", () => {
+  const originalFonts = document.fonts,
+    load = vi.fn().mockResolvedValue([]);
+  Object.defineProperty(document, "fonts", {
+    configurable: true,
+    value: { load },
+  });
+  try {
+    ensureTerminalFontsLoaded('Missing "Quoted"');
+    expect(load.mock.calls.map((call) => call[0])).toEqual([
+      '400 16px "Missing \\22 Quoted\\22 ", "SF Mono", Consolas, "Liberation Mono", monospace',
+      '700 16px "Missing \\22 Quoted\\22 ", "SF Mono", Consolas, "Liberation Mono", monospace',
+      'italic 400 16px "Missing \\22 Quoted\\22 ", "SF Mono", Consolas, "Liberation Mono", monospace',
+      'italic 700 16px "Missing \\22 Quoted\\22 ", "SF Mono", Consolas, "Liberation Mono", monospace',
+    ]);
+  } finally {
+    Object.defineProperty(document, "fonts", {
+      configurable: true,
+      value: originalFonts,
+    });
+  }
 });

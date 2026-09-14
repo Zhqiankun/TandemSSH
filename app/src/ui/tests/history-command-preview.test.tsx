@@ -2,7 +2,17 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import i18n from "@/i18n/i18n";
-const api = vi.hoisted(() => ({ query: vi.fn(), export: vi.fn() }));
+const api = vi.hoisted(() => ({
+  query: vi.fn(),
+  export: vi.fn(),
+  storage: async () => ({
+    directory: "fixture-audit",
+    files: 1,
+    bytes: 100,
+    retentionDays: 7,
+    maxBytes: 104857600,
+  }),
+}));
 vi.mock("@/api/task-history-api", () => ({ taskHistoryApi: api }));
 vi.mock("@/api/collaboration-api", () => ({
   collaborationErrorCode: () => "HISTORY_UNAVAILABLE",

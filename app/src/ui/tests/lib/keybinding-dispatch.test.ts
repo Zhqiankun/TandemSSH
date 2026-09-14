@@ -33,13 +33,14 @@ function makeContext(
 }
 
 describe("dispatchKeybindingAction", () => {
-  it("copy writes the selection to clipboard and clears it", () => {
+  it("copy writes the selection to clipboard and clears it", async () => {
     const ctx = makeContext();
     (ctx.terminal.getSelection as ReturnType<typeof vi.fn>).mockReturnValue(
       "hello",
     );
     dispatchKeybindingAction({ type: "copy" }, ctx);
     expect(ctx.writeTextToClipboard).toHaveBeenCalledWith("hello");
+    await Promise.resolve();
     expect(ctx.terminal.clearSelection).toHaveBeenCalled();
   });
 
@@ -127,9 +128,174 @@ describe("dispatchKeybindingAction", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(ctx.sentData).toEqual([]);
-    expect(onSnippetNeedsInputs).toHaveBeenCalledWith({
-      id: "1",
-      content: "echo $INPUT_1",
-    });
+    expect(onSnippetNeedsInputs).toHaveBeenCalledWith(
+      {
+        id: "1",
+        content: "echo $INPUT_1",
+      },
+      expect.any(Function),
+    );
   });
+});
+
+it("delegates custom paste actions to the terminal's confirmation policy", () => {
+  const pasteFromClipboard = vi.fn(),
+    ctx = makeContext({ pasteFromClipboard });
+  dispatchKeybindingAction({ type: "paste" }, ctx);
+  expect(pasteFromClipboard).toHaveBeenCalledOnce();
+  expect(ctx.readTextFromClipboard).not.toHaveBeenCalled();
+  expect(ctx.terminal.paste).not.toHaveBeenCalled();
+  expect(ctx.sentData).toEqual([]);
+});
+
+it.each(["replace", "close", "detach"] as const)(
+  "drops a delayed snippet after socket %s",
+  async (change) => {
+    let resolve!: (value: { content: string }) => void;
+    const pending = new Promise<{ content: string }>((yes) => (resolve = yes));
+    const needsInputs = vi.fn(),
+      ctx = makeContext({
+        getSnippetById: () => pending,
+        onSnippetNeedsInputs: needsInputs,
+      });
+    const original = ctx.webSocketRef.current!;
+    const replacement = makeContext();
+    dispatchKeybindingAction({ type: "runSnippet", snippetId: "1" }, ctx);
+    if (change === "replace")
+      ctx.webSocketRef.current = replacement.webSocketRef.current;
+    if (change === "close")
+      Object.defineProperty(original, "readyState", { value: 3 });
+    if (change === "detach") ctx.webSocketRef.current = null;
+    resolve({ content: "echo old-task" });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ctx.sentData).toEqual([]);
+    expect(replacement.sentData).toEqual([]);
+    expect(needsInputs).not.toHaveBeenCalled();
+  },
+);
+it("does not open a stale snippet parameter dialog after reconnect", async () => {
+  let resolve!: (value: { content: string }) => void;
+  const pending = new Promise<{ content: string }>((yes) => (resolve = yes)),
+    needsInputs = vi.fn();
+  const ctx = makeContext({
+    getSnippetById: () => pending,
+    onSnippetNeedsInputs: needsInputs,
+  });
+  dispatchKeybindingAction({ type: "runSnippet", snippetId: "1" }, ctx);
+  ctx.webSocketRef.current = makeContext().webSocketRef.current;
+  resolve({ content: "echo $INPUT_1" });
+  await Promise.resolve();
+  expect(needsInputs).not.toHaveBeenCalled();
+});
+it("drops generic delayed clipboard text after reconnect", async () => {
+  let resolve!: (value: string) => void;
+  const pending = new Promise<string>((yes) => (resolve = yes)),
+    ctx = makeContext({ readTextFromClipboard: () => pending });
+  dispatchKeybindingAction({ type: "paste" }, ctx);
+  ctx.webSocketRef.current = makeContext().webSocketRef.current;
+  resolve("old text");
+  await Promise.resolve();
+  expect(ctx.terminal.paste).not.toHaveBeenCalled();
+});
+
+it("keeps the parameter confirmation sender bound to its original connection", async () => {
+  const pending = vi.fn(),
+    ctx = makeContext({
+      getSnippetById: async () => ({ content: "echo $INPUT_1" }),
+      onSnippetNeedsInputs: pending,
+    });
+  dispatchKeybindingAction({ type: "runSnippet", snippetId: "1" }, ctx);
+  await Promise.resolve();
+  const send = pending.mock.calls[0][1] as (text: string) => boolean;
+  const replacement = makeContext();
+  ctx.webSocketRef.current = replacement.webSocketRef.current;
+  expect(send("old confirmation\r")).toBe(false);
+  expect(ctx.sentData).toEqual([]);
+  expect(replacement.sentData).toEqual([]);
+});
+it("consumes the parameter confirmation sender only once", async () => {
+  const pending = vi.fn(),
+    ctx = makeContext({
+      getSnippetById: async () => ({ content: "echo $INPUT_1" }),
+      onSnippetNeedsInputs: pending,
+    });
+  dispatchKeybindingAction({ type: "runSnippet", snippetId: "1" }, ctx);
+  await Promise.resolve();
+  const send = pending.mock.calls[0][1] as (text: string) => boolean;
+  expect(send("confirmed\r")).toBe(true);
+  expect(send("confirmed\r")).toBe(false);
+  expect(ctx.sentData).toEqual(["confirmed\r"]);
+});
+
+it.each(["copy", "paste", "runSnippet"] as const)(
+  "reports %s asynchronous rejection without exposing the error",
+  async (type) => {
+    const onFailure = vi.fn(),
+      reject = async () => {
+        throw Error("PRIVATE_TEST_DETAIL");
+      };
+    const ctx = makeContext({
+      onFailure,
+      writeTextToClipboard: reject,
+      readTextFromClipboard: reject,
+      getSnippetById: reject,
+    });
+    (ctx.terminal.getSelection as ReturnType<typeof vi.fn>).mockReturnValue(
+      "selected",
+    );
+    dispatchKeybindingAction(
+      type === "runSnippet" ? { type, snippetId: "1" } : { type },
+      ctx,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onFailure).toHaveBeenCalledWith();
+    expect(onFailure).toHaveBeenCalledOnce();
+    expect(ctx.sentData).toEqual([]);
+    expect(ctx.terminal.clearSelection).not.toHaveBeenCalled();
+  },
+);
+it("retains selection when clipboard reports false", async () => {
+  const onFailure = vi.fn(),
+    ctx = makeContext({ onFailure, writeTextToClipboard: async () => false });
+  (ctx.terminal.getSelection as ReturnType<typeof vi.fn>).mockReturnValue(
+    "selected",
+  );
+  dispatchKeybindingAction({ type: "copy" }, ctx);
+  await Promise.resolve();
+  expect(ctx.terminal.clearSelection).not.toHaveBeenCalled();
+  expect(onFailure).toHaveBeenCalledOnce();
+});
+it("does not clear a newer selection after a delayed successful copy", async () => {
+  let resolve!: (v: boolean) => void;
+  const copied = new Promise<boolean>((yes) => (resolve = yes));
+  const ctx = makeContext({ writeTextToClipboard: () => copied });
+  (ctx.terminal.getSelection as ReturnType<typeof vi.fn>).mockReturnValue(
+    "old",
+  );
+  dispatchKeybindingAction({ type: "copy" }, ctx);
+  (ctx.terminal.getSelection as ReturnType<typeof vi.fn>).mockReturnValue(
+    "new",
+  );
+  resolve(true);
+  await Promise.resolve();
+  expect(ctx.terminal.clearSelection).not.toHaveBeenCalled();
+});
+
+it("rejects pending parameter confirmation when SSH ends on an open WebSocket", async () => {
+  let current = true;
+  const pending = vi.fn();
+  const ctx = makeContext({
+    isSessionCurrent: () => current,
+    getSnippetById: async () => ({ content: "echo $INPUT_1" }),
+    onSnippetNeedsInputs: pending,
+  });
+  dispatchKeybindingAction({ type: "runSnippet", snippetId: "1" }, ctx);
+  await Promise.resolve();
+  current = false;
+  expect((pending.mock.calls[0][1] as (text: string) => boolean)("stale")).toBe(
+    false,
+  );
+  expect(ctx.webSocketRef.current?.readyState).toBe(1);
+  expect(ctx.sentData).toEqual([]);
 });

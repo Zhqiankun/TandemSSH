@@ -1,5 +1,5 @@
 import { FilePolicyEditor } from "./FileScopes";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Shield, Plus, Trash2, Hand } from "lucide-react";
 import { Button } from "@/components/button";
@@ -78,6 +78,11 @@ export function PolicyEditor({
     [line, setLine] = useState("pwd"),
     [cwd, setCwd] = useState("/");
   const [ack, setAck] = useState(false);
+  const trialGeneration = useRef(0);
+  function clearTrial() {
+    trialGeneration.current++;
+    setTrial(undefined);
+  }
   useEffect(() => {
     const stop = new AbortController();
     Promise.all([
@@ -101,7 +106,7 @@ export function PolicyEditor({
   }, []);
   function change(next: CommandPolicySet[]) {
     setSets(next);
-    setTrial(undefined);
+    clearTrial();
     setSaved(false);
     setAck(false);
   }
@@ -158,9 +163,10 @@ export function PolicyEditor({
         <Button
           variant="outline"
           onClick={() => {
+            clearTrial();
             void collaborationApi
               .takeover(sessionId)
-              .then(() => setTrial(undefined))
+              .then(() => clearTrial())
               .catch((e) => setError(workflowError(e).code));
           }}
         >
@@ -484,7 +490,7 @@ export function PolicyEditor({
               value={line}
               onChange={(e) => {
                 setLine(e.target.value);
-                setTrial(undefined);
+                clearTrial();
               }}
             />
           </label>
@@ -494,7 +500,7 @@ export function PolicyEditor({
               value={cwd}
               onChange={(e) => {
                 setCwd(e.target.value);
-                setTrial(undefined);
+                clearTrial();
               }}
             />
           </label>
@@ -505,14 +511,14 @@ export function PolicyEditor({
               void run(async () => {
                 const parsed = parseCommandPlan(line);
                 if (parsed.length !== 1) throw Error("ONE_COMMAND_REQUIRED");
-                setTrial(
-                  await policyApi.trial({
-                    sessionId,
-                    taskId,
-                    sets,
-                    command: { ...parsed[0], cwd },
-                  }),
-                );
+                const generation = ++trialGeneration.current;
+                const result = await policyApi.trial({
+                  sessionId,
+                  taskId,
+                  sets,
+                  command: { ...parsed[0], cwd },
+                });
+                if (generation === trialGeneration.current) setTrial(result);
               })
             }
           >
@@ -591,7 +597,7 @@ export function PolicyEditor({
               setSets(result.sets);
               setSaved(true);
               setAck(false);
-              setTrial(undefined);
+              clearTrial();
             })
           }
         >

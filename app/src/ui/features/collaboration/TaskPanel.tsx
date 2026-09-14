@@ -15,7 +15,15 @@ import { useState, useEffect, lazy, Suspense } from "react";
 import { WorkflowRuns } from "./WorkflowRuns";
 import { McpSettings } from "@/features/mcp/McpSettings";
 import { useTranslation } from "react-i18next";
-import { ArrowLeftRight, Check, Hand, Play, Square, X } from "lucide-react";
+import {
+  ArrowLeftRight,
+  Check,
+  Hand,
+  Pause,
+  Play,
+  Square,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/button";
 import { collaborationApi } from "@/api/collaboration-api";
 import type {
@@ -183,6 +191,15 @@ export function TaskPanel({
         >
           <Hand size={14} />
           {t("tandem.collaboration.takeover")}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!session?.connected || work.takeoverPending}
+          title={t("tandem.collaboration.interruptHint")}
+          onClick={() => void work.interrupt()}
+        >
+          {t("tandem.collaboration.interrupt")}
         </Button>
       </div>
       {work.error && (
@@ -426,7 +443,11 @@ export function TaskPanel({
                   ":" +
                   task.state +
                   ":" +
-                  (task.planRevision ?? 0)
+                  (task.planRevision ?? 0) +
+                  ":" +
+                  task.control.generation +
+                  ":" +
+                  (work.snapshot?.policy.revision ?? task.policyRevision)
                 }
                 task={task}
                 localGrants={
@@ -512,6 +533,7 @@ export function TaskPanel({
                     ?.name
                 }
                 taskId={task.id}
+                taskState={task.state}
                 operation={op}
                 localGrant={
                   localGrants?.taskId === task.id && "localGrantId" in op.action
@@ -572,9 +594,23 @@ export function TaskPanel({
                 )}
                 <Button
                   variant="outline"
-                  disabled={work.busy || task.canArchive === false}
+                  disabled={
+                    work.busy ||
+                    (task.canArchive === false &&
+                      !task.archiveReviewIds?.length)
+                  }
                   onClick={async () => {
-                    if (await work.archive(task.id)) {
+                    const reviewIds = task.archiveReviewIds;
+                    if (
+                      reviewIds?.length &&
+                      !window.confirm(
+                        t("tandem.history.archiveUnknownConfirm", {
+                          count: reviewIds.length,
+                        }),
+                      )
+                    )
+                      return;
+                    if (await work.archive(task.id, reviewIds)) {
                       setSelected(undefined);
                       setComposing(true);
                     }
@@ -583,6 +619,17 @@ export function TaskPanel({
                   {t("tandem.history.archive")}
                 </Button>
               </section>
+            )}
+            {!finished(task) && !task.state.startsWith("paused") && (
+              <Button
+                variant="outline"
+                disabled={work.takeoverPending}
+                title={t("tandem.collaboration.pauseHint")}
+                onClick={() => void work.pause(task.id)}
+              >
+                <Pause size={12} />
+                {t("tandem.collaboration.pause")}
+              </Button>
             )}
             {!finished(task) && (
               <Button
@@ -636,6 +683,7 @@ export function TaskPanel({
 }
 function OperationCard({
   taskId,
+  taskState,
   operation: op,
   workflowName,
   localGrant,
@@ -645,6 +693,7 @@ function OperationCard({
   onApprove,
 }: {
   taskId: string;
+  taskState: TaskView["state"];
   operation: TaskOperation;
   workflowName?: string;
   localGrant?: HumanLocalFileGrant;
@@ -707,10 +756,17 @@ function OperationCard({
       {op.status === "unknown" && !op.reviewed && (
         <p className="tandem-task-error">
           {t(
-            op.action.type === "terminal.command"
-              ? "tandem.collaboration.unknownHint"
-              : "tandem.fileScope.unknownResult",
+            taskState === "cancelled"
+              ? "tandem.collaboration.cancelledUnknownHint"
+              : op.action.type === "terminal.command"
+                ? "tandem.collaboration.unknownHint"
+                : "tandem.fileScope.unknownResult",
           )}
+        </p>
+      )}
+      {op.error === "COMMAND_OUTPUT_INCOMPLETE" && (
+        <p role="alert" className="tandem-task-error">
+          {t("tandem.collaboration.errors.COMMAND_OUTPUT_INCOMPLETE")}
         </p>
       )}
       {op.reviewed && (

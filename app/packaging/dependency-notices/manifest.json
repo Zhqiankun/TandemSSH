@@ -135,6 +135,155 @@
         "resolved": "https://registry.npmjs.org/drizzle-orm/-/drizzle-orm-0.45.2.tgz",
         "integrity": "sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q=="
       }
+    },
+    {
+      "name": "@uiw/react-codemirror",
+      "version": "4.25.11",
+      "file": "_uiw_react-codemirror-4.25.11.txt",
+      "sha256": "fd1f049b3bb5cbaf5143516b72dbc6805cd30cca0cda94edb37160e37662fd17",
+      "source": {
+        "kind": "npm-git-head",
+        "commit": "990500ad9ae72400272c873df3ae061860ff00c2",
+        "url": "https://github.com/uiwjs/react-codemirror/blob/990500ad9ae72400272c873df3ae061860ff00c2/LICENSE",
+        "metadataUrl": "https://registry.npmjs.org/%40uiw%2Freact-codemirror/4.25.11",
+        "packagePath": "core/package.json",
+        "packageSha256": "b744db8c8eb49f6915c7971c31e2753ef1a5b668161b140d688a89c97dd4c0e6",
+        "resolved": "https://registry.npmjs.org/@uiw/react-codemirror/-/react-codemirror-4.25.11.tgz",
+        "integrity": "sha512-DYVFAKLX+F/4JS9N/7xexh+TICrlncwkX9HKKInrP1bwO0tSfc3k0GB6oawTYhelVKh20cX3TuRx+NJSkVXuMw=="
+      }
+    },
+    {
+      "name": "@uiw/codemirror-extensions-basic-setup",
+      "version": "4.25.11",
+      "file": "_uiw_react-codemirror-4.25.11.txt",
+      "sha256": "fd1f049b3bb5cbaf5143516b72dbc6805cd30cca0cda94edb37160e37662fd17",
+      "source": {
+        "kind": "npm-git-head",
+        "commit": "990500ad9ae72400272c873df3ae061860ff00c2",
+        "url": "https://github.com/uiwjs/react-codemirror/blob/990500ad9ae72400272c873df3ae061860ff00c2/LICENSE",
+        "metadataUrl": "https://registry.npmjs.org/%40uiw%2Fcodemirror-extensions-basic-setup/4.25.11",
+        "packagePath": "extensions/basic-setup/package.json",
+        "packageSha256": "878f1e872bddb68dd12cd69a0f059a9d7e51f3ae866012562c02c524f391d9f5",
+        "resolved": "https://registry.npmjs.org/@uiw/codemirror-extensions-basic-setup/-/codemirror-extensions-basic-setup-4.25.11.tgz",
+        "integrity": "sha512-otyFa+n9IOYtEjaKOxPedHkj15fTPUF21wdR9pv0GpZPfuGl27cvmcv6+tognbRu9VvEcsHKE+ESoszeo3KfTw=="
+      }
+    },
+    {
+      "name": "@uiw/codemirror-extensions-langs",
+      "version": "4.25.11",
+      "file": "_uiw_react-codemirror-4.25.11.txt",
+      "sha256": "fd1f049b3bb5cbaf5143516b72dbc6805cd30cca0cda94edb37160e37662fd17",
+      "source": {
+        "kind": "npm-git-head",
+        "commit": "990500ad9ae72400272c873df3ae061860ff00c2",
+        "url": "https://github.com/uiwjs/react-codemirror/blob/990500ad9ae72400272c873df3ae061860ff00c2/LICENSE",
+        "metadataUrl": "https://registry.npmjs.org/%40uiw%2Fcodemirror-extensions-langs/4.25.11",
+        "packagePath": "extensions/langs/package.json",
+        "packageSha256": "c28f1460626036fbfa1fda4079d52ca6234dfeb9c5d858bb0a894f4978fb1fce",
+        "resolved": "https://registry.npmjs.org/@uiw/codemirror-extensions-langs/-/codemirror-extensions-langs-4.25.11.tgz",
+        "integrity": "sha512-RJ6MQTGInT+HBnzEs6PoUmPBgLFbWH3e9ZiF0+H1bdWJXrqN0Kfkiopumz1OCcbWFJ8aVJCD6KPK9mXV/LQ4yA=="
+      }
+    },
+    {
+      "name": "standardwebhooks",
+      "version": "1.0.0",
+      "file": "standardwebhooks-1.0.0.txt",
+      "sha256": "5ec8c7b26b64d881a6706617bed25c049f97f2f35de034c756de8546fd6dbe27",
+      "source": {
+        "kind": "npm-git-head-with-runtime-rebuild",
+        "commit": "929bf0c1928b188287eaf88d0a9f0a4e87df6499",
+        "url": "https://github.com/standard-webhooks/standard-webhooks/blob/929bf0c1928b188287eaf88d0a9f0a4e87df6499/libraries/LICENSE",
+        "metadataUrl": "https://registry.npmjs.org/standardwebhooks/1.0.0",
+        "packagePath": "libraries/javascript/package.json",
+        "sourcePackageVersion": "1.3.0",
+        "publishedPackageVersion": "1.0.0",
+        "runtimeRebuildCompiler": "5.3.3",
+        "runtimeRebuildEvidence": "docs/evidence/476-standardwebhooks-source.json",
+        "resolved": "https://registry.npmjs.org/standardwebhooks/-/standardwebhooks-1.0.0.tgz",
+        "integrity": "sha512-BbHGOQK9olHPMvQNHWul6MYlrRTAOKn03rOe4A8O3CLWhNf4YHBqq2HJKKC+sfqpxiBY52pNeesD6jIiLDz8jg=="
+      }
+    },
+    {
+      "name": "abstract-logging",
+      "version": "2.0.1",
+      "file": "abstract-logging-2.0.1.txt",
+      "sha256": "af15a41ce02371f77476b7a201e036c0ae6c5d6d2a233b4e5f0fd5fca123457e",
+      "source": {
+        "kind": "installed-readme-linked-author-license",
+        "file": "Readme.md",
+        "readmeSha256": "e1a86711fb5055c0e66901276b7d2c843554bf5f1dab218c069c8b9d17148e81",
+        "url": "https://jsumners.mit-license.org/license.txt",
+        "observedAt": "2026-09-14",
+        "linkedTextSha256": "af15a41ce02371f77476b7a201e036c0ae6c5d6d2a233b4e5f0fd5fca123457e",
+        "dynamicYearDocumentation": "https://github.com/remy/mit-license/blob/master/README.md"
+      }
+    },
+    {
+      "name": "precond",
+      "version": "0.2.3",
+      "file": "precond-0.2.3.txt",
+      "sha256": "437f61f6754e66b029d4e5ef25b21d03b68b6d3b84561e6d570ede652a1d01c4",
+      "source": {
+        "kind": "installed-readme-linked-author-license",
+        "file": "README.md",
+        "readmeSha256": "3856ff320dda1ad54de03d10bcb299a27c29391ebf9ad1cde41113d30aaa1846",
+        "url": "https://mturcotte.mit-license.org/license.txt",
+        "observedAt": "2026-09-14",
+        "linkedTextSha256": "a5fb4d8df6c205c34029922ce9c641c7d3749b2366f2cec895d793a613ab7809",
+        "dynamicYearDocumentation": "https://github.com/remy/mit-license/blob/master/README.md",
+        "sourceNotice": {
+          "file": "lib/checks.js",
+          "sha256": "c4d9cf144c6a41aad8d55b81a40e1fa16d851c56dc383b7c01a9f3ec6441c934",
+          "header": "/*\n * Copyright (c) 2012 Mathieu Turcotte\n * Licensed under the MIT license.\n */"
+        },
+        "sourceLicense": "MIT"
+      }
+    },
+    {
+      "name": "base32.js",
+      "version": "0.0.1",
+      "file": "base32.js-0.0.1.txt",
+      "sha256": "d5801d14eb2da47e43c07d81f56f3afefe8d29c7f12f84d4f8d9a2c4bd229944",
+      "source": {
+        "kind": "declared-spdx-standard-template",
+        "licenseExpression": "MIT",
+        "packageSha256": "1dc4d941587618a9e34c8b572b4ef91112a2f542a479a6d74aeb4d7a1f642fc0",
+        "upstreamPackageUrl": "https://raw.githubusercontent.com/mikepb/base32.js/ac54140633c50df34172d276a21339e873a9c9af/package.json",
+        "upstreamPackageSha256": "1dc4d941587618a9e34c8b572b4ef91112a2f542a479a6d74aeb4d7a1f642fc0",
+        "templateUrl": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/MIT.txt",
+        "templateSha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5",
+        "reviewRequired": true
+      }
+    },
+    {
+      "name": "lazy-val",
+      "version": "1.0.5",
+      "file": "lazy-val-1.0.5.txt",
+      "sha256": "eff45eaaf98a017a4ad435df77bcc85b861dcf5e3495a8375d65b083b34d8bb2",
+      "source": {
+        "kind": "declared-spdx-standard-template",
+        "licenseExpression": "MIT",
+        "packageSha256": "a5096f95098452cf6fe5c8ac9be8f13f59ab7c9f605ba5ef92c91b2c505744f0",
+        "upstreamPackageUrl": "https://raw.githubusercontent.com/develar/lazy-val/b69ad4119f1b19bdab13c61ee2fcc88d46b89071/package.json",
+        "upstreamPackageSha256": "a642078ae0684963e5747e9499487a4c649c150bbddbfdfd8eb357bfcbf9c1c2",
+        "templateUrl": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/MIT.txt",
+        "templateSha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5",
+        "reviewRequired": true
+      }
+    },
+    {
+      "name": "react-remove-scroll-bar",
+      "version": "2.3.8",
+      "file": "react-remove-scroll-bar-2.3.8.txt",
+      "sha256": "a79aae0c0f21990d9d963bb3c5a79cdcea9a46f8523ba55c58d7fe776b6ebc84",
+      "source": {
+        "kind": "upstream-source-runtime-rebuild",
+        "commit": "8ca9ba5ea52de03308fe8ced94f7b159a44d28ff",
+        "url": "https://github.com/theKashey/react-remove-scroll-bar/blob/8ca9ba5ea52de03308fe8ced94f7b159a44d28ff/LICENSE",
+        "sourcePackageVersion": "2.3.7",
+        "distributedPackageVersion": "2.3.8",
+        "runtimeRebuildEvidence": "docs/evidence/479-scrollbar-runtime-source.json"
+      }
     }
   ]
 }

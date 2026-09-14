@@ -160,9 +160,20 @@ router.post(
   aiGate,
   async (req, res) => {
     const userId = (req as AuthenticatedRequest).userId as string;
-    const { providerType, label, baseUrl, apiKey, defaultModel } =
-      req.body ?? {};
+    const {
+      providerType,
+      label,
+      baseUrl,
+      apiKey,
+      apiKeyStorage,
+      defaultModel,
+    } = req.body ?? {};
 
+    if (
+      apiKeyStorage !== undefined &&
+      !["memory", "encrypted"].includes(apiKeyStorage)
+    )
+      return res.status(400).json({ error: "Invalid API key storage" });
     if (!isAiProviderType(providerType)) {
       return res.status(400).json({ error: "Unknown provider type" });
     }
@@ -183,6 +194,7 @@ router.post(
         label: label.trim(),
         baseUrl: typeof baseUrl === "string" ? baseUrl.trim() : null,
         apiKey: typeof apiKey === "string" ? apiKey.trim() : null,
+        apiKeyStorage,
         defaultModel:
           typeof defaultModel === "string" ? defaultModel.trim() : null,
       });
@@ -204,9 +216,13 @@ router.post(
     } catch (err) {
       const code = getErrorMessage(err);
       if (
-        ["AI_KEY_ENCRYPTION_UNAVAILABLE", "AI_KEY_ENCRYPTION_FAILED"].includes(
-          code,
-        )
+        [
+          "AI_KEY_ENCRYPTION_UNAVAILABLE",
+          "AI_KEY_ENCRYPTION_FAILED",
+          "AI_SESSION_KEY_TOO_LARGE",
+          "AI_SESSION_KEY_LIMIT",
+          "AI_SESSION_KEY_EXPIRED",
+        ].includes(code)
       ) {
         res.status(503).json({ code, error: code });
         return;
@@ -249,6 +265,11 @@ router.patch(
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ error: "Invalid provider id" });
 
+    if (
+      req.body?.apiKeyStorage !== undefined &&
+      !["memory", "encrypted"].includes(req.body.apiKeyStorage)
+    )
+      return res.status(400).json({ error: "Invalid API key storage" });
     try {
       const updated = await createCurrentAiRepository().updateProvider(
         id,
@@ -275,9 +296,13 @@ router.patch(
     } catch (err) {
       const code = getErrorMessage(err);
       if (
-        ["AI_KEY_ENCRYPTION_UNAVAILABLE", "AI_KEY_ENCRYPTION_FAILED"].includes(
-          code,
-        )
+        [
+          "AI_KEY_ENCRYPTION_UNAVAILABLE",
+          "AI_KEY_ENCRYPTION_FAILED",
+          "AI_SESSION_KEY_TOO_LARGE",
+          "AI_SESSION_KEY_LIMIT",
+          "AI_SESSION_KEY_EXPIRED",
+        ].includes(code)
       ) {
         res.status(503).json({ code, error: code });
         return;

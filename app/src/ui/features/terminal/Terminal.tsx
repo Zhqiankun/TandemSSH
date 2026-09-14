@@ -1,3 +1,12 @@
+import { CommandHistoryDialog } from "./command-history/CommandHistoryDialog";
+import {
+  historyCompletion,
+  historyHasControlCharacters,
+} from "./command-history/completion";
+import { useAutocompleteHistory } from "./command-history/useAutocompleteHistory";
+import { useTerminalPaste } from "./use-terminal-paste";
+import { TerminalPastePreview } from "./TerminalPastePreview";
+import { terminalAuthenticationFailure } from "./terminal-authentication-failure";
 import { TerminalDirectoryQuery } from "./directory-query";
 import { installTerminalReplies } from "./terminal-replies";
 import { requestLegacyTask } from "@/api/legacy-commands-api";
@@ -6,6 +15,7 @@ import { getErrorMessage } from "../../lib/error-message.js";
 /* eslint-disable react-hooks/exhaustive-deps */
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useImperativeHandle,
@@ -98,11 +108,11 @@ import {
   getUserPreferences,
   parseCustomKeybindings,
 } from "@/api/open-tabs-api";
-import { findMatchingKeybinding } from "@/lib/keybinding-match";
 import {
-  dispatchKeybindingAction,
-  sendRawToSocket,
-} from "@/lib/keybinding-dispatch";
+  findMatchingKeybinding,
+  isImeCompositionKey,
+} from "@/lib/keybinding-match";
+import { dispatchKeybindingAction } from "@/lib/keybinding-dispatch";
 import { SnippetVariablesDialog } from "@/components/SnippetVariablesDialog";
 import type { CustomKeybinding } from "@/types/keybindings";
 import { useConnectionDefaults } from "@/contexts/ConnectionDefaultsContext";
@@ -234,6 +244,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       id: string;
       content: string;
       appendEnter: boolean;
+      sendResolved: (text: string) => boolean;
     } | null>(null);
     const resizeTimeout = useRef<NodeJS.Timeout | null>(null);
     const wasDisconnectedBySSH = useRef(false);
@@ -328,6 +339,17 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     } | null>(null);
 
     const sessionIdRef = useRef<string | null>(null);
+    const paste = useTerminalPaste(() => {
+      const socket = webSocketRef.current;
+      return terminal && isConnected && socket?.readyState === 1
+        ? {
+            identity: socket,
+            sessionId: sessionIdRef.current,
+            label: hostConfig.name || hostConfig.ip || "SSH",
+            paste: (text: string) => terminal.paste(text),
+          }
+        : null;
+    });
     const [collaborationSessionId, setCollaborationSessionId] = useState<
       string | null
     >(null);
@@ -399,19 +421,25 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     const commandHistoryTrackingEnabled =
       hostConfig.enableCommandHistory !== false;
 
-    const { trackInput, getCurrentCommand, updateCurrentCommand } =
-      useCommandTracker({
-        hostId: hostConfig.id,
-        enabled: commandHistoryTrackingEnabled,
-        onCommandExecuted: (command) => {
-          if (!autocompleteHistory.current.includes(command)) {
-            autocompleteHistory.current = [
-              command,
-              ...autocompleteHistory.current,
-            ];
-          }
-        },
-      });
+    const {
+      trackInput,
+      getCurrentCommand,
+      updateCurrentCommand,
+      bindSession: bindLocalInputSession,
+    } = useCommandTracker({
+      hostId: hostConfig.id,
+      enabled: commandHistoryTrackingEnabled,
+      persist: false,
+    });
+    const addHistoryCommandRef = useRef<(command: string) => void>(() => {});
+    const {
+      trackInput: trackAcceptedInput,
+      bindSession: bindAcceptedInputSession,
+    } = useCommandTracker({
+      hostId: hostConfig.id,
+      enabled: commandHistoryTrackingEnabled,
+      onHistorySaved: (command) => addHistoryCommandRef.current(command),
+    });
 
     const getCurrentCommandRef = useRef(getCurrentCommand);
     const updateCurrentCommandRef = useRef(updateCurrentCommand);
@@ -431,7 +459,18 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       top: 0,
       left: 0,
     });
-    const autocompleteHistory = useRef<string[]>([]);
+    const {
+      history: autocompleteHistory,
+      add: addAutocompleteHistory,
+      remove: removeAutocompleteHistory,
+      clear: clearAutocompleteHistory,
+    } = useAutocompleteHistory(
+      hostConfig.id,
+      localStorage.getItem("commandAutocomplete") === "true",
+    );
+    useLayoutEffect(() => {
+      addHistoryCommandRef.current = addAutocompleteHistory;
+    }, [addAutocompleteHistory]);
     const currentAutocompleteCommand = useRef<string>("");
 
     const showAutocompleteRef = useRef(false);
@@ -455,6 +494,11 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     const searchRegexRef = useRef(false);
 
     const [showHistoryDialog] = useState(false);
+    const [historyTarget, setHistoryTarget] = useState<{
+      hostId: number;
+      sessionId: string | null;
+    } | null>(null);
+    useEffect(() => setHistoryTarget(null), [hostConfig.id]);
     const [, setCommandHistory] = useState<string[]>([]);
     const [, setIsLoadingHistory] = useState(false);
 
@@ -492,24 +536,6 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           });
       }
     }, [showHistoryDialog, hostConfig.id]);
-
-    useEffect(() => {
-      const autocompleteEnabled =
-        localStorage.getItem("commandAutocomplete") === "true";
-
-      if (hostConfig.id && autocompleteEnabled) {
-        getCommandHistory(hostConfig.id!)
-          .then((history) => {
-            autocompleteHistory.current = history;
-          })
-          .catch((error) => {
-            console.error("Failed to load autocomplete history:", error);
-            autocompleteHistory.current = [];
-          });
-      } else {
-        autocompleteHistory.current = [];
-      }
-    }, [hostConfig.id]);
 
     useEffect(() => {
       showAutocompleteRef.current = showAutocomplete;
@@ -688,6 +714,17 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       const query = term ?? searchQueryRef.current;
       if (!searchAddon || !query) return;
 
+      if (searchRegexRef.current) {
+        try {
+          new RegExp(query, searchCaseSensitiveRef.current ? "g" : "gi");
+        } catch {
+          searchAddon.clearDecorations();
+          setSearchResultIndex(-1);
+          setSearchResultCount(0);
+          return;
+        }
+      }
+
       if (direction === "next") {
         searchAddon.findNext(query, getSearchOptions());
       } else {
@@ -730,18 +767,24 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     function toggleSearchCaseSensitive() {
       searchCaseSensitiveRef.current = !searchCaseSensitiveRef.current;
       setSearchCaseSensitive(searchCaseSensitiveRef.current);
+      // Invalidate cached highlights when the matching rules change.
+      searchAddonRef.current?.clearDecorations();
       runSearch("next");
     }
 
     function toggleSearchWholeWord() {
       searchWholeWordRef.current = !searchWholeWordRef.current;
       setSearchWholeWord(searchWholeWordRef.current);
+      // Invalidate cached highlights when the matching rules change.
+      searchAddonRef.current?.clearDecorations();
       runSearch("next");
     }
 
     function toggleSearchRegex() {
       searchRegexRef.current = !searchRegexRef.current;
       setSearchRegex(searchRegexRef.current);
+      // Invalidate cached highlights when the matching rules change.
+      searchAddonRef.current?.clearDecorations();
       runSearch("next");
     }
 
@@ -1149,7 +1192,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           return () => outputListenersRef.current.delete(listener);
         },
         paste: (text: string) => {
-          terminal?.paste(text);
+          paste.request(text);
         },
         notifyResize: () => {
           try {
@@ -1352,6 +1395,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       rows: number,
     ) {
       let terminalRepliesSupported = false;
+      let inputReceiptsSupported = false;
       ws.addEventListener("open", () => {
         clearInteractiveChallenge();
         alternateScreenModeRef.current = false;
@@ -1479,6 +1523,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           const predicted = localEchoRef.current?.handleInput(data);
           if (predicted) terminal.write(predicted);
           ws.send(JSON.stringify({ type: "input", data }));
+          if (!inputReceiptsSupported) trackAcceptedInput(data);
         });
 
         pongReceivedRef.current = true;
@@ -1501,6 +1546,16 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         try {
           const msg = JSON.parse(event.data);
           if (msg.terminalReplies === true) terminalRepliesSupported = true;
+          if (msg.inputReceipts === true) inputReceiptsSupported = true;
+          if (msg.type === "terminal.input.accepted") {
+            if (
+              inputReceiptsSupported &&
+              msg.sessionId === sessionIdRef.current &&
+              typeof msg.data === "string"
+            )
+              trackAcceptedInput(msg.data);
+            return;
+          }
           if (msg.type === "pong") {
             pongReceivedRef.current = true;
             return;
@@ -1569,7 +1624,15 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 acknowledge();
               });
             }
-          } else if (msg.type === "error") {
+          } else if (
+            msg.type === "error" ||
+            (msg.type === "collaboration.error" &&
+              msg.code === "TERMINAL_INPUT_NOT_REPRESENTABLE")
+          ) {
+            if (msg.code === "TERMINAL_INPUT_NOT_REPRESENTABLE") {
+              toast.error(t("terminal.encodingInputRejected"));
+              return;
+            }
             if (typeof msg.code === "string" && msg.code.startsWith("CWD_")) {
               if (
                 !cwdQuery.consume(
@@ -1592,17 +1655,29 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
               );
               return;
             }
+            const tmuxEncodingRequired = msg.code === "TMUX_UTF8_REQUIRED";
             const trustRejected = msg.code === "HOST_TRUST_REJECTED";
+            const authFailure = terminalAuthenticationFailure(
+              msg.code,
+              msg.message || "",
+            );
             const credentialsRequired =
               msg.code === "HOST_CREDENTIAL_REBIND_REQUIRED";
-            const errorMessage =
-              msg.code === "UNSUPPORTED_TERMINAL_PATH"
+            const errorMessage = tmuxEncodingRequired
+              ? t("terminal.tmuxEncodingRequired")
+              : msg.code === "UNSUPPORTED_TERMINAL_PATH"
                 ? t("terminal.initialPathUnsupported")
                 : credentialsRequired
                   ? t("configBackup.credentialsRequired")
-                  : trustRejected
-                    ? t("terminal.hostKeyRejected")
-                    : msg.message || t("terminal.unknownError");
+                  : authFailure
+                    ? t(
+                        authFailure === "private-key"
+                          ? "terminal.privateKeyInvalid"
+                          : "terminal.sshAuthenticationRejected",
+                      )
+                    : trustRejected
+                      ? t("terminal.hostKeyRejected")
+                      : msg.message || t("terminal.unknownError");
 
             addLog({
               type: "error",
@@ -1610,7 +1685,12 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
               message: errorMessage,
             });
 
-            if (trustRejected || credentialsRequired) {
+            if (
+              trustRejected ||
+              credentialsRequired ||
+              authFailure ||
+              tmuxEncodingRequired
+            ) {
               updateConnectionError(errorMessage);
               setIsConnected(false);
               setIsConnecting(false);
@@ -1620,6 +1700,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 clearTimeout(connectionTimeoutRef.current);
                 connectionTimeoutRef.current = null;
               }
+              if (authFailure) webSocketRef.current?.close();
               return;
             }
 
@@ -1638,27 +1719,12 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
               return;
             }
 
-            if (
-              (errorMessage.toLowerCase().includes("auth") &&
-                errorMessage.toLowerCase().includes("failed")) ||
-              errorMessage.toLowerCase().includes("permission denied") ||
-              (errorMessage.toLowerCase().includes("invalid") &&
-                (errorMessage.toLowerCase().includes("password") ||
-                  errorMessage.toLowerCase().includes("key"))) ||
-              errorMessage.toLowerCase().includes("incorrect password")
-            ) {
-              updateConnectionError(errorMessage);
-              setIsConnecting(false);
-              shouldNotReconnectRef.current = true;
-              if (webSocketRef.current) {
-                webSocketRef.current.close();
-              }
-              return;
-            }
-
             updateConnectionError(errorMessage);
             setIsConnecting(false);
           } else if (msg.type === "connected") {
+            // Resize messages sent during authentication have no shell to update.
+            lastSentSizeRef.current = null;
+            scheduleNotify(terminal.cols, terminal.rows);
             clearInteractiveChallenge();
             opksshFailedRef.current = false;
             vaultFailedRef.current = false;
@@ -2151,6 +2217,8 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
               setCollaborationOpen(true);
             }
           } else if (msg.type === "sessionCreated") {
+            bindLocalInputSession(msg.sessionId);
+            bindAcceptedInputSession(msg.sessionId);
             sessionIdRef.current = msg.sessionId;
             setCollaborationSessionId(msg.sessionId);
             if (hostConfig.instanceId) {
@@ -2161,6 +2229,10 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
               });
             }
           } else if (msg.type === "sessionAttached") {
+            if (typeof msg.sessionId === "string") {
+              bindLocalInputSession(msg.sessionId);
+              bindAcceptedInputSession(msg.sessionId);
+            }
             sessionIdRef.current = msg.sessionId ?? sessionIdRef.current;
             setCollaborationSessionId(sessionIdRef.current);
             isAttachingSessionRef.current = false;
@@ -2248,6 +2320,8 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                       name: sessionName,
                     }),
             });
+          } else if (msg.type === "tmux_encoding_unsupported") {
+            toast.warning(t("terminal.tmuxEncodingRequired"));
           } else if (msg.type === "tmux_unavailable") {
             setTimeout(() => {
               toast.warning(t("terminal.tmuxUnavailable"), {
@@ -2334,6 +2408,12 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           setShowDisconnectedOverlay(true);
           shouldNotReconnectRef.current = true;
           updateConnectionError(t("terminal.outputGapDelivery"));
+          setIsConnecting(false);
+          return;
+        }
+
+        // A deliberate close after a reported failure must not replace its cause.
+        if (shouldNotReconnectRef.current && connectionErrorRef.current) {
           setIsConnecting(false);
           return;
         }
@@ -2470,15 +2550,16 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         if (!webSocketRef.current) return;
 
         const currentCmd = currentAutocompleteCommand.current;
-        const completion = selectedCommand.substring(currentCmd.length);
+        const completion = historyCompletion(currentCmd, selectedCommand);
+        if (!completion) return;
 
-        for (const char of completion) {
+        for (const char of completion.suffix) {
           webSocketRef.current.send(
             JSON.stringify({ type: "input", data: char }),
           );
         }
 
-        updateCurrentCommand(selectedCommand);
+        updateCurrentCommand(completion.line);
 
         setShowAutocomplete(false);
         setAutocompleteSuggestions([]);
@@ -2497,21 +2578,18 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
         try {
           await deleteCommandFromHistory(hostConfig.id, command);
+          if (!removeAutocompleteHistory(command)) return;
 
           setCommandHistory((prev) => {
             const newHistory = prev.filter((cmd) => cmd !== command);
             setCommandHistoryContextRef.current(newHistory);
             return newHistory;
           });
-
-          autocompleteHistory.current = autocompleteHistory.current.filter(
-            (cmd) => cmd !== command,
-          );
         } catch (error) {
           console.error("Failed to delete command from history:", error);
         }
       },
-      [hostConfig.id],
+      [hostConfig.id, removeAutocompleteHistory],
     );
 
     useEffect(() => {
@@ -2710,10 +2788,22 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         xtermTextarea.setAttribute("data-enable-grammarly", "false");
       }
 
+      // Font loading and addon fits can resize outside performFit(). Keep the
+      // SSH PTY synchronized with every actual xterm dimension change.
+      terminal.onResize(({ cols, rows }) => scheduleNotify(cols, rows));
+
       terminal.onTitleChange((title) => {
         if (title) onTitleChange?.(title);
       });
       document.fonts.ready.then(() => {
+        if (!terminal.element?.isConnected) return;
+        // xterm caches fallback metrics until a font option changes. Reload the
+        // active family synchronously through public options after fonts load;
+        // both changes complete before the next render frame.
+        const loadedFamily = terminal.options.fontFamily;
+        terminal.options.fontFamily =
+          loadedFamily === "monospace" ? "serif" : "monospace";
+        terminal.options.fontFamily = loadedFamily;
         terminal.refresh(0, terminal.rows - 1);
         fitAddon.fit();
       });
@@ -2784,9 +2874,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             const text = terminal.getSelection();
             writeTextToClipboard(text).then(() => terminal.clearSelection());
           } else {
-            readTextFromClipboard().then((text) => {
-              if (text) terminal.paste(text);
-            });
+            void paste
+              .read(readTextFromClipboard)
+              .catch(() => toast.error(t("terminal.pasteReadFailed")));
           }
           return;
         }
@@ -2798,10 +2888,10 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         if (text) {
           e.preventDefault();
           e.stopPropagation();
-          terminal.paste(text);
+          paste.request(text);
         }
       };
-      element?.addEventListener("paste", handlePaste);
+      element?.addEventListener("paste", handlePaste, true);
 
       let tmuxDragTracking = false;
       const handleTmuxDragStart = (e: MouseEvent) => {
@@ -2878,7 +2968,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         resizeObserver.disconnect();
         clipboardProvider.dispose();
         element?.removeEventListener("contextmenu", handleContextMenu);
-        element?.removeEventListener("paste", handlePaste);
+        element?.removeEventListener("paste", handlePaste, true);
         element?.removeEventListener("mousedown", handleTmuxDragStart);
         element?.removeEventListener("mousemove", handleTmuxDragMove);
         element?.removeEventListener("mouseup", handleTmuxDragEnd);
@@ -2982,12 +3072,12 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           const numericId = Number(id);
           return cachedSnippetsRef.current?.find((s) => s.id === numericId);
         } catch {
-          return undefined;
+          throw new Error("SNIPPET_READ_FAILED");
         }
       };
 
       const handleCustomKey = (e: KeyboardEvent): boolean => {
-        if (e.type !== "keydown") {
+        if (e.type !== "keydown" || isImeCompositionKey(e)) {
           return true;
         }
 
@@ -3001,8 +3091,18 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           if (matched) {
             e.preventDefault();
             e.stopPropagation();
+            const sourceSessionId = sessionIdRef.current;
             dispatchKeybindingAction(matched.action, {
+              isSessionCurrent: () =>
+                wasConnectedRef.current &&
+                sessionIdRef.current === sourceSessionId,
+              onFailure: () => toast.error(t("terminal.shortcutActionFailed")),
               terminal,
+              pasteFromClipboard: () => {
+                void paste
+                  .read(readTextFromClipboard)
+                  .catch(() => toast.error(t("terminal.pasteReadFailed")));
+              },
               webSocketRef,
               writeTextToClipboard,
               readTextFromClipboard,
@@ -3013,9 +3113,10 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 port: hostConfig.port,
                 name: hostConfig.name,
               },
-              onSnippetNeedsInputs: (snippet) =>
+              onSnippetNeedsInputs: (snippet, sendResolved) =>
                 setPendingKeybindingSnippet({
                   ...snippet,
+                  sendResolved,
                   appendEnter: matched.action.appendEnter !== false,
                 }),
             });
@@ -3171,9 +3272,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         ) {
           e.preventDefault();
           e.stopPropagation();
-          readTextFromClipboard().then((text) => {
-            if (text) terminal.paste(text);
-          });
+          void paste
+            .read(readTextFromClipboard)
+            .catch(() => toast.error(t("terminal.pasteReadFailed")));
           return false;
         }
 
@@ -3250,17 +3351,18 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 autocompleteSelectedIndexRef.current
               ];
             const currentCmd = currentAutocompleteCommand.current;
-            const completion = selectedCommand.substring(currentCmd.length);
+            const completion = historyCompletion(currentCmd, selectedCommand);
+            if (!completion) return false;
 
             if (webSocketRef.current?.readyState === 1) {
-              for (const char of completion) {
+              for (const char of completion.suffix) {
                 webSocketRef.current.send(
                   JSON.stringify({ type: "input", data: char }),
                 );
               }
             }
 
-            updateCurrentCommandRef.current(selectedCommand);
+            updateCurrentCommandRef.current(completion.line);
 
             setShowAutocomplete(false);
             setAutocompleteSuggestions([]);
@@ -3335,33 +3437,31 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             return false;
           }
 
-          const currentCmd = getCurrentCommandRef.current().trim();
-          if (currentCmd.length === 0) {
+          const currentCmd = getCurrentCommandRef.current();
+          if (currentCmd.trimStart().length === 0) {
             sendTabToShell();
             return false;
           }
 
           if (webSocketRef.current?.readyState === 1) {
             const matches = autocompleteHistory.current
-              .filter(
-                (cmd) =>
-                  cmd.startsWith(currentCmd) &&
-                  cmd !== currentCmd &&
-                  cmd.length > currentCmd.length,
-              )
+              .filter((cmd) => historyCompletion(currentCmd, cmd) !== null)
               .slice(0, 5);
 
             if (matches.length === 1) {
               const completedCommand = matches[0];
-              const completion = completedCommand.substring(currentCmd.length);
+              const completion = historyCompletion(
+                currentCmd,
+                completedCommand,
+              )!;
 
-              for (const char of completion) {
+              for (const char of completion.suffix) {
                 webSocketRef.current.send(
                   JSON.stringify({ type: "input", data: char }),
                 );
               }
 
-              updateCurrentCommandRef.current(completedCommand);
+              updateCurrentCommandRef.current(completion.line);
             } else if (matches.length > 1) {
               currentAutocompleteCommand.current = currentCmd;
               setAutocompleteSuggestions(matches);
@@ -3412,7 +3512,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       };
 
       terminal.attachCustomKeyEventHandler(handleCustomKey);
-    }, [terminal]);
+    }, [terminal, autocompleteHistory]);
 
     useEffect(() => {
       if (!terminal || !hostConfig || !isVisible) return;
@@ -3708,6 +3808,15 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             onPasteImage={() => void handleClipboardImage()}
             onOpenTab={onOpenTab}
             onOpenFiles={requestCurrentDirectory}
+            onOpenHistory={
+              hostConfig.id
+                ? () =>
+                    setHistoryTarget({
+                      hostId: hostConfig.id!,
+                      sessionId: sessionIdRef.current,
+                    })
+                : undefined
+            }
             isFocused={isFocusedPane}
           />
         )}
@@ -3770,11 +3879,26 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             }
           }}
           extraActions={
-            onClose && (
-              <Button variant="outline" onClick={onClose}>
-                {t("terminal.closeTab")}
-              </Button>
-            )
+            <>
+              {hostConfig.id && (
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    setHistoryTarget({
+                      hostId: hostConfig.id!,
+                      sessionId: sessionIdRef.current,
+                    })
+                  }
+                >
+                  {t("historyDialog.title")}
+                </Button>
+              )}
+              {onClose && (
+                <Button variant="outline" onClick={onClose}>
+                  {t("terminal.closeTab")}
+                </Button>
+              )}
+            </>
           }
           logPosition={hasConnectionError ? "top" : "bottom"}
         />
@@ -4059,6 +4183,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
         {pendingKeybindingSnippet && (
           <SnippetVariablesDialog
+            key={pendingKeybindingSnippet.id}
             snippet={
               {
                 id: 0,
@@ -4078,11 +4203,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             onConfirm={(resolvedContent) => {
               const appendEnter = pendingKeybindingSnippet.appendEnter;
               setPendingKeybindingSnippet(null);
-              const send = () =>
-                sendRawToSocket(
-                  webSocketRef,
-                  resolvedContent + (appendEnter ? "\r" : ""),
-                );
+              const sendResolved = pendingKeybindingSnippet.sendResolved;
+              const send = () => {
+                if (
+                  !sendResolved(resolvedContent + (appendEnter ? "\r" : ""))
+                ) {
+                  toast.error(t("terminal.snippetConnectionChanged"));
+                }
+              };
               const shouldConfirm =
                 localStorage.getItem("confirmSnippetExecution") === "true";
               if (shouldConfirm) {
@@ -4143,6 +4271,63 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           onSelect={handleAutocompleteSelect}
         />
 
+        {historyTarget && (
+          <CommandHistoryDialog
+            key={historyTarget.hostId}
+            hostId={historyTarget.hostId}
+            hostName={
+              (hostConfig.name || hostConfig.ip) +
+              " · " +
+              hostConfig.username +
+              "@" +
+              hostConfig.ip +
+              ":" +
+              hostConfig.port
+            }
+            canAppend={
+              isConnected &&
+              !!historyTarget.sessionId &&
+              collaborationSessionId === historyTarget.sessionId &&
+              historyTarget.hostId === hostConfig.id
+            }
+            onClose={() => setHistoryTarget(null)}
+            onDelete={(command) => {
+              if (removeAutocompleteHistory(command)) {
+                setAutocompleteSuggestions([]);
+                setShowAutocomplete(false);
+              }
+            }}
+            onClear={() => {
+              if (clearAutocompleteHistory()) {
+                setAutocompleteSuggestions([]);
+                setShowAutocomplete(false);
+              }
+            }}
+            onAppend={(command) => {
+              const ws = webSocketRef.current;
+              if (
+                !wasConnectedRef.current ||
+                ws?.readyState !== WebSocket.OPEN ||
+                !historyTarget.sessionId ||
+                sessionIdRef.current !== historyTarget.sessionId ||
+                hostConfig.id !== historyTarget.hostId ||
+                historyHasControlCharacters(command)
+              )
+                return false;
+              trackInput(command);
+              ws.send(JSON.stringify({ type: "input", data: command }));
+              setTimeout(() => terminal?.focus(), 100);
+              return true;
+            }}
+          />
+        )}
+        <TerminalPastePreview
+          text={paste.pending?.text ?? null}
+          target={paste.pending?.label ?? ""}
+          stale={paste.stale}
+          onCancel={paste.cancel}
+          onConfirm={paste.confirm}
+        />
         <TerminalSearchBar
           visible={showSearch}
           query={searchQuery}

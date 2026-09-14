@@ -76,3 +76,31 @@ it("prevents overwriting unknown permissions with zero", async () => {
   expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
   expect(save).not.toHaveBeenCalled();
 });
+it("does not apply a symlink's displayed mode to its target", async () => {
+  await i18n.changeLanguage("zh-CN");
+  const save = vi.fn();
+  render(
+    <PermissionsDialog
+      file={{
+        name: "链接",
+        path: "/srv/link",
+        type: "link",
+        permissions: "lrwxrwxrwx",
+        owner: "1000",
+        group: "1000",
+      }}
+      open
+      onOpenChange={() => {}}
+      onSave={save}
+      onSaveOwnership={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+  expect(
+    screen.getByText(i18n.t("fileManager.symlinkPermissionsReadOnly")),
+  ).toBeVisible();
+  for (const box of screen.getAllByRole("checkbox")) expect(box).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  expect(save).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "保存所有者/组" })).toBeEnabled();
+});

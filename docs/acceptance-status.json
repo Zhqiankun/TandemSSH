@@ -17,9 +17,21 @@
         "46-online-update-acceptance.md",
         "88-packaged-dependency-notices.md",
         "89-pinned-readme-notices.md",
-        "90-pinned-upstream-notices.md"
+        "90-pinned-upstream-notices.md",
+        "426-frontend-dependency-notices.md",
+        "427-frontend-notices-release-gate.md",
+        "428-codemirror-pinned-notices.md",
+        "429-pdf-worker-distribution.md",
+        "430-font-release-notices.md",
+        "431-license-source-investigation.md",
+        "476-standardwebhooks-notice.md",
+        "477-author-linked-notices.md",
+        "478-spdx-template-provenance.md",
+        "479-scrollbar-source-notice.md",
+        "480-source-license-declaration.md",
+        "482-runtime-notices-gate.md"
       ],
-      "remaining": "实际随包 npm 清单与九份固定版本补充原文已验证；341 个包仍有 5 项需核对，前端打包依赖、字体图标和原生捆绑库声明仍需完成。"
+      "remaining": "实际随包 npm 清单与九份固定版本补充原文已验证；341 个包仍有 5 项需核对，前端打包依赖、字体图标和原生捆绑库声明仍需完成。 426已生成238个前端输出JS依赖声明并核对真实ASAR，仍有4项缺原文；字体/独立资源/原生库及原随包5项待核对未关闭。 428按准确发布提交补齐三个CodeMirror包，前端缺原文项降至react-remove-scroll-bar 2.3.8一项。"
     },
     {
       "id": "R02",
@@ -83,7 +95,7 @@
       "id": "R05",
       "requirement": "执行可见",
       "acceptance": "命令、文件操作、执行者、状态、输出与失败原因可追踪",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/audit",
       "records": [
         "37-task-history-and-retention.md",
@@ -92,23 +104,40 @@
         "67-recording-write-bounds.md",
         "69-chat-stream-bounds.md",
         "142-history-unknown-policy.md",
-        "143-audit-origin-roundtrip.md"
+        "143-audit-origin-roundtrip.md",
+        "276-unknown-command-archive-review.md",
+        "277-unknown-archive-desktop.md",
+        "278-archive-review-history-summary.md",
+        "279-history-desktop-reopen.md",
+        "280-file-history-and-timeline-acceptance.md"
       ],
-      "remaining": "人工发起流程、AI和MCP的成功命令在两模式下已通过真实任务运行时→JSONL→历史读取验证，人工授权/批准来源独立；unknown策略结论已补齐。文件操作及失败/中断的记录矩阵和完整界面回放仍需归并验证。"
+      "remaining": "",
+      "verifiedAt": "2026-09-13",
+      "verification": "按原始执行记录字段逐项归并（280）：真实运行时/网关到磁盘往返、126 项联合回归与 MCP/AI/人工审批历史的 Windows 及重启读回证据。文件功能本身的传输/恢复/清理边界继续由原 F09/B 系列验收。"
     },
     {
       "id": "R06",
       "requirement": "可全部交给 AI",
       "acceptance": "授权范围内连续执行；不自动扩大服务器、权限或预算",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/ai",
       "records": [
         "14-built-in-ai.md",
         "44-ai-task-recovery.md",
         "68-provider-response-bounds.md",
-        "69-chat-stream-bounds.md"
+        "69-chat-stream-bounds.md",
+        "359-chat-concurrency-desktop.md",
+        "361-model-configuration-acceptance.md",
+        "362-ai-task-acceptance.md",
+        "110-byok-budget-review.md",
+        "111-model-budget-ui.md",
+        "247-desktop-parent-workflow-matrix.md",
+        "366-terminal-injection-desktop.md",
+        "394-autonomous-scope-acceptance.md"
       ],
-      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天完成帧早于保存的问题已修复并回归（220）；多轮工具消息已接入版本化保存与后续请求回放（221）；模型错误后的错误完成帧与半截普通历史已修复（222）；失败/中断片段已保留并显示中文状态、排除自动回放（223）；实际磁盘 SQLite 重开与写入失败验证已通过（224）；打包桌面加密保存与正常重启、工具历史读回已实测（225）；历史选择、新会话、按原模型续聊及迟到响应隔离已实现并组件验证（226）；打包桌面重启后选择完整/中断会话、中文提示、续聊及新会话已实测（227）；历史游标分页已实现并通过真实数据库、HTTP和组件验证（228）；普通聊天同会话互斥、每用户4路/进程16路上限已实现并HTTP验证（229）；分页按钮已通过54会话真实桌面验收（230）；并发反馈打包验收及其他资源上限仍待完成。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "394按原始R06：真实双模式连续流程与人工暂停恢复；当前39项覆盖原会话隔离、拒绝模型打开其他服务器/自授权/改策略/扩预算、文件范围、预算耗尽及再授权。模型质量和账单金额不作无依据保证。"
     },
     {
       "id": "R07",
@@ -163,7 +192,9 @@
         "45-parent-workflow-recovery.md",
         "113-workflow-policy-review.md",
         "114-workflow-secret-store.md",
-        "115-secret-execution-decision.md"
+        "115-secret-execution-decision.md",
+        "396-workflow-snapshot-modes.md",
+        "481-current-integration-gates.md"
       ],
       "remaining": "普通串行流程、参数、快照及人工/AI/MCP 调用已核对；系统凭据存储有实际 OS 读写与撤销测试，但未接入执行。08 文档 secret-ref 传输仍未实现，独立无 PTY 输入是否允许已提问待答，当前明确拒绝而不使用明文参数。"
     },
@@ -189,7 +220,8 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "481-current-integration-gates.md"
       ],
       "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
     },
@@ -203,27 +235,55 @@
         "10-open-source-base.md",
         "11-m0-validation.md",
         "25-github-releases.md",
-        "46-online-update-acceptance.md"
+        "46-online-update-acceptance.md",
+        "426-frontend-dependency-notices.md",
+        "427-frontend-notices-release-gate.md",
+        "428-codemirror-pinned-notices.md",
+        "429-pdf-worker-distribution.md",
+        "430-font-release-notices.md",
+        "431-license-source-investigation.md",
+        "476-standardwebhooks-notice.md",
+        "477-author-linked-notices.md",
+        "478-spdx-template-provenance.md",
+        "479-scrollbar-source-notice.md",
+        "480-source-license-declaration.md",
+        "481-current-integration-gates.md",
+        "482-runtime-notices-gate.md"
       ],
-      "remaining": "已公开 0.1.0-alpha.0 Windows 安装/免安装预览包并通过云端真实安装升级；稳定更新渠道、历史版本迁移及完整发行依赖/资源许可清单仍未完成。"
+      "remaining": "已公开 0.1.0-alpha.0 Windows 安装/免安装预览包并通过云端真实安装升级；稳定更新渠道、历史版本迁移及完整发行依赖/资源许可清单仍未完成。 426已生成238个前端输出JS依赖声明并核对真实ASAR，仍有4项缺原文；字体/独立资源/原生库及原随包5项待核对未关闭。 428按准确发布提交补齐三个CodeMirror包，前端缺原文项降至react-remove-scroll-bar 2.3.8一项。"
     },
     {
       "id": "F01",
       "requirement": "服务器管理",
       "acceptance": "新增/编辑/复制/删除、分组、收藏、搜索、最近连接、配置导入导出",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/ui/sidebar/HostEditor.tsx",
       "records": [
         "54-configuration-backup.md",
-        "58-local-remote-file-panels.md"
+        "58-local-remote-file-panels.md",
+        "284-owned-host-duplication.md",
+        "285-host-duplication-desktop.md",
+        "286-host-search-notes-folder.md",
+        "287-host-search-ancestor-rows.md",
+        "288-host-management-desktop.md",
+        "289-recent-activity-localization.md",
+        "290-host-export-cache-and-secrets.md",
+        "291-host-export-server-redaction.md",
+        "193-legacy-host-import-review.md",
+        "194-host-import-inactive.md",
+        "195-host-import-http-acceptance.md",
+        "196-host-import-desktop.md",
+        "292-host-management-acceptance.md"
       ],
-      "remaining": "主机编辑与管理已有实现；复制、分组、搜索、最近、导入导出完整 UI 矩阵尚未逐项确认。"
+      "remaining": "",
+      "verifiedAt": "2026-09-13",
+      "verification": "原始管理操作由284–288及292真实桌面/数据库/SSH证据覆盖；导出原文件重新导入与最近连接重启时间对照通过。认证矩阵与高级迁移继续归B02/A22，未扩展本项完成声明。"
     },
     {
       "id": "F02",
       "requirement": "SSH 连接",
       "acceptance": "密码、带口令私钥、SSH agent、交互认证、基础跳板连接、主机指纹核验、保活与重连",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/hosts",
       "records": [
         "53-ssh-agent-authentication.md",
@@ -231,29 +291,96 @@
         "61-file-interactive-auth.md",
         "62-jump-interactive-auth.md",
         "63-monitoring-interactive-auth.md",
-        "64-jump-combined-acceptance.md"
+        "64-jump-combined-acceptance.md",
+        "294-terminal-authentication-errors.md",
+        "295-private-key-preflight-validation.md",
+        "296-desktop-password-key-authentication.md",
+        "297-agent-signing-identity-check.md",
+        "298-ssh-keepalive-bounds.md",
+        "299-ssh-keepalive-protocol.md",
+        "300-ssh-connection-acceptance.md"
       ],
-      "remaining": "基础认证有专项证据；仍需按密码/加密私钥/agent/交互认证及单跳逐项闭环，覆盖重连与权限撤销。"
+      "remaining": "",
+      "verifiedAt": "2026-09-13",
+      "verification": "按原始认证/单跳/指纹/保活/重连标准归并53、60–64、293–300；当前65项连接回归及Windows/Alpine两模式断线重连、旧授权拒绝与独立SFTP无副作用通过（300）。"
     },
     {
       "id": "F03",
       "requirement": "终端工作区",
       "acceptance": "多标签、分屏、搜索、复制粘贴、快捷键、编码、字体主题、历史与连接状态",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/ui/features/terminal/Terminal.tsx",
       "records": [
         "57-terminal-protocol-replies.md",
         "65-terminal-pressure.md",
         "66-terminal-output-bounds.md",
-        "67-recording-write-bounds.md"
+        "67-recording-write-bounds.md",
+        "301-terminal-multiline-paste.md",
+        "302-terminal-paste-desktop.md",
+        "303-terminal-search-keyboard.md",
+        "304-terminal-search-desktop.md",
+        "305-split-drag-lifecycle.md",
+        "306-split-desktop-acceptance.md",
+        "307-split-session-ownership.md",
+        "308-persisted-split-validation.md",
+        "309-split-desktop-reload.md",
+        "310-split-cold-start.md",
+        "311-terminal-encoding-boundary.md",
+        "312-terminal-encoding-settings.md",
+        "313-terminal-encoding-preflight.md",
+        "314-terminal-encoding-desktop.md",
+        "315-terminal-encoding-settings-desktop.md",
+        "316-encoding-appearance-independence.md",
+        "317-font-size-initialization-investigation.md",
+        "318-font-metrics-desktop.md",
+        "319-terminal-appearance-desktop.md",
+        "320-shortcut-connection-binding.md",
+        "321-snippet-confirmation-binding.md",
+        "322-snippet-parameter-retention.md",
+        "323-shortcut-failure-feedback.md",
+        "324-snippet-parameters-desktop.md",
+        "325-snippet-labels-ime.md",
+        "326-shell-shortcut-focus.md",
+        "327-visible-tab-shortcuts.md",
+        "328-expanded-split-layouts.md",
+        "423-terminal-clipboard-tmux-utf8.md",
+        "424-host-encoding-backup.md",
+        "425-host-encoding-backup-desktop.md",
+        "433-clipboard-format-investigation.md",
+        "434-system-clipboard-desktop.md",
+        "435-history-host-validation.md",
+        "436-history-host-access.md",
+        "437-command-history-unicode.md",
+        "438-history-native-desktop.md",
+        "439-input-receipt-history.md",
+        "440-history-session-binding.md",
+        "441-history-reconnect-desktop.md",
+        "442-tmux-encoding-compatibility.md",
+        "443-custom-font-css.md",
+        "444-custom-font-cold-start.md",
+        "445-font-preload-consistency.md",
+        "446-autocomplete-history-races.md",
+        "447-autocomplete-desktop.md",
+        "448-completion-prefix-whitespace.md",
+        "449-completion-whitespace-desktop.md",
+        "450-history-suggestions-privacy.md",
+        "451-history-filter-desktop.md",
+        "452-terminal-ime-shortcut-guard.md",
+        "453-browser-ime-desktop.md",
+        "454-command-history-dialog.md",
+        "455-history-offline-desktop.md",
+        "456-b03-terminal-acceptance.md",
+        "457-f03-terminal-workspace-acceptance.md"
       ],
-      "remaining": "共享终端与压力/缺口有证据；分屏、搜索、多行粘贴、编码/主题和快捷键仍需完整 UI 复核。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "B03基础终端能力由456逐项验收；历史界面与连接状态经457当前包认证矩阵、历史原生/界面及94项回归核对，结合断线与新会话原始结果通过。保留456/457明确的平台与组合验证限制，不代表全项目完成。"
     },
     {
       "id": "F04",
       "requirement": "协作控制",
       "acceptance": "接管、交还、暂停任务、取消队列、发送中断分别呈现",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/sessions/control.ts",
       "records": [
         "12-implementation.md",
@@ -262,57 +389,91 @@
         "43-task-execution-recovery.md",
         "56-linux-ssh-acceptance.md",
         "64-jump-combined-acceptance.md",
-        "68-provider-response-bounds.md"
+        "68-provider-response-bounds.md",
+        "266-human-task-pause.md",
+        "267-desktop-task-pause.md",
+        "268-human-terminal-interrupt.md",
+        "242-ai-parent-workflow-takeover.md",
+        "247-desktop-parent-workflow-matrix.md",
+        "269-control-acceptance.md",
+        "432-current-core-mcp-regression.md"
       ],
-      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+      "remaining": ""
     },
     {
       "id": "F05",
       "requirement": "模型配置",
       "acceptance": "OpenAI 兼容工具调用接口、流式响应、自定义 URL/模型/Key、连接测试",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/ai",
       "records": [
         "14-built-in-ai.md",
         "44-ai-task-recovery.md",
         "68-provider-response-bounds.md",
-        "69-chat-stream-bounds.md"
+        "69-chat-stream-bounds.md",
+        "359-chat-concurrency-desktop.md",
+        "360-model-probe-generation.md",
+        "205-model-key-desktop.md",
+        "271-desktop-model-failures.md",
+        "361-model-configuration-acceptance.md"
       ],
-      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天完成帧早于保存的问题已修复并回归（220）；多轮工具消息已接入版本化保存与后续请求回放（221）；模型错误后的错误完成帧与半截普通历史已修复（222）；失败/中断片段已保留并显示中文状态、排除自动回放（223）；实际磁盘 SQLite 重开与写入失败验证已通过（224）；打包桌面加密保存与正常重启、工具历史读回已实测（225）；历史选择、新会话、按原模型续聊及迟到响应隔离已实现并组件验证（226）；打包桌面重启后选择完整/中断会话、中文提示、续聊及新会话已实测（227）；历史游标分页已实现并通过真实数据库、HTTP和组件验证（228）；普通聊天同会话互斥、每用户4路/进程16路上限已实现并HTTP验证（229）；分页按钮已通过54会话真实桌面验收（230）；并发反馈打包验收及其他资源上限仍待完成。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "361按F05原始条款审计：当前Windows实际表单配置URL/Key/自定义模型、实时列表探测、迟到响应隔离、保存后真实OpenAI兼容SSE工具调用与工具历史持久化通过；205原始结果支持Key保存/轮换/重启。"
     },
     {
       "id": "F06",
       "requirement": "AI 任务",
       "acceptance": "目标、步骤、操作建议、执行结果、有限轮次工具循环",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/ai",
       "records": [
         "14-built-in-ai.md",
         "44-ai-task-recovery.md",
         "68-provider-response-bounds.md",
-        "69-chat-stream-bounds.md"
+        "69-chat-stream-bounds.md",
+        "359-chat-concurrency-desktop.md",
+        "361-model-configuration-acceptance.md",
+        "110-byok-budget-review.md",
+        "111-model-budget-ui.md",
+        "247-desktop-parent-workflow-matrix.md",
+        "267-desktop-task-pause.md",
+        "271-desktop-model-failures.md",
+        "362-ai-task-acceptance.md"
       ],
-      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天完成帧早于保存的问题已修复并回归（220）；多轮工具消息已接入版本化保存与后续请求回放（221）；模型错误后的错误完成帧与半截普通历史已修复（222）；失败/中断片段已保留并显示中文状态、排除自动回放（223）；实际磁盘 SQLite 重开与写入失败验证已通过（224）；打包桌面加密保存与正常重启、工具历史读回已实测（225）；历史选择、新会话、按原模型续聊及迟到响应隔离已实现并组件验证（226）；打包桌面重启后选择完整/中断会话、中文提示、续聊及新会话已实测（227）；历史游标分页已实现并通过真实数据库、HTTP和组件验证（228）；普通聊天同会话互斥、每用户4路/进程16路上限已实现并HTTP验证（229）；分页按钮已通过54会话真实桌面验收（230）；并发反馈打包验收及其他资源上限仍待完成。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "按362原始范围审计目标/会话绑定、规划与步骤建议、真实结果、有限轮次工具循环；当前5文件36项通过，247/267真实Windows/Linux双模式4组合原始报告复核，预算耗尽与重新授权由110/111及当前回归覆盖。"
     },
     {
       "id": "F07",
       "requirement": "规则管理",
       "acceptance": "命令允许/拒绝/确认、服务器范围、文件路径范围、规则试算",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration",
       "records": [
         "18-file-operation-gateway.md",
         "20-legacy-command-migration.md",
         "23-host-trust.md",
-        "29-local-file-grants.md"
+        "29-local-file-grants.md",
+        "281-policy-trial-takeover.md",
+        "282-policy-scope-composition.md",
+        "137-command-policy-scope-review.md",
+        "138-policy-grants-and-conflicts.md",
+        "139-policy-persistence-review.md",
+        "140-policy-encrypted-restart.md",
+        "141-desktop-policy-management.md",
+        "283-policy-current-desktop.md"
       ],
-      "remaining": "策略、路径授权与主机信任有专项；仍需完整规则组合、撤销与 UI 来源解释逐项核对。"
+      "remaining": "",
+      "verifiedAt": "2026-09-13",
+      "verification": "当前 Windows/Alpine 实测四范围编辑、文件路径规则保存重开、只试算无执行及旧批准撤销，结合 137–141/281–282 的策略组合、故障和加密持久化证据（283）。"
     },
     {
       "id": "F08",
       "requirement": "执行时间线",
       "acceptance": "人/AI/MCP 来源、目标、操作、状态、输出片段、审批及策略版本",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/audit",
       "records": [
         "37-task-history-and-retention.md",
@@ -323,15 +484,22 @@
         "77-history-export.md",
         "79-history-provenance.md",
         "142-history-unknown-policy.md",
-        "143-audit-origin-roundtrip.md"
+        "143-audit-origin-roundtrip.md",
+        "276-unknown-command-archive-review.md",
+        "277-unknown-archive-desktop.md",
+        "278-archive-review-history-summary.md",
+        "279-history-desktop-reopen.md",
+        "280-file-history-and-timeline-acceptance.md"
       ],
-      "remaining": "人工发起流程、AI和MCP的成功命令在两模式下已通过真实任务运行时→JSONL→历史读取验证，人工授权/批准来源独立；unknown策略结论已补齐。文件操作及失败/中断的记录矩阵和完整界面回放仍需归并验证。"
+      "remaining": "",
+      "verifiedAt": "2026-09-13",
+      "verification": "按原始执行记录字段逐项归并（280）：真实运行时/网关到磁盘往返、126 项联合回归与 MCP/AI/人工审批历史的 Windows 及重启读回证据。文件功能本身的传输/恢复/清理边界继续由原 F09/B 系列验收。"
     },
     {
       "id": "F09",
       "requirement": "完整文件工作台",
       "acceptance": "文件/目录上传下载、拖拽、队列、暂停/恢复、在线编辑、目录操作、权限和冲突处理，见 B04—B11",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -349,9 +517,44 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "329-upload-live-concurrency.md",
+        "330-download-live-concurrency.md",
+        "251-editor-external-conflict.md",
+        "261-desktop-encoding-acceptance.md",
+        "331-editor-search-desktop.md",
+        "332-multi-file-editor-tabs.md",
+        "333-online-editor-acceptance.md",
+        "334-local-browser-desktop-matrix.md",
+        "335-remote-filter-selection.md",
+        "336-remote-hidden-files.md",
+        "265-link-permission-acceptance.md",
+        "337-file-browser-acceptance.md",
+        "338-file-drag-selection.md",
+        "339-file-drag-scope.md",
+        "340-drag-move-batch-boundary.md",
+        "341-drag-move-partial-desktop.md",
+        "342-move-disconnect-unknown.md",
+        "343-file-operations-acceptance.md",
+        "344-tree-conflict-policy-boundaries.md",
+        "345-download-preview-recheck.md",
+        "346-parent-directory-rename.md",
+        "347-tree-conflicts-desktop.md",
+        "348-linux-upload-conflicts.md",
+        "349-upload-concurrency-desktop.md",
+        "350-download-concurrency-desktop.md",
+        "351-download-cancel-cleanup.md",
+        "352-transfer-management-acceptance.md",
+        "353-native-file-directory-drop.md",
+        "354-transfer-roundtrip-acceptance.md",
+        "355-paused-source-integrity.md",
+        "356-paused-transfer-targets.md",
+        "358-file-workbench-acceptance.md",
+        "357-file-path-link-boundaries.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "按358逐条核对B04—B11及其直接Windows/SSH/SFTP/Linux证据，浏览、完整传输、冲突、编辑、操作、权限和终端联动均完成；关联完整性、变化、部分失败与保留记录分别归档。"
     },
     {
       "id": "F10",
@@ -377,7 +580,8 @@
         "216-mcp-recovery-permissions.md",
         "217-mcp-session-access.md",
         "218-mcp-tool-evidence-map.md",
-        "219-mcp-policy-result.md"
+        "219-mcp-policy-result.md",
+        "432-current-core-mcp-regression.md"
       ],
       "remaining": "",
       "verifiedAt": "2026-09-12",
@@ -396,7 +600,9 @@
         "31-workflow-files.md",
         "36-workflow-directory-steps.md",
         "43-task-execution-recovery.md",
-        "45-parent-workflow-recovery.md"
+        "45-parent-workflow-recovery.md",
+        "396-workflow-snapshot-modes.md",
+        "481-current-integration-gates.md"
       ],
       "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
     },
@@ -404,44 +610,95 @@
       "id": "F12",
       "requirement": "SSH 隧道",
       "acceptance": "本地、远程和动态转发，启停、状态、端口冲突和作用范围",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/hosts/tunnel",
       "records": [
         "49-tunnel-trust-and-lifecycle.md",
         "50-tunnel-cancellation.md",
         "73-tunnel-mode-matrix.md",
         "74-standalone-c2s.md",
-        "76-c2s-pending-cancellation.md"
+        "76-c2s-pending-cancellation.md",
+        "397-c2s-source-lookup-cancel.md",
+        "398-tunnel-port-preflight.md",
+        "399-tunnel-access-recheck.md",
+        "400-tunnel-revocation-modes.md",
+        "401-tunnel-forward-refusal.md",
+        "402-c2s-current-desktop.md",
+        "404-c2s-reconnect-description.md",
+        "405-c2s-description-desktop.md",
+        "406-s2s-retry-data.md",
+        "407-c2s-upload-flow-control.md",
+        "408-c2s-upload-network.md",
+        "409-c2s-download-flow-control.md",
+        "410-c2s-download-network.md",
+        "411-c2s-message-limit.md",
+        "412-c2s-oversize-close.md",
+        "413-c2s-duplex-desktop.md",
+        "414-c2s-backend-flow-control.md",
+        "415-c2s-connection-admission.md",
+        "416-c2s-remote-stream-limit.md",
+        "417-desktop-c2s-capacity.md",
+        "418-c2s-capacity-desktop.md",
+        "419-s2s-stream-capacity.md",
+        "420-s2s-start-admission.md",
+        "421-s2s-preparation-failure-cleanup.md",
+        "422-tunnel-feature-acceptance.md"
       ],
-      "remaining": "独立 C2S 三模式 Linux 数据、中文启停、认证等待取消/注销、参数锁定和重试已实测；端口监听前极早取消、全套认证与权限撤销、地址范围、S2S/Linux 组合及完整重连仍需闭环。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "422按01/09原始范围：三模式S2S/C2S真实数据、正确监听/授权范围、启停/状态/冲突/明确重连与资源上限；当前整包S2S与C2S32并发取消/8MiB回显通过。限制明确保留，不推广为全部认证或即时撤权保证。"
     },
     {
       "id": "F13",
       "requirement": "服务器状态",
       "acceptance": "CPU、内存、磁盘、网络、系统和进程查看；采样状态可见",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/hosts/metrics",
       "records": [
         "51-monitoring-collection.md",
         "52-monitoring-viewer-lifecycle.md",
         "63-monitoring-interactive-auth.md",
-        "64-jump-combined-acceptance.md"
+        "64-jump-combined-acceptance.md",
+        "241-linux-monitoring-busybox.md",
+        "272-memory-metric-validation.md",
+        "273-system-uptime-metrics.md",
+        "274-full-monitoring-desktop.md"
       ],
-      "remaining": "采样生命周期、交互登录、真实内存/运行时间有证据；CPU/磁盘/网络/系统/进程全集及历史聚合仍需闭环。"
+      "remaining": "原始指标查看与采样状态验收通过（274）；跨发行版、真实 OOM 和长期历史聚合不属于本轮证明范围。"
     },
     {
       "id": "F14",
       "requirement": "设置与数据",
       "acceptance": "本地配置备份/恢复、日志位置与清理、界面偏好、导入预览",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/database/repositories/configuration-backup-repository.ts",
       "records": [
         "54-configuration-backup.md",
         "55-application-settings-backup.md",
         "71-network-configuration-backup.md",
-        "72-terminal-preferences-backup.md"
+        "72-terminal-preferences-backup.md",
+        "424-host-encoding-backup.md",
+        "425-host-encoding-backup-desktop.md",
+        "458-navigation-visibility-backup.md",
+        "459-navigation-backup-desktop.md",
+        "461-host-defaults-backup.md",
+        "462-host-defaults-backup-desktop.md",
+        "463-c2s-backup-source-identity.md",
+        "464-c2s-config-atomic-store.md",
+        "465-local-c2s-backup-integration.md",
+        "466-local-restore-recovery.md",
+        "467-local-recovery-desktop.md",
+        "468-local-c2s-normal-desktop.md",
+        "469-a37-identity-boundaries.md",
+        "470-audit-storage-maintenance.md",
+        "471-audit-maintenance-desktop.md",
+        "472-dashboard-layout-backup.md",
+        "473-dashboard-layout-desktop.md",
+        "474-settings-data-acceptance.md"
       ],
-      "remaining": "网络配置、用户终端默认显示值、配色库和主机终端外观已补齐并有迁移专项；实例级连接默认值、本机活动 C2S 配置及其余设置仍需闭环。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "474按01/09原始条款逐项审计：配置预览/事务恢复、实际布局/快捷键/主题/编码、日志位置/脱敏导出/留存清理均有实现和直接桌面证据；当前18文件251项联合回归通过。保留无凭据迁移、外部资源及指定场景验证边界，不代表完整产品或发布验收完成。"
     },
     {
       "id": "F15",
@@ -464,19 +721,34 @@
       "id": "B01",
       "requirement": "连接管理",
       "acceptance": "新建/编辑/复制/删除、分组、收藏、搜索、最近连接、备注、导入导出",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/ui/sidebar/HostEditor.tsx",
       "records": [
         "54-configuration-backup.md",
-        "58-local-remote-file-panels.md"
+        "58-local-remote-file-panels.md",
+        "284-owned-host-duplication.md",
+        "285-host-duplication-desktop.md",
+        "286-host-search-notes-folder.md",
+        "287-host-search-ancestor-rows.md",
+        "288-host-management-desktop.md",
+        "289-recent-activity-localization.md",
+        "290-host-export-cache-and-secrets.md",
+        "291-host-export-server-redaction.md",
+        "193-legacy-host-import-review.md",
+        "194-host-import-inactive.md",
+        "195-host-import-http-acceptance.md",
+        "196-host-import-desktop.md",
+        "292-host-management-acceptance.md"
       ],
-      "remaining": "主机编辑与管理已有实现；复制、分组、搜索、最近、导入导出完整 UI 矩阵尚未逐项确认。"
+      "remaining": "",
+      "verifiedAt": "2026-09-13",
+      "verification": "原始管理操作由284–288及292真实桌面/数据库/SSH证据覆盖；导出原文件重新导入与最近连接重启时间对照通过。认证矩阵与高级迁移继续归B02/A22，未扩展本项完成声明。"
     },
     {
       "id": "B02",
       "requirement": "认证与连接",
       "acceptance": "密码、带口令私钥、SSH agent、keyboard-interactive、单跳代理、指纹信任、超时/保活/重连",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/hosts",
       "records": [
         "53-ssh-agent-authentication.md",
@@ -484,29 +756,83 @@
         "61-file-interactive-auth.md",
         "62-jump-interactive-auth.md",
         "63-monitoring-interactive-auth.md",
-        "64-jump-combined-acceptance.md"
+        "64-jump-combined-acceptance.md",
+        "294-terminal-authentication-errors.md",
+        "295-private-key-preflight-validation.md",
+        "296-desktop-password-key-authentication.md",
+        "297-agent-signing-identity-check.md",
+        "298-ssh-keepalive-bounds.md",
+        "299-ssh-keepalive-protocol.md",
+        "300-ssh-connection-acceptance.md"
       ],
-      "remaining": "基础认证有专项证据；仍需按密码/加密私钥/agent/交互认证及单跳逐项闭环，覆盖重连与权限撤销。"
+      "remaining": "",
+      "verifiedAt": "2026-09-13",
+      "verification": "按原始认证/单跳/指纹/保活/重连标准归并53、60–64、293–300；当前65项连接回归及Windows/Alpine两模式断线重连、旧授权拒绝与独立SFTP无副作用通过（300）。"
     },
     {
       "id": "B03",
       "requirement": "终端",
       "acceptance": "多标签/分屏、输出搜索、复制粘贴、多行粘贴预览、快捷键、编码和字体主题",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/ui/features/terminal/Terminal.tsx",
       "records": [
         "57-terminal-protocol-replies.md",
         "65-terminal-pressure.md",
         "66-terminal-output-bounds.md",
-        "67-recording-write-bounds.md"
+        "67-recording-write-bounds.md",
+        "301-terminal-multiline-paste.md",
+        "302-terminal-paste-desktop.md",
+        "303-terminal-search-keyboard.md",
+        "304-terminal-search-desktop.md",
+        "305-split-drag-lifecycle.md",
+        "306-split-desktop-acceptance.md",
+        "307-split-session-ownership.md",
+        "308-persisted-split-validation.md",
+        "309-split-desktop-reload.md",
+        "310-split-cold-start.md",
+        "311-terminal-encoding-boundary.md",
+        "312-terminal-encoding-settings.md",
+        "313-terminal-encoding-preflight.md",
+        "314-terminal-encoding-desktop.md",
+        "315-terminal-encoding-settings-desktop.md",
+        "316-encoding-appearance-independence.md",
+        "317-font-size-initialization-investigation.md",
+        "318-font-metrics-desktop.md",
+        "319-terminal-appearance-desktop.md",
+        "320-shortcut-connection-binding.md",
+        "321-snippet-confirmation-binding.md",
+        "322-snippet-parameter-retention.md",
+        "323-shortcut-failure-feedback.md",
+        "324-snippet-parameters-desktop.md",
+        "325-snippet-labels-ime.md",
+        "326-shell-shortcut-focus.md",
+        "327-visible-tab-shortcuts.md",
+        "328-expanded-split-layouts.md",
+        "423-terminal-clipboard-tmux-utf8.md",
+        "424-host-encoding-backup.md",
+        "425-host-encoding-backup-desktop.md",
+        "433-clipboard-format-investigation.md",
+        "434-system-clipboard-desktop.md",
+        "442-tmux-encoding-compatibility.md",
+        "443-custom-font-css.md",
+        "444-custom-font-cold-start.md",
+        "445-font-preload-consistency.md",
+        "447-autocomplete-desktop.md",
+        "448-completion-prefix-whitespace.md",
+        "449-completion-whitespace-desktop.md",
+        "452-terminal-ime-shortcut-guard.md",
+        "453-browser-ime-desktop.md",
+        "456-b03-terminal-acceptance.md"
       ],
-      "remaining": "共享终端与压力/缺口有证据；分屏、搜索、多行粘贴、编码/主题和快捷键仍需完整 UI 复核。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "按09原始B03逐项核对，多标签/分屏、搜索、真实系统复制粘贴、多行预览、快捷键、四编码及字体主题均有实现与匹配的当前/既有实机证据；本轮当前包搜索/标签矩阵和123项回归通过。未穷举的系统IME和组合限制保留在456。"
     },
     {
       "id": "B04",
       "requirement": "文件浏览",
       "acceptance": "本地/远端双面板、路径栏、返回/上级/刷新、隐藏文件、排序、多选、名称筛选和属性",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -526,15 +852,22 @@
         "58-local-remote-file-panels.md",
         "59-windows-file-attributes.md",
         "87-file-time-localization.md",
-        "117-local-file-time.md"
+        "117-local-file-time.md",
+        "334-local-browser-desktop-matrix.md",
+        "335-remote-filter-selection.md",
+        "336-remote-hidden-files.md",
+        "265-link-permission-acceptance.md",
+        "337-file-browser-acceptance.md"
       ],
-      "remaining": "本地/远端双面板已有实机记录；本地日期现跟随应用语言，导航、搜索并发、属性和版本化选择有专项。排序、多选与完整路径操作的桌面验收仍需逐项归并。"
+      "remaining": "",
+      "verifiedAt": "2026-09-13",
+      "verification": "本地/远端双面板、路径栏、返回/上级/刷新、隐藏文件、排序、多选、名称筛选及属性均有逐项真实Windows、SSH/SFTP和Linux属性证据；本轮修复双击目录遗漏导航历史，完整矩阵通过，汇总337。"
     },
     {
       "id": "B05",
       "requirement": "上传下载",
       "acceptance": "单文件、多文件、文件夹递归、拖拽、目标选择、传输前预览和逐项结果",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -552,15 +885,26 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "334-local-browser-desktop-matrix.md",
+        "347-tree-conflicts-desktop.md",
+        "348-linux-upload-conflicts.md",
+        "353-native-file-directory-drop.md",
+        "354-transfer-roundtrip-acceptance.md",
+        "349-upload-concurrency-desktop.md",
+        "350-download-concurrency-desktop.md",
+        "351-download-cancel-cleanup.md",
+        "352-transfer-management-acceptance.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "354按原始范围审计：当前Windows双向单/多文件、深层目录与空目录往返、真实File路径拖拽、目标选择及预览授权、逐项结果与实际内容有直接证据。拖拽大小/类型错误已汉化，回归13项、类型和翻译键检查通过。"
     },
     {
       "id": "B06",
       "requirement": "传输管理",
       "acceptance": "队列、可配置并发、速度/字节数/预计剩余时间、暂停、恢复、取消和失败重试",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -579,15 +923,25 @@
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
         "59-windows-file-attributes.md",
-        "118-transfer-queue-review.md"
+        "118-transfer-queue-review.md",
+        "329-upload-live-concurrency.md",
+        "330-download-live-concurrency.md",
+        "349-upload-concurrency-desktop.md",
+        "350-download-concurrency-desktop.md",
+        "351-download-cancel-cleanup.md",
+        "352-transfer-management-acceptance.md",
+        "257-desktop-download-faults.md",
+        "258-desktop-batch-failure.md"
       ],
-      "remaining": "上传并发上限和单项预检失败后继续队列已直接验证，双向暂停/取消/未知提交/释放记录有回归；速度与预计剩余时间已有实际面板组件和数值边界测试，动态并发及完整桌面多文件流程仍需实机验收。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "按352原始条款审计：双向当前Windows桌面动态并发1→3→1、实际字节/速度/ETA、暂停恢复、取消清理有直接结果；上传WRITE故障及下载落盘故障后恢复文件内容正确，已完成项不被改写。当前联合回归4文件27项通过。"
     },
     {
       "id": "B07",
       "requirement": "冲突处理",
       "acceptance": "同名跳过、改名、明确覆盖、逐项/本批策略；不能默认合并覆盖全部目录",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -606,15 +960,22 @@
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
         "59-windows-file-attributes.md",
-        "160-copy-no-overwrite.md"
+        "160-copy-no-overwrite.md",
+        "344-tree-conflict-policy-boundaries.md",
+        "345-download-preview-recheck.md",
+        "346-parent-directory-rename.md",
+        "347-tree-conflicts-desktop.md",
+        "348-linux-upload-conflicts.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "当前Windows桌面双向默认冲突拒绝、父目录改名与真实落盘、父级跳过、逐项及批量策略已直接验证；真实Linux OpenSSH上传明确覆盖成功且批量策略后的单项跳过仍保留原文件。下载逐项明确覆盖实际内容更新。对应344—348，覆盖B07原始条款。"
     },
     {
       "id": "B08",
       "requirement": "在线文本编辑",
       "acceptance": "远程打开、多文件标签、行号、高亮、搜索替换、撤销重做、编码/换行提示、保存和另存",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -635,15 +996,22 @@
         "59-windows-file-attributes.md",
         "85-editor-window-bounds.md",
         "87-file-time-localization.md",
-        "116-editor-search-localization.md"
+        "116-editor-search-localization.md",
+        "251-editor-external-conflict.md",
+        "261-desktop-encoding-acceptance.md",
+        "331-editor-search-desktop.md",
+        "332-multi-file-editor-tabs.md",
+        "333-online-editor-acceptance.md"
       ],
-      "remaining": "搜索替换面板已汉化，真实 CodeMirror 替换/撤销/重做及保存草稿回归通过；多文件标签、行号/高亮、编码换行和保存/另存的完整桌面链仍需逐项归并。"
+      "remaining": "",
+      "verifiedAt": "2026-09-13",
+      "verification": "远程打开、多文件标签和草稿隔离、实际行号/JSON高亮、中文搜索替换/撤销重做、编码换行与保存/另存均有逐项组件和Windows+SSH/SFTP证据，原地保存补充真实Alpine记录251；汇总见333。"
     },
     {
       "id": "B09",
       "requirement": "文件与目录操作",
       "acceptance": "新建文件/目录、重命名、移动、复制、删除；批量操作与部分失败说明",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -691,9 +1059,17 @@
         "176-sudo-http-cancel.md",
         "177-trash-http-cancel.md",
         "178-trash-recovery-intent.md",
-        "179-linux-trash-disconnect.md"
+        "179-linux-trash-disconnect.md",
+        "338-file-drag-selection.md",
+        "339-file-drag-scope.md",
+        "340-drag-move-batch-boundary.md",
+        "341-drag-move-partial-desktop.md",
+        "342-move-disconnect-unknown.md",
+        "343-file-operations-acceptance.md"
       ],
-      "remaining": "文件新建/冲突、复制/移动/异地撤销、单文件删除/恢复、sudo 取消及错误密码恢复、三项批次部分失败后仅继续剩余项目均有专项实测。执行中断线/切换、重连后的完整文件操作交互仍需验收。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "新建文件/目录、中文重命名、复制、移动、删除及批量部分失败有逐项Windows+真实SSH/SFTP/Linux证据；补足提交后响应丢失、重连不重放、手动处理剩余与仅撤销新操作，归并见343。"
     },
     {
       "id": "B10",
@@ -764,30 +1140,62 @@
       "id": "B12",
       "requirement": "服务器监控",
       "acceptance": "CPU/内存/磁盘/网络/运行时间/系统信息/进程查看、采样间隔和停用入口",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/hosts/metrics",
       "records": [
         "51-monitoring-collection.md",
         "52-monitoring-viewer-lifecycle.md",
         "63-monitoring-interactive-auth.md",
-        "64-jump-combined-acceptance.md"
+        "64-jump-combined-acceptance.md",
+        "241-linux-monitoring-busybox.md",
+        "272-memory-metric-validation.md",
+        "273-system-uptime-metrics.md",
+        "274-full-monitoring-desktop.md",
+        "275-monitoring-settings-desktop.md"
       ],
-      "remaining": "采样生命周期、交互登录、真实内存/运行时间有证据；CPU/磁盘/网络/系统/进程全集及历史聚合仍需闭环。"
+      "remaining": "原始七组查看、采样周期及停用入口验收通过（274/275）。真实 Alpine 指标与固定响应 SSH 的配置派发验证分别记录，不混同证据范围。"
     },
     {
       "id": "B13",
       "requirement": "隧道管理",
       "acceptance": "本地/远程/动态转发、范围限制、启停、连接状态、端口占用和重连说明",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/hosts/tunnel",
       "records": [
         "49-tunnel-trust-and-lifecycle.md",
         "50-tunnel-cancellation.md",
         "73-tunnel-mode-matrix.md",
         "74-standalone-c2s.md",
-        "76-c2s-pending-cancellation.md"
+        "76-c2s-pending-cancellation.md",
+        "397-c2s-source-lookup-cancel.md",
+        "398-tunnel-port-preflight.md",
+        "399-tunnel-access-recheck.md",
+        "400-tunnel-revocation-modes.md",
+        "401-tunnel-forward-refusal.md",
+        "402-c2s-current-desktop.md",
+        "404-c2s-reconnect-description.md",
+        "405-c2s-description-desktop.md",
+        "406-s2s-retry-data.md",
+        "407-c2s-upload-flow-control.md",
+        "408-c2s-upload-network.md",
+        "409-c2s-download-flow-control.md",
+        "410-c2s-download-network.md",
+        "411-c2s-message-limit.md",
+        "412-c2s-oversize-close.md",
+        "413-c2s-duplex-desktop.md",
+        "414-c2s-backend-flow-control.md",
+        "415-c2s-connection-admission.md",
+        "416-c2s-remote-stream-limit.md",
+        "417-desktop-c2s-capacity.md",
+        "418-c2s-capacity-desktop.md",
+        "419-s2s-stream-capacity.md",
+        "420-s2s-start-admission.md",
+        "421-s2s-preparation-failure-cleanup.md",
+        "422-tunnel-feature-acceptance.md"
       ],
-      "remaining": "独立 C2S 三模式 Linux 数据、中文启停、认证等待取消/注销、参数锁定和重试已实测；端口监听前极早取消、全套认证与权限撤销、地址范围、S2S/Linux 组合及完整重连仍需闭环。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "422按01/09原始范围：三模式S2S/C2S真实数据、正确监听/授权范围、启停/状态/冲突/明确重连与资源上限；当前整包S2S与C2S32并发取消/8MiB回显通过。限制明确保留，不推广为全部认证或即时撤权保证。"
     },
     {
       "id": "B14",
@@ -802,7 +1210,9 @@
         "31-workflow-files.md",
         "36-workflow-directory-steps.md",
         "43-task-execution-recovery.md",
-        "45-parent-workflow-recovery.md"
+        "45-parent-workflow-recovery.md",
+        "396-workflow-snapshot-modes.md",
+        "481-current-integration-gates.md"
       ],
       "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
     },
@@ -810,16 +1220,36 @@
       "id": "B15",
       "requirement": "设置与数据",
       "acceptance": "布局/快捷键/主题/编码设置、配置备份恢复、脱敏日志导出、留存与清理",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/database/repositories/configuration-backup-repository.ts",
       "records": [
         "54-configuration-backup.md",
         "55-application-settings-backup.md",
         "71-network-configuration-backup.md",
         "72-terminal-preferences-backup.md",
-        "95-windows-image-storage-path.md"
+        "95-windows-image-storage-path.md",
+        "424-host-encoding-backup.md",
+        "425-host-encoding-backup-desktop.md",
+        "458-navigation-visibility-backup.md",
+        "459-navigation-backup-desktop.md",
+        "461-host-defaults-backup.md",
+        "462-host-defaults-backup-desktop.md",
+        "463-c2s-backup-source-identity.md",
+        "464-c2s-config-atomic-store.md",
+        "465-local-c2s-backup-integration.md",
+        "466-local-restore-recovery.md",
+        "467-local-recovery-desktop.md",
+        "468-local-c2s-normal-desktop.md",
+        "469-a37-identity-boundaries.md",
+        "470-audit-storage-maintenance.md",
+        "471-audit-maintenance-desktop.md",
+        "472-dashboard-layout-backup.md",
+        "473-dashboard-layout-desktop.md",
+        "474-settings-data-acceptance.md"
       ],
-      "remaining": "网络配置、用户终端默认显示值、配色库和主机终端外观已补齐并有迁移专项；实例级连接默认值、本机活动 C2S 配置及其余设置仍需闭环。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "474按01/09原始条款逐项审计：配置预览/事务恢复、实际布局/快捷键/主题/编码、日志位置/脱敏导出/留存清理均有实现和直接桌面证据；当前18文件251项联合回归通过。保留无凭据迁移、外部资源及指定场景验证边界，不代表完整产品或发布验收完成。"
     },
     {
       "id": "B16",
@@ -839,7 +1269,7 @@
       "id": "A01",
       "requirement": "密码和私钥连接",
       "acceptance": "正确认证能连接，失败不泄露秘密、不循环尝试",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/hosts",
       "records": [
         "53-ssh-agent-authentication.md",
@@ -847,23 +1277,31 @@
         "61-file-interactive-auth.md",
         "62-jump-interactive-auth.md",
         "63-monitoring-interactive-auth.md",
-        "64-jump-combined-acceptance.md"
+        "64-jump-combined-acceptance.md",
+        "294-terminal-authentication-errors.md",
+        "295-private-key-preflight-validation.md",
+        "296-desktop-password-key-authentication.md"
       ],
-      "remaining": "基础认证有专项证据；仍需按密码/加密私钥/agent/交互认证及单跳逐项闭环，覆盖重连与权限撤销。"
+      "remaining": "",
+      "verifiedAt": "2026-09-13",
+      "verification": "当前Windows目录包实际验证正确/错误密码与加密私钥口令，成功SSH认证、失败后25秒无新增连接/认证、错误提示及日志秘密检查通过；修复关闭事件覆盖具体错误（296）。"
     },
     {
       "id": "A02",
       "requirement": "主机指纹变化",
       "acceptance": "阻断连接；不会自动改写信任记录",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration",
       "records": [
         "18-file-operation-gateway.md",
         "20-legacy-command-migration.md",
         "23-host-trust.md",
-        "29-local-file-grants.md"
+        "29-local-file-grants.md",
+        "293-host-key-change-acceptance.md"
       ],
-      "remaining": "策略、路径授权与主机信任有专项；仍需完整规则组合、撤销与 UI 来源解释逐项核对。"
+      "remaining": "",
+      "verifiedAt": "2026-09-13",
+      "verification": "同地址换密钥的当前真实 SSH 握手在认证前拒绝；新增旧信任快照/写入次数不变断言，SQLite/HTTP/中文确认回归通过，并核对23的Windows原始认证计数记录（293）。"
     },
     {
       "id": "A03",
@@ -911,7 +1349,7 @@
       "id": "A05",
       "requirement": "派发瞬间接管",
       "acceptance": "已发送动作可见；未发送动作取消；状态与事实一致",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/sessions/control.ts",
       "records": [
         "12-implementation.md",
@@ -921,9 +1359,13 @@
         "56-linux-ssh-acceptance.md",
         "64-jump-combined-acceptance.md",
         "68-provider-response-bounds.md",
-        "106-dispatched-takeover-ui.md"
+        "106-dispatched-takeover-ui.md",
+        "373-takeover-dispatch-boundaries.md",
+        "374-dispatched-takeover-desktop.md"
       ],
-      "remaining": "已派发 pwd 在自动/协作中文面板接管后显示结果未知、保留命令且不派发后续步骤，服务端未发送竞态已有专项；仍需完整真实远端派发时点与界面联动观察。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "106/373/374组合：双模式派发前六种竞态取消未发送及排队操作、零写入、去重和审计一致；真实Windows/Linux在独立SFTP确认已运行后中文接管，已发送命令同ID保留未知、后续不发、远端晚完成不伪造结果、人工输入独立读回。"
     },
     {
       "id": "A06",
@@ -959,7 +1401,8 @@
         "48-task-download-directory-recovery.md",
         "64-jump-combined-acceptance.md",
         "97-mcp-control-errors.md",
-        "208-native-mcp-control.md"
+        "208-native-mcp-control.md",
+        "432-current-core-mcp-regression.md"
       ],
       "remaining": "自动/协作的真实 stdio、签名管道与系统配对链路已验证接管后并发拒写、错误契约、状态读取及 MCP 断开后人工继续输入，详见 208；F10 全工具权限矩阵仍单独验收。"
     },
@@ -1049,9 +1492,13 @@
         "23-host-trust.md",
         "29-local-file-grants.md",
         "201-opaque-command-matrix.md",
-        "207-versioned-opaque-commands.md"
+        "207-versioned-opaque-commands.md",
+        "375-additional-opaque-runtimes.md",
+        "376-opaque-runtimes-desktop.md",
+        "475-additional-shell-classification.md",
+        "481-current-integration-gates.md"
       ],
-      "remaining": "30 个已识别程序在自动/协作及名称/路径两种形式的未知/严格拒绝网关矩阵，以及 Shell/解释器/TUI 中文试算已验证（201）；版本后缀、Windows 名称、直接脚本及常见容器工具已补齐并回归（207）；真实程序身份和未覆盖解释器边界仍需核对。"
+      "remaining": "30 个已识别程序在自动/协作及名称/路径两种形式的未知/严格拒绝网关矩阵，以及 Shell/解释器/TUI 中文试算已验证（201）；版本后缀、Windows 名称、直接脚本及常见容器工具已补齐并回归（207）；真实程序身份和未覆盖解释器边界仍需核对。 375修复AWK家族、BusyBox/ash、Deno名称误放行，新增双模式18项修复前失败、修复后通过；376已补齐新目录包九个程序的中文未知/严格拒绝试算，规则和任务不变；真实程序身份边界仍待核对。 475补齐ksh/csh/Tcl与source/command/exec等间接入口，34项修复前失败，266项联合回归通过；实际可执行文件身份边界仍未解决。"
     },
     {
       "id": "A13",
@@ -1079,7 +1526,7 @@
       "id": "A14",
       "requirement": "命令执行后断线",
       "acceptance": "标为 unknown，检查后才允许重试",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/sessions/control.ts",
       "records": [
         "12-implementation.md",
@@ -1088,30 +1535,43 @@
         "43-task-execution-recovery.md",
         "56-linux-ssh-acceptance.md",
         "64-jump-combined-acceptance.md",
-        "68-provider-response-bounds.md"
+        "68-provider-response-bounds.md",
+        "247-desktop-parent-workflow-matrix.md",
+        "277-unknown-archive-desktop.md",
+        "300-ssh-connection-acceptance.md",
+        "395-sideeffect-disconnect-acceptance.md"
       ],
-      "remaining": "自动/协同和接管有专项及真实副作用证据；需把各入口及剩余竞态逐条对应本项，不以通用测试数量代替。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "395真实Windows/Linux双模式独立SFTP确认副作用后TCP断线，unknown/无退出码、不重放、旧授权拒绝、人工重连可用；当前193项含恢复无核实拒绝及零写入，247真实人工skip/retry保留原未知事实。"
     },
     {
       "id": "A15",
       "requirement": "审计不可写/输出有缺口",
       "acceptance": "暂停自动副作用；人工可接管，记录缺口可见",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/audit",
       "records": [
         "37-task-history-and-retention.md",
         "65-terminal-pressure.md",
         "66-terminal-output-bounds.md",
         "67-recording-write-bounds.md",
-        "69-chat-stream-bounds.md"
+        "69-chat-stream-bounds.md",
+        "367-ai-creation-audit-cleanup.md",
+        "368-completion-audit-gap.md",
+        "369-incomplete-command-output.md",
+        "370-output-gap-desktop.md",
+        "371-audit-storage-desktop.md"
       ],
-      "remaining": "脱敏记录与局部缺口处理已实现；所有记录入口、导出和资源生命周期仍需覆盖证明。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "367—371按A15原始范围：创建/执行审计失败停止后续且保留真实结果，输出捕获缺口暂停并要求人工核实；真实Windows/Linux双模式审计目录写入失败、中文缺口、人工独立SSH读回及存储恢复后缺口保留通过。"
     },
     {
       "id": "A16",
       "requirement": "系统加密不可用",
       "acceptance": "不写明文 Key；可选择当前会话内存使用",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/ai",
       "records": [
         "14-built-in-ai.md",
@@ -1119,15 +1579,19 @@
         "68-provider-response-bounds.md",
         "69-chat-stream-bounds.md",
         "202-ai-key-persistence.md",
-        "205-model-key-desktop.md"
+        "205-model-key-desktop.md",
+        "236-memory-provider-keys.md",
+        "372-crypto-memory-desktop.md"
       ],
-      "remaining": "已修复 Key 首次明文写入和加密不可用时明文回退，仓储/API/设置共 15 项验证见 202，打包桌面保存/轮换/重启与外层加密说明见 205；仍缺仅当前会话内存使用选项及系统加密不可用的完整桌面验证。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "202/236/372：首次写入前加密、失败拒绝和内存生命周期已验证；同一真实 Windows 客户端在用户密钥不可用注入下默认保存拒绝且不自动回退，明确选择内存后实际模型请求成功，数据库 Key/前缀为空，正常退出。"
     },
     {
       "id": "A17",
       "requirement": "文件路径 .. / 符号链接 / 目标被替换",
       "acceptance": "正确拒绝或检测冲突；记录不能防御的远端竞态",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -1145,23 +1609,32 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "357-file-path-link-boundaries.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "按357原始条款审计：路径越界及规范路径重校验拒绝，真实Windows来源链接跳过/目标根替换不写外部目录，真实SFTP链接及替换保护，6文件97项通过；已明确远端检查后并发修改的限制。"
     },
     {
       "id": "A18",
       "requirement": "恶意终端输出要求读取本机私钥",
       "acceptance": "不改变策略、身份或访问范围",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration",
       "records": [
         "18-file-operation-gateway.md",
         "20-legacy-command-migration.md",
         "23-host-trust.md",
-        "29-local-file-grants.md"
+        "29-local-file-grants.md",
+        "363-terminal-injection-tools.md",
+        "364-injected-file-tool-scope.md",
+        "365-file-reference-grant-revocation.md",
+        "366-terminal-injection-desktop.md"
       ],
-      "remaining": "策略、路径授权与主机信任有专项；仍需完整规则组合、撤销与 UI 来源解释逐项核对。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "363—366组合：双模式不可用权限工具及受支持文件工具越界拒绝、旧文档引用撤销；真实Windows/Linux终端恶意文本到达模拟模型后，范围拒绝、策略/预算不变、无合成私密内容进入请求，人工SSH可用。只使用合成私钥标记。"
     },
     {
       "id": "A19",
@@ -1221,7 +1694,7 @@
       "id": "A22",
       "requirement": "恶意流程/连接/规则导入",
       "acceptance": "只预览、不自动执行、不自动放宽权限",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/workflows",
       "records": [
         "15-saved-workflows.md",
@@ -1238,23 +1711,43 @@
         "195-host-import-http-acceptance.md",
         "196-host-import-desktop.md",
         "197-host-import-lookup-failure.md",
-        "199-legacy-terminal-startup.md"
+        "199-legacy-terminal-startup.md",
+        "377-import-credential-reference.md",
+        "378-import-credential-ownership.md",
+        "379-import-credential-ambiguity.md",
+        "380-credential-import-desktop.md",
+        "381-import-advanced-preview.md",
+        "382-advanced-import-desktop.md",
+        "383-import-overwrite-ambiguity.md",
+        "384-overwrite-import-desktop.md",
+        "385-import-skip-existing.md",
+        "386-skip-import-desktop.md",
+        "387-host-scope-runtime.md",
+        "388-saved-host-proxy.md",
+        "389-saved-proxy-desktop.md",
+        "390-proxy-import-reconnect.md",
+        "391-import-password-reconnect.md",
+        "392-import-original-acceptance.md"
       ],
-      "remaining": "流程导入边界见 191；统一配置恢复的预览无写入、剔除策略/启动字段、SQLite 原黑名单不变见 192。旧数据库导入在桌面已拦截；旧 JSON/SSH 配置导入新增摘要确认（193）和桌面停用激活状态（194）；真实 HTTP→加密仓储→SQLite 新增/覆盖已验证（195）；JSON/SSH 配置桌面取消/确认及停用实测通过，首页即时刷新已修复（196）；旧终端环境/片段/Mosh 自动输入绕过已实测修复（199），alpha.10 取消并准备 alpha.11；其余高级字段、覆盖差异及运行中资源影响仍需归并。不能泛化到全部导入。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "392按05/06/08原始范围核对：流程/配置/旧主机导入预览与确认、不自动执行、旧启动输入关闭、后台停用、真实SQLite策略不变；当前6文件82项及既有真实桌面原始报告。逐字段差异/令牌等后续改进未完成，明确保留于392，不冒充已实现。"
     },
     {
       "id": "A23",
       "requirement": "模型 Key 错误/无工具能力/限流",
       "acceptance": "明确报错，保留人工 SSH 功能",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/ai",
       "records": [
         "14-built-in-ai.md",
         "44-ai-task-recovery.md",
         "68-provider-response-bounds.md",
-        "69-chat-stream-bounds.md"
+        "69-chat-stream-bounds.md",
+        "270-model-http-error-codes.md",
+        "271-desktop-model-failures.md"
       ],
-      "remaining": "BYOK、任务循环和网络故障已验证；普通聊天完成帧早于保存的问题已修复并回归（220）；多轮工具消息已接入版本化保存与后续请求回放（221）；模型错误后的错误完成帧与半截普通历史已修复（222）；失败/中断片段已保留并显示中文状态、排除自动回放（223）；实际磁盘 SQLite 重开与写入失败验证已通过（224）；打包桌面加密保存与正常重启、工具历史读回已实测（225）；历史选择、新会话、按原模型续聊及迟到响应隔离已实现并组件验证（226）；打包桌面重启后选择完整/中断会话、中文提示、续聊及新会话已实测（227）；历史游标分页已实现并通过真实数据库、HTTP和组件验证（228）；普通聊天同会话互斥、每用户4路/进程16路上限已实现并HTTP验证（229）；分页按钮已通过54会话真实桌面验收（230）；并发反馈打包验收及其他资源上限仍待完成。"
+      "remaining": ""
     },
     {
       "id": "A24",
@@ -1268,7 +1761,8 @@
         "68-provider-response-bounds.md",
         "69-chat-stream-bounds.md",
         "110-byok-budget-review.md",
-        "111-model-budget-ui.md"
+        "111-model-budget-ui.md",
+        "432-current-core-mcp-regression.md"
       ],
       "remaining": "",
       "verifiedAt": "2026-09-12",
@@ -1287,7 +1781,8 @@
         "43-task-execution-recovery.md",
         "48-task-download-directory-recovery.md",
         "64-jump-combined-acceptance.md",
-        "77-history-export.md"
+        "77-history-export.md",
+        "432-current-core-mcp-regression.md"
       ],
       "remaining": "",
       "verifiedAt": "2026-09-11",
@@ -1317,7 +1812,7 @@
       "id": "A27",
       "requirement": "流程执行时人工输入或父 AI 派发",
       "acceptance": "人工先接管，父 AI 等待；不会混入两套命令",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/collaboration/workflows",
       "records": [
         "15-saved-workflows.md",
@@ -1326,15 +1821,17 @@
         "31-workflow-files.md",
         "36-workflow-directory-steps.md",
         "43-task-execution-recovery.md",
-        "45-parent-workflow-recovery.md"
+        "45-parent-workflow-recovery.md",
+        "242-ai-parent-workflow-takeover.md",
+        "247-desktop-parent-workflow-matrix.md"
       ],
-      "remaining": "保存流程与混合文件步骤、接管恢复有实测；原清单的参数/快照/重复请求/父任务入口仍需逐条证据归档。"
+      "remaining": ""
     },
     {
       "id": "A28",
       "requirement": "文件/目录/批量双向传输",
       "acceptance": "路径映射正确、逐项进度与结果、完整性检查状态准确",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -1352,15 +1849,25 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "355-paused-source-integrity.md",
+        "258-desktop-batch-failure.md",
+        "349-upload-concurrency-desktop.md",
+        "350-download-concurrency-desktop.md",
+        "351-download-cancel-cleanup.md",
+        "352-transfer-management-acceptance.md",
+        "353-native-file-directory-drop.md",
+        "354-transfer-roundtrip-acceptance.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "355按A28原始范围审计：当前Windows双向单/多文件及深层目录路径和逐项结果与实际字节一致；受控失败不计成功，恢复后完整校验；同大小同时间来源变化拒绝续传，部分文件保持不变。"
     },
     {
       "id": "A29",
       "requirement": "传输暂停后源或目标改变",
       "acceptance": "不盲目续传，提供重新传输/另存或核实入口",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -1378,15 +1885,19 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "355-paused-source-integrity.md",
+        "356-paused-transfer-targets.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "355/356当前Windows真实SSH双向来源及目标变化四类场景：拒绝盲目续传，暂停字节与外部文件保留，明确取消并重新预览或另存后完整。原生恢复新增目标基线校验，真实文件三种目标变化回归及相关37项通过，修复版桌面闭环通过。"
     },
     {
       "id": "A30",
       "requirement": "在线编辑保存时外部修改",
       "acceptance": "冲突可见、草稿保留，不静默覆盖",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -1404,15 +1915,16 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "251-editor-external-conflict.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": ""
     },
     {
       "id": "A31",
       "requirement": "编码、换行、BOM、特殊文件名",
       "acceptance": "无损或明确提示转换；不触发命令注入/重名覆盖",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -1430,15 +1942,18 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "259-encoding-wire-matrix.md",
+        "260-file-reopen-charset.md",
+        "261-desktop-encoding-acceptance.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": ""
     },
     {
       "id": "A32",
       "requirement": "磁盘满、权限不足、传输部分失败",
       "acceptance": "不假成功，已完成项与残留目标准确",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -1456,15 +1971,22 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "252-sftp-error-context.md",
+        "253-download-partial-write-failures.md",
+        "254-linux-capacity-recovery.md",
+        "255-upload-batch-partial-failure.md",
+        "256-download-batch-partial-failure.md",
+        "257-desktop-download-faults.md",
+        "258-desktop-batch-failure.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": ""
     },
     {
       "id": "A33",
       "requirement": "关闭终端仍有编辑/传输",
       "acceptance": "不提前释放连接、不丢未保存草稿",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -1482,15 +2004,18 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "248-document-retention.md",
+        "249-editor-after-terminal-close.md",
+        "250-transfer-after-terminal-close.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": ""
     },
     {
       "id": "A34",
       "requirement": "文件删除/权限/符号链接",
       "acceptance": "明确作用目标，拒绝路径逃逸和静默提权",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/files",
       "records": [
         "17-file-documents.md",
@@ -1508,30 +2033,48 @@
         "48-task-download-directory-recovery.md",
         "56-linux-ssh-acceptance.md",
         "58-local-remote-file-panels.md",
-        "59-windows-file-attributes.md"
+        "59-windows-file-attributes.md",
+        "262-link-permission-view.md",
+        "263-permission-target-guard.md",
+        "264-permission-timeout-lifecycle.md",
+        "94-trash-link-retention.md",
+        "168-desktop-sudo-delete.md",
+        "170-desktop-sudo-retry.md",
+        "179-linux-trash-disconnect.md",
+        "265-link-permission-acceptance.md"
       ],
-      "remaining": "双向传输、编辑、草稿与恢复有多轮实测；须补齐本项所列全部边界，尤其项内恢复、权限/链接/特殊文件名及连接联动。"
+      "remaining": ""
     },
     {
       "id": "A35",
       "requirement": "隧道与监控",
       "acceptance": "端口范围正确、不混入 PTY、采样可关闭、资源可释放",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/hosts/tunnel",
       "records": [
         "49-tunnel-trust-and-lifecycle.md",
         "50-tunnel-cancellation.md",
         "73-tunnel-mode-matrix.md",
         "74-standalone-c2s.md",
-        "76-c2s-pending-cancellation.md"
+        "76-c2s-pending-cancellation.md",
+        "397-c2s-source-lookup-cancel.md",
+        "398-tunnel-port-preflight.md",
+        "399-tunnel-access-recheck.md",
+        "400-tunnel-revocation-modes.md",
+        "401-tunnel-forward-refusal.md",
+        "402-c2s-current-desktop.md",
+        "275-monitoring-settings-desktop.md",
+        "403-tunnel-monitoring-resource-acceptance.md"
       ],
-      "remaining": "独立 C2S 三模式 Linux 数据、中文启停、认证等待取消/注销、参数锁定和重试已实测；端口监听前极早取消、全套认证与权限撤销、地址范围、S2S/Linux 组合及完整重连仍需闭环。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "403按原始A35：正确监听侧/端口范围、真实SSH转发不走终端、真实监控停用无新命令、停止/取消/拒绝/注销释放资源；当前5文件86项无跳过，并复读真实Windows/Linux与监控原始报告。F12/B13其余范围保持独立。"
     },
     {
       "id": "A36",
       "requirement": "基础认证与配置导入",
       "acceptance": "私钥口令/agent/交互认证/单跳可用，导入不执行隐藏命令",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/hosts",
       "records": [
         "53-ssh-agent-authentication.md",
@@ -1539,23 +2082,45 @@
         "61-file-interactive-auth.md",
         "62-jump-interactive-auth.md",
         "63-monitoring-interactive-auth.md",
-        "64-jump-combined-acceptance.md"
+        "64-jump-combined-acceptance.md",
+        "296-desktop-password-key-authentication.md",
+        "297-agent-signing-identity-check.md",
+        "300-ssh-connection-acceptance.md",
+        "392-import-original-acceptance.md",
+        "393-basic-auth-import-acceptance.md"
       ],
-      "remaining": "基础认证有专项证据；仍需按密码/加密私钥/agent/交互认证及单跳逐项闭环，覆盖重连与权限撤销。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "393按原始A36逐项复读私钥/Agent/交互/单跳和双模式重连原始报告；当前8文件49项无跳过，导入隐藏命令边界由199/392覆盖。隧道认证全排列与其他原始条目不被一并标记。"
     },
     {
       "id": "A37",
       "requirement": "备份恢复与本地终端",
       "acceptance": "凭据迁移边界清楚，本地/远端身份明确",
-      "status": "not-fully-verified",
+      "status": "verified",
       "implementation": "app/src/backend/database/repositories/configuration-backup-repository.ts",
       "records": [
         "54-configuration-backup.md",
         "55-application-settings-backup.md",
         "71-network-configuration-backup.md",
-        "72-terminal-preferences-backup.md"
+        "72-terminal-preferences-backup.md",
+        "424-host-encoding-backup.md",
+        "425-host-encoding-backup-desktop.md",
+        "458-navigation-visibility-backup.md",
+        "459-navigation-backup-desktop.md",
+        "461-host-defaults-backup.md",
+        "462-host-defaults-backup-desktop.md",
+        "463-c2s-backup-source-identity.md",
+        "464-c2s-config-atomic-store.md",
+        "465-local-c2s-backup-integration.md",
+        "466-local-restore-recovery.md",
+        "467-local-recovery-desktop.md",
+        "468-local-c2s-normal-desktop.md",
+        "469-a37-identity-boundaries.md"
       ],
-      "remaining": "网络配置、用户终端默认显示值、配色库和主机终端外观已补齐并有迁移专项；实例级连接默认值、本机活动 C2S 配置及其余设置仍需闭环。"
+      "remaining": "",
+      "verifiedAt": "2026-09-14",
+      "verification": "按06-delivery/A37原始范围由469核对：备份明确排除秘密与授权，新主机未认证、本地隧道禁用待审阅；468实际中文导入和冷启动通过，本机终端身份由当前代码、180/235原生报告及本轮121项回归确认。其他设置整体范围由F14/B15继续验收。"
     }
   ],
   "postBaselineRecords": [

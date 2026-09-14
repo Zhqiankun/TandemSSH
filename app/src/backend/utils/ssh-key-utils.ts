@@ -253,6 +253,18 @@ export function preparePrivateKeyForSSH2(
     throw new Error(keyInfo.error || getUnsupportedPrivateKeyError(cleanKey));
   }
 
+  // Match ssh2's actual connection requirements here, where callers can handle
+  // a credential error before creating a socket. Header detection alone is insufficient.
+  try {
+    const parsed = ssh2Utils.parseKey(cleanKey, passphrase);
+    if (parsed instanceof Error) throw parsed;
+    const privateKey = Array.isArray(parsed) ? parsed[0] : parsed;
+    if (!privateKey || privateKey.getPrivatePEM() === null)
+      throw Error("Not a private key");
+  } catch {
+    throw new Error("Invalid SSH private key or passphrase.");
+  }
+
   return Buffer.from(cleanKey, "utf8");
 }
 

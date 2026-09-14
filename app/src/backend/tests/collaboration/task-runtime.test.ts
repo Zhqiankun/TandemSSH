@@ -37,6 +37,7 @@ function fixture(
       record(type: string, data: unknown): Promise<void>;
     };
     hold?: boolean;
+    groups?: () => string[];
     operationOutput?: string;
     operationResult?: Awaited<PreparedCommand["completion"]>;
     contextResult?: Awaited<PreparedCommand["completion"]>;
@@ -69,7 +70,7 @@ function fixture(
     userId: "user-a",
     hostId: 1,
     hostName: "user@server:22",
-    groups: () => [],
+    groups: options.groups ?? (() => []),
     assertAvailable: options.assertAvailable,
     files: options.files,
     control,
@@ -1280,4 +1281,244 @@ it("keeps joined retries stale when takeover happens during proposal audit", asy
   expect(f.writes.filter((value) => value === "pwd")).toHaveLength(0);
   expect(f.control.snapshot().controller.kind).toBe("human");
   f.disconnect();
+});
+it.each(["automatic", "collaborative"] as const)(
+  "human pause retains a resumable task without sending interrupt in %s mode",
+  async (mode) => {
+    const f = fixture({ hold: true }),
+      task = await f.create(mode);
+    await f.authorize(task);
+    let approval: Promise<unknown> | undefined;
+    if (mode === "collaborative") {
+      await vi.waitFor(() =>
+        expect(f.runtime.get(human, task.id).state).toBe("awaiting-approval"),
+      );
+      const op = f.runtime.get(human, task.id).operations[0];
+      approval = f.runtime.approve(human, task.id, op.id, op.digest, 1);
+    }
+    await vi.waitFor(() => expect(f.writes).toContain("pwd"));
+    const before = [...f.writes];
+    const paused = f.runtime.pauseTask(human, task.id);
+    expect(paused.state).toBe("paused-human");
+    expect(paused.error).toBe("TASK_PAUSED_BY_USER");
+    expect(f.control.snapshot().controller.kind).toBe("human");
+    await approval;
+    await vi.waitFor(() =>
+      expect(f.runtime.get(human, task.id).operations[0].status).toBe(
+        "unknown",
+      ),
+    );
+    expect(f.writes).toEqual(before);
+    expect(f.writes).not.toContain("\u0003");
+    expect(f.commands.map((c) => c.program)).toEqual(["pwd"]);
+    const epoch = f.control.snapshot().controlEpoch;
+    f.runtime.pauseTask(human, task.id);
+    expect(f.control.snapshot().controlEpoch).toBe(epoch);
+    await expect(f.authorize(f.runtime.get(human, task.id))).rejects.toThrow(
+      "RECONCILIATION_REQUIRED",
+    );
+    await f.authorize(f.runtime.get(human, task.id), {
+      reconciliation: "skip",
+    });
+    if (mode === "collaborative") {
+      await vi.waitFor(() =>
+        expect(f.runtime.get(human, task.id).operations.at(-1)?.status).toBe(
+          "awaiting-approval",
+        ),
+      );
+      const op = f.runtime.get(human, task.id).operations.at(-1)!;
+      await f.runtime.approve(human, task.id, op.id, op.digest, 1);
+    }
+    await vi.waitFor(() =>
+      expect(f.runtime.get(human, task.id).state).toBe("completed-with-errors"),
+    );
+    expect(f.commands.map((c) => c.program)).toEqual(["pwd", "df"]);
+    f.control.close();
+  },
+);
+it("does not allow MCP or another user to pause a human task or revive a cancelled task", async () => {
+  const f = fixture(),
+    task = await f.create();
+  expect(() => f.runtime.pauseTask(mcp, task.id)).toThrow();
+  expect(() =>
+    f.runtime.pauseTask({ kind: "human", userId: "other" }, task.id),
+  ).toThrow();
+  expect(f.runtime.get(human, task.id).state).toBe("awaiting-authorization");
+  f.runtime.cancel(human, task.id);
+  expect(() => f.runtime.pauseTask(human, task.id)).toThrow(
+    "TASK_STATE_INVALID",
+  );
+  expect(f.runtime.get(human, task.id).state).toBe("cancelled");
+  expect(f.writes).toEqual([]);
+  f.control.close();
+});
+it("binds a human interrupt to the current session generation and rejects replay", async () => {
+  const f = fixture(),
+    expected = f.control.snapshot();
+  expect(() => f.runtime.interruptSession(mcp, "session", expected)).toThrow();
+  expect(() =>
+    f.runtime.interruptSession(
+      { kind: "human", userId: "other" },
+      "session",
+      expected,
+    ),
+  ).toThrow();
+  expect(f.writes).toEqual([]);
+  const result = f.runtime.interruptSession(human, "session", expected);
+  expect(result.requested).toBe(true);
+  expect(result.control.controller.kind).toBe("human");
+  expect(f.writes).toEqual(["\u0003"]);
+  expect(() => f.runtime.interruptSession(human, "session", expected)).toThrow(
+    "STALE_CONTROL",
+  );
+  const stale = f.control.snapshot();
+  f.control.connectionChanged();
+  expect(() => f.runtime.interruptSession(human, "session", stale)).toThrow(
+    "STALE_CONTROL",
+  );
+  expect(f.writes).toEqual(["\u0003"]);
+  f.control.close();
+});
+it("interrupts by taking control without cancelling or replaying the task", async () => {
+  const f = fixture({ hold: true }),
+    task = await f.create();
+  await f.authorize(task);
+  await vi.waitFor(() => expect(f.writes).toContain("pwd"));
+  const before = [...f.writes];
+  f.runtime.interruptSession(human, "session", f.control.snapshot());
+  await vi.waitFor(() =>
+    expect(f.runtime.get(human, task.id).state).toBe("paused-human"),
+  );
+  expect(f.writes).toEqual([...before, "\u0003"]);
+  expect(f.commands.map((c) => c.program)).toEqual(["pwd"]);
+  f.control.close();
+});
+
+it("archives cancelled unknown commands only after exact human review without re-execution", async () => {
+  const records: Array<{ type: string; data: unknown }> = [];
+  const f = fixture({
+    hold: true,
+    audit: {
+      append: async () => {},
+      record: async (type, data) => {
+        records.push({ type, data });
+      },
+    },
+  });
+  const task = await f.create();
+  await f.authorize(task, { allowReviewedPlan: true });
+  await vi.waitFor(() =>
+    expect(f.runtime.get(human, task.id).state).toBe("running"),
+  );
+  f.runtime.cancel(human, task.id);
+  const view = f.runtime.get(human, task.id),
+    ids = view.archiveReviewIds!;
+  expect(ids).toHaveLength(1);
+  expect(view.operations.find((o) => o.id === ids[0])?.status).toBe("unknown");
+  expect(view.canArchive).toBe(false);
+  const release = vi.fn(async () => {}),
+    writes = [...f.writes];
+  for (const bad of [[], ["foreign-id"], [ids[0], ids[0]]])
+    await expect(
+      f.runtime.archive(human, task.id, release, bad),
+    ).rejects.toThrow("TASK_ARCHIVE_RECONCILIATION_REQUIRED");
+  await expect(f.runtime.archive(mcp, task.id, release, ids)).rejects.toThrow();
+  await expect(
+    f.runtime.archive({ ...human, userId: "other" }, task.id, release, ids),
+  ).rejects.toThrow();
+  expect(release).not.toHaveBeenCalled();
+  await f.runtime.archive(human, task.id, release, ids);
+  expect(release).toHaveBeenCalledOnce();
+  expect(f.writes).toEqual(writes);
+  expect(records.find((r) => r.type === "task.archived")?.data).toMatchObject({
+    state: "cancelled",
+    reviewedUnknownOperations: [{ id: ids[0], status: "unknown" }],
+  });
+  expect(() => f.runtime.get(human, task.id)).toThrow("TASK_ARCHIVED");
+  f.disconnect();
+});
+
+it("keeps reviewed unknown operations when archive audit fails and permits a fresh reviewed retry", async () => {
+  let fail = true;
+  const f = fixture({
+    hold: true,
+    audit: {
+      append: async () => {},
+      record: async (type) => {
+        if (type === "task.archive-requested" && fail)
+          throw Error("AUDIT_UNAVAILABLE");
+      },
+    },
+  });
+  const task = await f.create();
+  await f.authorize(task, { allowReviewedPlan: true });
+  await vi.waitFor(() =>
+    expect(f.runtime.get(human, task.id).state).toBe("running"),
+  );
+  f.runtime.cancel(human, task.id);
+  const ids = f.runtime.get(human, task.id).archiveReviewIds!,
+    release = vi.fn(async () => {});
+  await expect(f.runtime.archive(human, task.id, release, ids)).rejects.toThrow(
+    "AUDIT_UNAVAILABLE",
+  );
+  expect(release).not.toHaveBeenCalled();
+  expect(
+    f.runtime.get(human, task.id).operations.find((o) => o.id === ids[0])
+      ?.status,
+  ).toBe("unknown");
+  await expect(f.runtime.archive(human, task.id, release)).rejects.toThrow(
+    "TASK_ARCHIVE_RECONCILIATION_REQUIRED",
+  );
+  fail = false;
+  await f.runtime.archive(human, task.id, release, ids);
+  f.disconnect();
+});
+
+it.each((["automatic", "collaborative"] as const).flatMap(mode => [true, false].map(flagged => ({ mode, flagged }))))("pauses after incomplete command output in $mode mode (flagged=$flagged)", async ({ mode, flagged }) => {
+  const f = fixture({ operationResult: { exitCode: 0, output: flagged ? "retained prefix" : "x".repeat(256001), cwd: "/srv/app", truncated: flagged } });
+  try {
+    const task = await f.create(mode, [{ program: "pwd", args: [] }, { program: "printf", args: ["must-not-run"] }]);
+    await f.authorize(task, { matches: [{ kind: "program", program: "pwd" }, { kind: "program", program: "printf" }] });
+    if (mode === "collaborative") {
+      await vi.waitFor(() => expect(f.runtime.get(human, task.id).state).toBe("awaiting-approval"));
+      const op = f.runtime.get(human, task.id).operations[0];
+      await f.runtime.approve(human, task.id, op.id, op.digest, 1);
+    }
+    await vi.waitFor(() => expect(f.runtime.get(human, task.id).state).toBe("paused-human"));
+    const result = f.runtime.operationDetail(human, task.id, f.runtime.get(human, task.id).operations[0].id);
+    expect(result).toMatchObject({ status: "unknown", exitCode: 0, outputTruncated: true, error: "COMMAND_OUTPUT_INCOMPLETE" });
+    expect(f.writes).toEqual(["context", "pwd"]);
+    expect(f.control.snapshot().controller.kind).toBe("human");
+    await expect(f.authorize(f.runtime.get(human, task.id))).rejects.toThrow("RECONCILIATION_REQUIRED");
+    f.control.humanInput(Buffer.from("manual"));
+    expect(f.writes.at(-1)).toBe("manual");
+  } finally { f.disconnect(); }
+});
+
+it.each(["automatic", "collaborative"] as const)("%s does not continue under a changed host group scope", async mode => {
+  let groups = ["production", "tag:restricted"];
+  const f = fixture({ hold: true, groups: () => groups, policy: { revision: 1, sets: [{
+    id: "global", scope: { type: "global" }, strictAllowlist: false,
+    rules: ["pwd", "df"].map(program => ({ id: program, effect: "allow" as const,
+      match: { kind: "program" as const, program }, reason: "fixture" })),
+  }] } });
+  const task = await f.create(mode);
+  try {
+    await f.authorize(task);
+    if (mode === "collaborative") {
+      await vi.waitFor(() => expect(f.runtime.get(human, task.id).state).toBe("awaiting-approval"));
+      const op = f.runtime.get(human, task.id).operations[0];
+      await f.runtime.approve(human, task.id, op.id, op.digest, 1);
+    }
+    await vi.waitFor(() => expect(f.writes).toEqual(["context", "pwd"]));
+    groups = [];
+    f.completion.resolve({ exitCode: 0, output: "confirmed-first", cwd: "/srv/app" });
+    await vi.waitFor(() => expect(f.runtime.get(human, task.id).error).toBe("HOST_SCOPE_CHANGED"));
+    const stopped = f.runtime.get(human, task.id);
+    expect(stopped.operations[0]).toMatchObject({ status: "succeeded", exitCode: 0 });
+    expect(f.writes).toEqual(["context", "pwd"]);
+    expect(f.control.snapshot().controller.kind).toBe("human");
+    f.control.humanInput(Buffer.from("manual"));
+    expect(f.writes).toEqual(["context", "pwd", "manual"]);
+  } finally { f.completion.resolve({ exitCode: null, output: "cleanup" }); f.runtime.cancel(human, task.id); }
 });

@@ -205,3 +205,111 @@ describe("native download destination", () => {
     expect(dialog.showSaveDialog).not.toHaveBeenCalled();
   });
 });
+describe("native partial-write failures", () => {
+  it.each([
+    ["ENOSPC", "DOWNLOAD_DISK_FULL"],
+    ["EACCES", "DOWNLOAD_LOCAL_PERMISSION"],
+    ["EPERM", "DOWNLOAD_LOCAL_PERMISSION"],
+    ["EROFS", "DOWNLOAD_LOCAL_PERMISSION"],
+  ])(
+    "retains verified progress and safely resumes after %s",
+    async (code, error) => {
+      const f = await fixture(Buffer.alloc(CHUNK_BYTES + 131089, 91)),
+        chosen = await f.choose();
+      const started = await f.sink.start(1, chosen.id, false);
+      await f.sink.append(1, chosen.id, 0, f.bytes.subarray(0, CHUNK_BYTES));
+      const handle = f.sink.owned(1, chosen.id)
+        .handle as import("node:fs/promises").FileHandle;
+      const write = handle.write.bind(handle),
+        tail = f.bytes.subarray(CHUNK_BYTES);
+      const injected = vi
+        .spyOn(handle, "write")
+        .mockImplementationOnce(() => write(tail, 0, 65536, CHUNK_BYTES))
+        .mockRejectedValueOnce(
+          Object.assign(Error("fixture write failure"), { code }),
+        );
+      try {
+        await expect(
+          f.sink.append(1, chosen.id, CHUNK_BYTES, tail),
+        ).rejects.toThrow(error);
+      } finally {
+        injected.mockRestore();
+      }
+      expect(f.sink.owned(1, chosen.id).view).toMatchObject({
+        state: "failed",
+        error,
+        writtenBytes: CHUNK_BYTES,
+        temporaryPath: started.temporaryPath,
+      });
+      expect((await fs.stat(started.temporaryPath)).size).toBe(
+        CHUNK_BYTES + 65536,
+      );
+      await expect(fs.stat(f.target)).rejects.toMatchObject({ code: "ENOENT" });
+      expect((await f.sink.resume(1, chosen.id)).writtenBytes).toBe(
+        CHUNK_BYTES,
+      );
+      expect((await fs.stat(started.temporaryPath)).size).toBe(CHUNK_BYTES);
+      await f.sink.append(1, chosen.id, CHUNK_BYTES, tail);
+      const completed = await f.sink.finish(1, chosen.id);
+      expect(completed).toMatchObject({
+        state: "completed",
+        writtenBytes: f.bytes.length,
+        sha256: sha(f.bytes),
+      });
+      expect((await fs.readFile(f.target)).equals(f.bytes)).toBe(true);
+    },
+  );
+  it("refuses to truncate or resume a failed stage whose verified prefix was changed", async () => {
+    const f = await fixture(Buffer.alloc(CHUNK_BYTES + 131089, 91)),
+      chosen = await f.choose();
+    const started = await f.sink.start(1, chosen.id, false);
+    await f.sink.append(1, chosen.id, 0, f.bytes.subarray(0, CHUNK_BYTES));
+    const handle = f.sink.owned(1, chosen.id)
+      .handle as import("node:fs/promises").FileHandle;
+    const write = handle.write.bind(handle),
+      tail = f.bytes.subarray(CHUNK_BYTES);
+    const injected = vi
+      .spyOn(handle, "write")
+      .mockImplementationOnce(() => write(tail, 0, 65536, CHUNK_BYTES))
+      .mockRejectedValueOnce(Object.assign(Error("full"), { code: "ENOSPC" }));
+    try {
+      await expect(
+        f.sink.append(1, chosen.id, CHUNK_BYTES, tail),
+      ).rejects.toThrow("DOWNLOAD_DISK_FULL");
+    } finally {
+      injected.mockRestore();
+    }
+    await handle.write(Buffer.from([0]), 0, 1, 0);
+    await expect(f.sink.resume(1, chosen.id)).rejects.toThrow(
+      "DOWNLOAD_CHECKPOINT_CHANGED",
+    );
+    expect((await fs.stat(started.temporaryPath)).size).toBe(
+      CHUNK_BYTES + 65536,
+    );
+    expect(f.sink.owned(1, chosen.id).view.state).toBe("failed");
+    await expect(fs.stat(f.target)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+it.each(["created", "modified", "removed"])("refuses resume before mutating the partial when the target was %s", async (change) => {
+  const f = await fixture(Buffer.alloc(CHUNK_BYTES + 3, 73));
+  if (change !== "created") {
+    await fs.writeFile(f.target, "old");
+    await fs.utimes(f.target, 1700000000, 1700000000);
+  }
+  const chosen = await f.choose();
+  const started = await f.sink.start(1, chosen.id, change !== "created");
+  await f.sink.append(1, chosen.id, 0, f.bytes.subarray(0, CHUNK_BYTES));
+  await f.sink.pause(1, chosen.id);
+  await fs.appendFile(started.temporaryPath, "unverified tail");
+  const before = await fs.readFile(started.temporaryPath);
+  if (change === "removed") await fs.unlink(f.target);
+  else {
+    await fs.writeFile(f.target, "new");
+    if (change === "modified") await fs.utimes(f.target, 1700000000, 1700000000);
+  }
+  await expect(f.sink.resume(1, chosen.id)).rejects.toThrow("DOWNLOAD_TARGET_CHANGED");
+  expect((await fs.readFile(started.temporaryPath)).equals(before)).toBe(true);
+  if (change === "removed") await expect(fs.stat(f.target)).rejects.toMatchObject({ code: "ENOENT" });
+  else expect(await fs.readFile(f.target, "utf8")).toBe("new");
+});

@@ -144,7 +144,7 @@ describe("workflow library immutable previews", () => {
     );
     expect(f.create).not.toHaveBeenCalled();
   });
-  it("freezes run parameters, deduplicates start, and rejects changing its mode", async () => {
+  it.each(["automatic", "collaborative"] as const)("freezes parameters and deduplicates start in %s mode", async mode => {
     const f = fixture(),
       saved = await f.save(),
       parameters = { message: "original" };
@@ -156,15 +156,15 @@ describe("workflow library immutable previews", () => {
     parameters.message = "changed";
     preview.commands[0].args[1] = "tampered";
     expect(f.create).not.toHaveBeenCalled();
-    await f.library.start(human, preview.id, "request", "automatic");
-    await f.library.start(human, preview.id, "request", "automatic");
+    await f.library.start(human, preview.id, "request", mode);
+    await f.library.start(human, preview.id, "request", mode);
     expect(f.create).toHaveBeenCalledTimes(1);
     expect(f.create.mock.calls[0][1]).toMatchObject({
       commands: [{ args: ["%s", "original"] }],
       workflow: { id: saved.id, revision: 1, shellState: "explicit-cwd" },
     });
     await expect(
-      f.library.start(human, preview.id, "request", "collaborative"),
+      f.library.start(human, preview.id, "request", mode === "automatic" ? "collaborative" : "automatic"),
     ).rejects.toThrow("WORKFLOW_PREVIEW_USED");
   });
   it("rejects stale policy or control and previews from other actors", async () => {

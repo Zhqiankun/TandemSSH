@@ -1,15 +1,21 @@
+import { forwardHumanInputWithReceipt } from "./input-receipt.js";
+import { savedHostProxySettings } from "./saved-host-proxy.js";
 import { readTerminalDirectory } from "./working-directory.js";
 import { PtyCommandExecutor } from "../../collaboration/adapters/pty-command.js";
 import { getErrorMessage } from "../../utils/error-message.js";
 import { serviceListenOptions } from "../../runtime/policy.js";
-import { ControlError } from "../../collaboration/sessions/control.js";
+
 import {
   parseWsMessage,
   asObject,
   asString,
   toTerminalDimension,
 } from "../../utils/ws-message.js";
-import { StringDecoder } from "string_decoder";
+import {
+  createTerminalDecoder,
+  encodeTerminalInput,
+  terminalEncoding,
+} from "./encoding.js";
 import { WebSocketServer, WebSocket, type RawData } from "ws";
 import ssh2Pkg, {
   type Client as SSHClientType,
@@ -137,16 +143,12 @@ function forwardHumanInput(
   ws: WebSocket,
   data: string,
 ): void {
-  try {
-    sessionManager.sendHumanInput(sessionId, ws, data);
-  } catch (error) {
-    ws.send(
-      JSON.stringify({
-        type: "collaboration.error",
-        code: error instanceof ControlError ? error.code : "RESULT_UNKNOWN",
-      }),
-    );
-  }
+  forwardHumanInputWithReceipt(
+    sessionId,
+    data,
+    () => sessionManager.sendHumanInput(sessionId, ws, data),
+    (message) => ws.send(message),
+  );
 }
 
 const wss = new WebSocketServer({
@@ -224,6 +226,7 @@ async function handleShareTokenConnection(
     JSON.stringify({
       type: "sessionAttached",
       terminalReplies: true,
+      inputReceipts: true,
       sessionId: share.sessionId,
     }),
   );
@@ -231,6 +234,7 @@ async function handleShareTokenConnection(
     JSON.stringify({
       type: "connected",
       terminalReplies: true,
+      inputReceipts: true,
       message: "Joined session",
     }),
   );
@@ -651,6 +655,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
               JSON.stringify({
                 type: "sessionAttached",
                 terminalReplies: true,
+                inputReceipts: true,
                 sessionId: attachData.sessionId,
               }),
             );
@@ -658,6 +663,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
               JSON.stringify({
                 type: "connected",
                 terminalReplies: true,
+                inputReceipts: true,
                 message: "Session reattached",
               }),
             );
@@ -735,16 +741,43 @@ wss.on("connection", async (ws: WebSocket, req) => {
           const requestId = asString(request.requestId);
           const session = sessionManager.getSession(currentSessionId);
           try {
-            if (!session || !requestId || requestId.length > 128) throw Error("CWD_UNAVAILABLE");
-            const executor = new PtyCommandExecutor(() => session.sshStream, 15000);
-            const cwd = await readTerminalDirectory(session.control, () => executor.prepareContext(),
-              () => session.isConnected && !!session.sshStream && !session.sshStream.destroyed, request.shellReady === true);
+            if (!session || !requestId || requestId.length > 128)
+              throw Error("CWD_UNAVAILABLE");
+            const executor = new PtyCommandExecutor(
+              () => session.sshStream,
+              15000,
+            );
+            const cwd = await readTerminalDirectory(
+              session.control,
+              () => executor.prepareContext(),
+              () =>
+                session.isConnected &&
+                !!session.sshStream &&
+                !session.sshStream.destroyed,
+              request.shellReady === true,
+            );
             if (currentSessionId !== session.id) throw Error("CWD_CHANGED");
-            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "cwd", path: cwd, requestId }));
+            if (ws.readyState === WebSocket.OPEN)
+              ws.send(JSON.stringify({ type: "cwd", path: cwd, requestId }));
           } catch (error) {
             const message = error instanceof Error ? error.message : "";
-            const code = ["CWD_CONFIRM_REQUIRED", "CWD_CONTROL_BUSY", "CWD_QUERY_BUSY", "CWD_CHANGED"].includes(message) ? message : "CWD_UNAVAILABLE";
-            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "error", code, requestId, message: "Cannot confirm the current terminal directory." }));
+            const code = [
+              "CWD_CONFIRM_REQUIRED",
+              "CWD_CONTROL_BUSY",
+              "CWD_QUERY_BUSY",
+              "CWD_CHANGED",
+            ].includes(message)
+              ? message
+              : "CWD_UNAVAILABLE";
+            if (ws.readyState === WebSocket.OPEN)
+              ws.send(
+                JSON.stringify({
+                  type: "error",
+                  code,
+                  requestId,
+                  message: "Cannot confirm the current terminal directory.",
+                }),
+              );
           }
           break;
         }
@@ -845,6 +878,10 @@ wss.on("connection", async (ws: WebSocket, req) => {
             ? sessionManager.getSession(currentSessionId)
             : null;
           if (session?.sshStream) {
+            if (terminalEncoding(session.inputEncoding) !== "utf-8") {
+              ws.send(JSON.stringify({ type: "tmux_encoding_unsupported" }));
+              break;
+            }
             const existingName = tmuxData.sessionName || undefined;
             if (existingName) {
               attachOrCreateTmuxSession(session.sshStream, existingName);
@@ -1390,6 +1427,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
               JSON.stringify({
                 type: "sessionAttached",
                 terminalReplies: true,
+                inputReceipts: true,
                 sessionId: share.sessionId,
               }),
             );
@@ -1397,6 +1435,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
               JSON.stringify({
                 type: "connected",
                 terminalReplies: true,
+                inputReceipts: true,
                 message: "Joined session",
               }),
             );
@@ -1671,14 +1710,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
             );
           }
 
-          if (resolvedHostData.useSocks5) {
-            hostConfig.useSocks5 = resolvedHostData.useSocks5;
-            hostConfig.socks5Host = resolvedHostData.socks5Host;
-            hostConfig.socks5Port = resolvedHostData.socks5Port;
-            hostConfig.socks5Username = resolvedHostData.socks5Username;
-            hostConfig.socks5Password = resolvedHostData.socks5Password;
-            hostConfig.socks5ProxyChain = resolvedHostData.socks5ProxyChain;
-          }
+          Object.assign(hostConfig, savedHostProxySettings(resolvedHostData));
 
           if (!hostConfig.terminalConfig && resolvedHostData.terminalConfig) {
             hostConfig.terminalConfig = resolvedHostData.terminalConfig;
@@ -1716,6 +1748,21 @@ wss.on("connection", async (ws: WebSocket, req) => {
           error: getErrorMessage(error),
         });
       }
+    }
+
+    if (
+      (tmuxAttachSession || hostConfig.terminalConfig?.autoTmux === true) &&
+      terminalEncoding(hostConfig.terminalConfig?.encoding) !== "utf-8"
+    ) {
+      ws.send(
+        JSON.stringify({
+          type: "error",
+          code: "TMUX_UTF8_REQUIRED",
+          message: "TMUX_UTF8_REQUIRED",
+        }),
+      );
+      cleanupAuthState(connectionTimeout);
+      return;
     }
 
     // Resolve credentials server-side when frontend doesn't provide them
@@ -1995,6 +2042,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
           JSON.stringify({
             type: "sessionCreated",
             terminalReplies: true,
+            inputReceipts: true,
             sessionId: reusedSessionId,
           }),
         );
@@ -2002,6 +2050,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
           JSON.stringify({
             type: "sessionAttached",
             terminalReplies: true,
+            inputReceipts: true,
             sessionId: reusedSessionId,
           }),
         );
@@ -2009,6 +2058,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
           JSON.stringify({
             type: "connected",
             terminalReplies: true,
+            inputReceipts: true,
             message: "Session reattached",
           }),
         );
@@ -2150,6 +2200,9 @@ wss.on("connection", async (ws: WebSocket, req) => {
             return;
           }
 
+          const wireEncoding = terminalEncoding(
+            hostConfig.terminalConfig?.encoding,
+          );
           sshStream = stream;
           sshLogger.success("Terminal shell channel opened", {
             operation: "terminal_shell_opened",
@@ -2165,6 +2218,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
               sshConn!,
               stream,
               lastJumpClient,
+              wireEncoding,
             );
             sessionManager.attachWs(currentSessionId, userId, ws);
 
@@ -2172,6 +2226,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
               JSON.stringify({
                 type: "sessionCreated",
                 terminalReplies: true,
+                inputReceipts: true,
                 sessionId: currentSessionId,
               }),
             );
@@ -2191,7 +2246,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
           // split bytes with U+FFFD, which shows up as corrupted/inserted
           // characters. StringDecoder carries incomplete trailing bytes over
           // to the next chunk so multi-byte characters decode correctly.
-          const decoder = new StringDecoder("utf-8");
+          const decoder = createTerminalDecoder(wireEncoding);
 
           stream.on("data", (data: Buffer) => {
             try {
@@ -2270,21 +2325,52 @@ wss.on("connection", async (ws: WebSocket, req) => {
 
           // Helper to run initialPath/executeCommand after the shell
           // (or tmux session) is ready
+          const writeStartupText = (text: string) => {
+            try {
+              stream.write(
+                encodeTerminalInput(Buffer.from(text, "utf8"), wireEncoding),
+              );
+              return true;
+            } catch {
+              if (ws.readyState === WebSocket.OPEN)
+                ws.send(
+                  JSON.stringify({
+                    type: "error",
+                    code: "TERMINAL_INPUT_NOT_REPRESENTABLE",
+                    message:
+                      "The startup command cannot be represented in the terminal encoding.",
+                  }),
+                );
+              return false;
+            }
+          };
           const runPostShellCommands = (delay: number) => {
             setTimeout(() => {
-              if (initialPath !== undefined && initialPath !== null && initialPath !== "") {
+              if (
+                initialPath !== undefined &&
+                initialPath !== null &&
+                initialPath !== ""
+              ) {
                 let cdCommand: string;
                 try {
                   cdCommand = initialDirectoryCommand(initialPath);
                 } catch {
-                  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "error", code: "UNSUPPORTED_TERMINAL_PATH", message: "This directory cannot be represented safely in the remote terminal." }));
+                  if (ws.readyState === WebSocket.OPEN)
+                    ws.send(
+                      JSON.stringify({
+                        type: "error",
+                        code: "UNSUPPORTED_TERMINAL_PATH",
+                        message:
+                          "This directory cannot be represented safely in the remote terminal.",
+                      }),
+                    );
                   return;
                 }
-                stream.write(cdCommand);
+                if (!writeStartupText(cdCommand)) return;
               }
               if (executeCommand && executeCommand.trim() !== "") {
                 setTimeout(() => {
-                  stream.write(`${executeCommand}\r`);
+                  writeStartupText(`${executeCommand}\r`);
                 }, 300);
               }
             }, delay);
@@ -2382,6 +2468,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
             JSON.stringify({
               type: "connected",
               terminalReplies: true,
+              inputReceipts: true,
               message: "SSH connected",
             }),
           );
@@ -3054,13 +3141,17 @@ wss.on("connection", async (ws: WebSocket, req) => {
             });
           }
         }
-      } catch (keyError) {
-        const message = getErrorMessage(keyError, "Invalid private key format");
-        sshLogger.error("SSH key format error: " + message);
+      } catch {
+        sshLogger.error("Invalid SSH private key or passphrase", {
+          operation: "terminal_ssh_key_invalid",
+          userId,
+          hostId: id,
+        });
         ws.send(
           JSON.stringify({
             type: "error",
-            message: `SSH key format error: ${message}`,
+            code: "SSH_PRIVATE_KEY_INVALID",
+            message: "Invalid SSH private key or passphrase.",
           }),
         );
         return;

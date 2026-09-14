@@ -19,6 +19,10 @@ const current = vi.hoisted(() => ({
   trust: undefined as HostTrustService | undefined,
   credentialLookup: vi.fn(),
   resolvedHost: {} as Record<string, unknown>,
+  resolveGate: undefined as Promise<void> | undefined,
+  sourceLookups: 0,
+  accessAllowed: true,
+  revokeAfterAuth: undefined as (() => boolean) | undefined,
   dns: vi.fn(async () => {}),
   hostLookup: vi.fn(),
 }));
@@ -43,7 +47,7 @@ vi.mock("../../hosts/ssh-dns.js", () => ({
   resolveSshConnectConfigHost: () => current.dns(),
 }));
 vi.mock("../../hosts/host-resolver.js", () => ({
-  resolveHostById: async () => current.resolvedHost,
+  resolveHostById: async () => { current.sourceLookups++; await current.resolveGate; return current.resolvedHost; },
 }));
 vi.mock("../../utils/logger.js", () => ({
   sshLogger: { error: vi.fn() },
@@ -60,7 +64,7 @@ vi.mock("../../utils/permission-manager.js", () => ({
   PermissionManager: {
     getInstance: () => ({
       canAccessHost: async (user: string) => ({
-        hasAccess: user === "requester",
+        hasAccess: user === "requester" && current.accessAllowed && !current.revokeAfterAuth?.(),
       }),
     }),
   },
@@ -165,6 +169,7 @@ async function ssh(port = 0, allowedPort?: number) {
   const echoPort = (echo.address() as { port: number }).port;
   const clients = new Set<{ end(): void }>();
   let auth = 0,
+    authenticated = 0,
     forwards = 0;
   const key = generateKeyPairSync("rsa", {
     modulusLength: 2048,
@@ -173,6 +178,7 @@ async function ssh(port = 0, allowedPort?: number) {
     clients.add(client);
     client.on("error", () => {});
     client.once("close", () => clients.delete(client));
+    client.on("ready", () => { authenticated++; });
     client.on("authentication", (ctx) => {
       auth++;
       if (ctx.method === "password" && ctx.password === "fixture-only")
@@ -221,6 +227,7 @@ async function ssh(port = 0, allowedPort?: number) {
     echoPort,
     clients: () => clients.size,
     auth: () => auth,
+    authenticated: () => authenticated,
     forwards: () => forwards,
     stop,
   };
@@ -1517,4 +1524,321 @@ it("rejects a changed C2S source identity before an SSH connection", async () =>
   ).rejects.toThrow("C2S_SOURCE_CHANGED");
   expect(server.clients()).toBe(0);
   expect(server.auth()).toBe(0);
+});
+
+it.each(["test", "local", "dynamic", "remote"] as const)("%s cancels before a delayed source lookup can open SSH", async mode => {
+  const service = trust(), server = await ssh();
+  current.resolvedHost = { id: 7, ip: "127.0.0.1", port: server.port, username: "fixture",
+    password: "fixture-only", authType: "password", userId: "requester" };
+  let release!: () => void;
+  current.resolveGate = new Promise<void>(resolve => { release = resolve; });
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise<void>(resolve => wss.once("listening", resolve));
+  let relay!: WebSocket;
+  const accepted = new Promise<void>(resolve => wss.once("connection", ws => { relay = ws; resolve(); }));
+  const browser = new WebSocket("ws://127.0.0.1:" + (wss.address() as { port: number }).port);
+  browser.on("error", () => {});
+  cleanup.push(async () => { browser.terminate(); relay?.terminate(); await new Promise<void>(resolve => wss.close(() => resolve())); });
+  await accepted;
+  const beforeLookups = current.sourceLookups;
+  const pending = (mode === "test" ? handleC2SRelayTest : handleC2SRelayOpen)(relay, {
+    type: mode === "test" ? "test" : "open", targetHost: "127.0.0.1", targetPort: server.echoPort,
+    tunnelConfig: { sourceHostId: 7, mode: mode === "test" ? "local" : mode,
+      sourcePort: 12345, endpointPort: server.echoPort },
+  }, "requester");
+  const refused = expect(pending).rejects.toThrow("TUNNEL_CONNECTION_CANCELLED");
+  try {
+    await vi.waitFor(() => expect(current.sourceLookups).toBeGreaterThan(beforeLookups));
+    const closed = new Promise<void>(resolve => relay.once("close", () => resolve()));
+    browser.close();
+    await closed;
+    release();
+    await refused;
+    expect(server.clients()).toBe(0);
+    expect(server.auth()).toBe(0);
+    expect(server.forwards()).toBe(0);
+    expect(service.list("requester").requests).toEqual([]);
+  } finally { release(); current.resolveGate = undefined; await pending.catch(() => {}); }
+}, 10000);
+
+it.each([
+  ["open-local", 65536], ["open-dynamic", 65536],
+  ["test-local", 65536], ["test-local", 0], ["test-local", 1.5],
+  ["test-remote", 65536], ["test-remote", 0], ["test-remote", 1.5],
+] as const)("rejects %s port %s before starting SSH", async (path, port) => {
+  trust();
+  current.resolvedHost = { id: 7, userId: "requester", ip: "127.0.0.1", port: 22,
+    username: "fixture", authType: "password", password: "fixture-only" };
+  const connect = vi.spyOn(Client.prototype, "connect").mockImplementation(() => { throw Error("SSH_STARTED_FOR_INVALID_PORT"); });
+  const relay = Object.assign(new PassThrough(), { readyState: WebSocket.OPEN, send: vi.fn() }) as unknown as WebSocket;
+  const mode = path.endsWith("remote") ? "remote" : path.endsWith("dynamic") ? "dynamic" : "local";
+  try {
+    await expect((path.startsWith("test") ? handleC2SRelayTest : handleC2SRelayOpen)(relay, {
+      type: path.startsWith("test") ? "test" : "open", targetHost: "127.0.0.1", targetPort: port,
+      tunnelConfig: { sourceHostId: 7, mode, sourcePort: port, endpointPort: port },
+    }, "requester")).rejects.toThrow(/Invalid (client tunnel target|remote target port|remote port)/);
+    expect(connect).not.toHaveBeenCalled();
+  } finally { connect.mockRestore(); relay.emit("close"); }
+});
+
+it("refuses C2S SSH when host permission is revoked during source lookup", async () => {
+  trust();
+  current.resolvedHost = { id: 7, userId: "requester", ip: "127.0.0.1", port: 22,
+    username: "fixture", authType: "password", password: "fixture-only" };
+  let release!: () => void;
+  current.resolveGate = new Promise<void>(resolve => { release = resolve; });
+  const before = current.sourceLookups;
+  const connect = vi.spyOn(Client.prototype, "connect").mockImplementation(() => { throw Error("UNAUTHORIZED_SSH_STARTED"); });
+  const relay = Object.assign(new PassThrough(), { readyState: WebSocket.OPEN, send: vi.fn() }) as unknown as WebSocket;
+  const pending = handleC2SRelayTest(relay, { type: "test", tunnelConfig: { sourceHostId: 7, mode: "local", endpointPort: 22 } }, "requester");
+  const rejected = expect(pending).rejects.toThrow("Access denied to this host");
+  try {
+    await vi.waitFor(() => expect(current.sourceLookups).toBeGreaterThan(before));
+    current.accessAllowed = false;
+    release();
+    await rejected;
+    expect(connect).not.toHaveBeenCalled();
+  } finally { release(); await pending.catch(() => {}); current.resolveGate = undefined; current.accessAllowed = true; connect.mockRestore(); relay.emit("close"); }
+});
+
+it.each(["test", "local", "dynamic", "remote"] as const)("%s closes authenticated C2S without forwarding when permission is revoked", async mode => {
+  const service = trust(), server = await ssh();
+  current.resolvedHost = { id: 7, userId: "requester", ip: "127.0.0.1", port: server.port,
+    username: "fixture", authType: "password", password: "fixture-only" };
+  current.revokeAfterAuth = () => server.authenticated() > 0;
+  const relay = Object.assign(new PassThrough(), { readyState: WebSocket.OPEN, send: vi.fn() }) as unknown as WebSocket;
+  const outgoing = vi.spyOn(Client.prototype, "forwardOut");
+  const incoming = vi.spyOn(Client.prototype, "forwardIn");
+  const pending = (mode === "test" ? handleC2SRelayTest : handleC2SRelayOpen)(relay, { type: mode === "test" ? "test" : "open", targetHost: "127.0.0.1", targetPort: server.echoPort, tunnelConfig: {
+    sourceHostId: 7, mode: mode === "test" ? "local" : mode, sourcePort: 12345, endpointPort: server.echoPort,
+  } }, "requester");
+  const rejected = expect(pending).rejects.toThrow("Access denied to this host");
+  try {
+    await vi.waitFor(() => expect(service.list("requester").requests).toHaveLength(1));
+    await decide(service);
+    await rejected;
+    expect(server.authenticated()).toBe(1);
+    expect(server.forwards()).toBe(0);
+    expect(outgoing).not.toHaveBeenCalled();
+    expect(incoming).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(server.clients()).toBe(0));
+  } finally { outgoing.mockRestore(); incoming.mockRestore(); current.revokeAfterAuth = undefined; relay.emit("close"); await pending.catch(() => {}); }
+}, 10000);
+
+it.each(["local", "dynamic", "remote"] as const)("%s releases authenticated SSH after the server refuses forwarding", async mode => {
+  const service = trust(), source = await matrixSsh(), deniedPort = await matrixPort();
+  current.resolvedHost = { id: 7, userId: "requester", ip: "127.0.0.1", port: source.port,
+    username: "fixture", authType: "password", password: "fixture-only" };
+  const send = vi.fn();
+  const relay = Object.assign(new PassThrough(), { readyState: WebSocket.OPEN, send }) as unknown as WebSocket;
+  const pending = handleC2SRelayOpen(relay, { type: "open", targetHost: "127.0.0.1", targetPort: deniedPort,
+    tunnelConfig: { sourceHostId: 7, mode, sourcePort: deniedPort, endpointPort: deniedPort, targetHost: "127.0.0.1" },
+  }, "requester");
+  const rejected = expect(pending).rejects.toThrow();
+  try {
+    await decide(service);
+    await rejected;
+    expect(source.stats()).toEqual({ forwards: 0, binds: 0, execs: 0, denied: 1 });
+    await vi.waitFor(() => expect(source.clients()).toBe(0));
+    expect(send.mock.calls.some(args => String(args[0]).includes('"type":"ready"'))).toBe(false);
+    expect(service.list("requester").requests).toEqual([]);
+  } finally { relay.emit("close"); await pending.catch(() => {}); }
+}, 10000);
+
+it("reconnects a live S2S tunnel with a configured retry and forwards data again", async () => {
+  const service = trust(),
+    source = await matrixSsh(),
+    port = await matrixPort();
+  current.dns.mockResolvedValue(undefined);
+  current.resolvedHost = {};
+  const c: TunnelConfig = {
+    ...config(source.port),
+    name: "drop-" + port,
+    scope: "s2s",
+    mode: "local",
+    sourcePort: port,
+    endpointPort: source.echoPort,
+    endpointHost: "127.0.0.1",
+    targetHost: "127.0.0.1",
+    sourcePassword: "fixture-only",
+    maxRetries: 1,
+    retryInterval: 100,
+  };
+  tunnelConfigs.set(c.name, c);
+  cleanup.push(async () => {
+    manualDisconnects.add(c.name);
+    await cleanupTunnelResources(c.name, true);
+    tunnelConfigs.delete(c.name);
+    connectionStatus.delete(c.name);
+  });
+  await connectSSHTunnel(c);
+  await decide(service);
+  await vi.waitFor(() =>
+    expect(connectionStatus.get(c.name)?.connected).toBe(true),
+  );
+  const previous = activeTunnels.get(c.name);
+  expect(previous).toBeDefined();
+  source.disconnectClients();
+  await vi.waitFor(() => {
+    expect(activeTunnels.get(c.name)).toBeDefined();
+    expect(activeTunnels.get(c.name)).not.toBe(previous);
+    expect(connectionStatus.get(c.name)?.connected).toBe(true);
+  }, { timeout: 5000 });
+  const socket = connectTcp(port, "127.0.0.1");
+  socket.on("error", () => {});
+  cleanup.push(() => socket.destroy());
+  const payload = Buffer.from("重新连接后的转发\0");
+  const received = matrixRead(socket, payload.length);
+  socket.once("connect", () => socket.write(payload));
+  expect(await received).toEqual(payload);
+  expect(service.list("requester").requests).toEqual([]);
+  manualDisconnects.add(c.name);
+  await cleanupTunnelResources(c.name, true);
+  await vi.waitFor(() => expect(socket.destroyed).toBe(true));
+  expect(activeRetryTimers.has(c.name)).toBe(false);
+  expect(activeTunnelRuntimes.has(c.name)).toBe(false);
+}, 10000);
+
+it("limits real remote C2S child streams and admits a replacement after close", async () => {
+  const service = trust(), source = await matrixSsh(), port = await matrixPort();
+  source.bindAllowed.add(port);
+  current.resolvedHost = { id: 7, userId: "requester", ip: "127.0.0.1", port: source.port,
+    username: "fixture", authType: "password", password: "fixture-only" };
+  const events: Array<{type: string; streamId?: string; data?: string}> = [];
+  const relay = Object.assign(new PassThrough(), { readyState: WebSocket.OPEN, bufferedAmount: 0, close: () => { Object.assign(relay, { readyState: WebSocket.CLOSED }); relay.emit("close"); }, send: (raw: string) => events.push(JSON.parse(raw)) }) as unknown as WebSocket;
+  const opening = handleC2SRelayOpen(relay, { type: "open", tunnelConfig: {
+    sourceHostId: 7, mode: "remote", sourcePort: port, endpointPort: source.echoPort, targetHost: "127.0.0.1",
+  } }, "requester");
+  void opening.catch(() => {});
+  const sockets: Socket[] = [];
+  const dial = () => { const s=connectTcp(port,"127.0.0.1");s.on("error",()=>{});sockets.push(s);return s; };
+  try {
+    await decide(service); await opening;
+    for(let i=0;i<32;i++) { dial(); await vi.waitFor(()=>expect(events.filter(e=>e.type==="connection")).toHaveLength(i+1)); }
+    const excess = dial(); await vi.waitFor(()=>expect(excess.destroyed).toBe(true));
+    expect(events.filter(e=>e.type==="connection")).toHaveLength(32);
+    sockets[0].write("existing-stream-alive");
+    await vi.waitFor(()=>expect(events.some(e=>e.type==="data"&&Buffer.from(e.data!,"base64").toString()==="existing-stream-alive")).toBe(true));
+    sockets[0].destroy();
+    await vi.waitFor(()=>expect(events.some(e=>e.type==="close")).toBe(true));
+    dial(); await vi.waitFor(()=>expect(events.filter(e=>e.type==="connection")).toHaveLength(33));
+  } finally {
+    for(const s of sockets)s.destroy(); relay.close(); await opening.catch(()=>{});
+    await vi.waitFor(()=>expect(source.clients()).toBe(0));
+  }
+}, 15000);
+
+it.each([["single-host","local"],["single-host","remote"],["two-host","local"],["two-host","remote"]] as const)("bounds %s %s S2S data connections", async (scope,mode)=>{
+    const service = trust(),
+      endpoint = await matrixSsh(),
+      source = await matrixSsh(),
+      port = await matrixPort();
+    source.allowed.add(endpoint.port);
+    source.bindAllowed.add(port);
+    endpoint.bindAllowed.add(port);
+    const pendingSource = open(source.port, "source");
+    await decide(service);
+    const sourceClient = await pendingSource;
+    const targetPort =
+      scope === "single-host"
+        ? source.echoPort
+        : mode === "remote"
+          ? source.echoPort
+          : endpoint.echoPort;
+    const c: TunnelConfig = {
+      ...config(source.port),
+      name: `capacity-${scope}-${mode}-${port}`,
+      scope: "s2s",
+      mode,
+      sourcePassword: "fixture-only",
+      endpointPassword: "fixture-only",
+      endpointHost: scope === "single-host" ? "127.0.0.1" : "endpoint",
+      endpointSSHPort: endpoint.port,
+      sourcePort: scope === "two-host" && mode === "remote" ? targetPort : port,
+      endpointPort:
+        scope === "two-host" && mode === "remote" ? port : targetPort,
+      bindHost: "127.0.0.1",
+      targetHost: "127.0.0.1",
+      maxRetries: 0,
+      autoStart: false,
+    };
+    tunnelConfigs.set(c.name, c);
+    cleanup.push(async () => {
+      manualDisconnects.add(c.name);
+      await cleanupTunnelResources(c.name, true);
+      tunnelConfigs.delete(c.name);
+      connectionStatus.delete(c.name);
+    });
+    if (scope === "single-host") await establishDirectTunnel(sourceClient, c);
+    else {
+      const pending = establishManagedS2STunnel(sourceClient, c, {
+        password: "fixture-only",
+        authMethod: "password",
+      });
+      void pending.catch(() => {});
+      await decide(service);
+      await pending;
+    }
+    expect(activeTunnelRuntimes.get(c.name)?.bindPort).toBe(port);
+
+    const clients: Socket[] = [];
+    const dial = () => { const socket=connectTcp(port,"127.0.0.1");socket.on("error",()=>{});clients.push(socket);return socket; };
+    try {
+      for(let i=0;i<32;i++) {
+        const socket=dial(),received=matrixRead(socket,1);
+        socket.once("connect",()=>socket.write("x"));
+        expect((await received).toString()).toBe("x");
+      }
+      const extra=dial();await vi.waitFor(()=>expect(extra.destroyed).toBe(true));
+      const stillLive=matrixRead(clients[0],1);clients[0].write("y");expect((await stillLive).toString()).toBe("y");
+      manualDisconnects.add(c.name);await cleanupTunnelResources(c.name,true);
+      await vi.waitFor(()=>expect(clients.every(socket=>socket.destroyed)).toBe(true));
+      expect(activeTunnelRuntimes.has(c.name)).toBe(false);
+      const reused=createServer();await new Promise<void>((resolve,reject)=>{reused.once("error",reject);reused.listen(port,"127.0.0.1",resolve);});await new Promise<void>(resolve=>reused.close(()=>resolve()));
+    } finally { for(const socket of clients)socket.destroy(); }
+},30000);
+
+it("enforces S2S name capacity while 32 real manager starts wait on DNS", async () => {
+  const service=trust(),server=await ssh(),port=await matrixPort();
+  let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
+  current.dns.mockClear();current.dns.mockImplementation(()=>gate);
+  const configs=Array.from({length:33},(_,i)=>({...config(server.port),name:"pending-capacity-"+port+"-"+i,scope:"s2s" as const,mode:"local" as const,sourcePort:port,endpointPort:server.echoPort,endpointHost:"127.0.0.1",sourcePassword:"fixture-only",maxRetries:0}));
+  configs.forEach(trackedManager);
+  const starts=configs.slice(0,32).map(c=>connectSSHTunnel(c));
+  starts.forEach(p=>void p.catch(()=>{}));
+  try {
+    await vi.waitFor(()=>expect(current.dns).toHaveBeenCalledTimes(32));
+    await expect(connectSSHTunnel(configs[32])).rejects.toThrow("S2S_TUNNEL_LIMIT");
+    expect(server.clients()).toBe(0);
+    for(const c of configs.slice(0,32))await cleanupTunnelResources(c.name,true);
+    release();await Promise.all(starts);
+    current.dns.mockResolvedValue(undefined);
+    await connectSSHTunnel(configs[32]);await decide(service);
+    await vi.waitFor(()=>expect(connectionStatus.get(configs[32].name)?.connected).toBe(true));
+    manualDisconnects.add(configs[32].name);await cleanupTunnelResources(configs[32].name,true);
+    await vi.waitFor(()=>expect(server.clients()).toBe(0));
+  } finally {release();await Promise.allSettled(starts);current.dns.mockResolvedValue(undefined);}
+},15000);
+
+it("releases a DNS-failed start without a late connection timeout or retry", async () => {
+  trust();vi.useFakeTimers();
+  current.dns.mockClear();current.dns.mockRejectedValue(Error("fixture-dns-failure"));
+  const c: TunnelConfig = { ...config(2222), name:"dns-failure-no-late-retry", scope:"s2s", mode:"local", sourcePassword:"fixture-only", maxRetries:3, retryInterval:100 };
+  trackedManager(c);
+  const timers = vi.getTimerCount();
+  try {
+    await connectSSHTunnel(c);
+    expect(connectionStatus.get(c.name)).toMatchObject({status:CONNECTION_STATES.FAILED,reason:"fixture-dns-failure"});
+    for (let i=1;i<40;i++) {
+      const other={...c,name:c.name+"-"+i};trackedManager(other);
+      await connectSSHTunnel(other);
+      expect(connectionStatus.get(other.name)?.reason).toBe("fixture-dns-failure");
+    }
+    expect(vi.getTimerCount()).toBe(timers);
+    await vi.advanceTimersByTimeAsync(61000);
+    expect(current.dns).toHaveBeenCalledTimes(40);
+    expect(activeRetryTimers.has(c.name)).toBe(false);
+    expect(tunnelConnecting.has(c.name)).toBe(false);
+    expect(connectionStatus.get(c.name)?.reason).toBe("fixture-dns-failure");
+  } finally {current.dns.mockResolvedValue(undefined);vi.useRealTimers();}
 });

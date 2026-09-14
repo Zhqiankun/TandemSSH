@@ -12,7 +12,19 @@ import {
 import i18n from "../../i18n/i18n";
 import type { TaskView } from "@/types/collaboration-task";
 vi.mock("@/api/task-history-api", () => ({
-  taskHistoryApi: { query: vi.fn(), detail: vi.fn(), export: vi.fn() },
+  taskHistoryApi: {
+    query: vi.fn(),
+    detail: vi.fn(),
+    export: vi.fn(),
+    storage: async () => ({
+      directory: "fixture",
+      files: 0,
+      bytes: 0,
+      retentionDays: 7,
+      maxBytes: 104857600,
+    }),
+    cleanup: vi.fn(),
+  },
 }));
 vi.mock("@/api/collaboration-api", () => ({
   collaborationApi: { taskPage: vi.fn(), operationDetail: vi.fn() },
@@ -222,7 +234,10 @@ it("cancels the all-records export even when the new task filter is literally al
   fireEvent.click(screen.getByRole("button", { name: "导出全部保留记录" }));
   await waitFor(() => expect(taskHistoryApi.export).toHaveBeenCalledOnce());
   const signal = vi.mocked(taskHistoryApi.export).mock.calls[0][1];
-  fireEvent.change(screen.getByRole("textbox"), { target: { value: "all" } });
+  fireEvent.change(
+    screen.getByRole("textbox", { name: "任务 ID（留空查看全部）" }),
+    { target: { value: "all" } },
+  );
   fireEvent.click(screen.getByRole("button", { name: "筛选" }));
   await waitFor(() => expect(signal.aborted).toBe(true));
   await act(async () =>

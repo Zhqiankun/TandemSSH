@@ -23,8 +23,10 @@ export async function fileSftpFixture(
       client: ServerConnection,
     ) => void;
     attachShell?: (session: ServerSession) => void | (() => void);
-    beforeRead?: () => Promise<void>;
-    beforeWrite?: () => Promise<void>;
+    beforeRead?: (remote: string) => Promise<void>;
+    beforeWrite?: (remote: string) => Promise<void>;
+    /** Fault injection: commit the rename, then lose its acknowledgement. */
+    disconnectAfterRename?: (from: string, to: string) => boolean;
   } = {},
 ) {
   const shellClosers = new Set<() => void>();
@@ -219,7 +221,7 @@ export async function fileSftpFixture(
             "READ",
             (id: number, h: Buffer, offset: number, length: number) =>
               run(id, async () => {
-                await options.beforeRead?.();
+                await options.beforeRead?.(get(h).remote);
                 const b = Buffer.alloc(Math.min(length, 32768));
                 const r = await get(h).file.read(b, 0, b.length, offset);
                 if (r.bytesRead) stream.data(id, b.subarray(0, r.bytesRead));
@@ -230,7 +232,7 @@ export async function fileSftpFixture(
             "WRITE",
             (id: number, h: Buffer, offset: number, b: Buffer) =>
               run(id, async () => {
-                await options.beforeWrite?.();
+                await options.beforeWrite?.(get(h).remote);
                 writes++;
                 const r = await get(h).file.write(b, 0, b.length, offset);
                 if (r.bytesWritten !== b.length) throw Error("short write");
@@ -301,6 +303,10 @@ export async function fileSftpFixture(
                 modes.delete(from);
               }
               renames++;
+              if (options.disconnectAfterRename?.(from, to)) {
+                client.end();
+                return;
+              }
               stream.status(id, 0);
             }),
           );

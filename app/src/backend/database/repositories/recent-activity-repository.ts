@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import { recentActivity } from "../db/schema.js";
 import type { DatabaseContext } from "./database-context.js";
 import { rowsAffected } from "./mutation-result.js";
@@ -17,12 +17,26 @@ export class RecentActivityRepository {
     userId: string,
     limit: number,
   ): Promise<RecentActivityRecord[]> {
-    return this.context.drizzle
+    const rows = await this.context.drizzle
       .select()
       .from(recentActivity)
       .where(eq(recentActivity.userId, userId))
-      .orderBy(desc(recentActivity.timestamp))
+      .orderBy(
+        this.context.dialect === "sqlite"
+          ? desc(sql`julianday(${recentActivity.timestamp})`)
+          : desc(recentActivity.timestamp),
+        desc(recentActivity.id),
+      )
       .limit(limit);
+    if (this.context.dialect !== "sqlite") return rows;
+    return rows.map((row) => ({
+      ...row,
+      timestamp: /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(
+        row.timestamp,
+      )
+        ? row.timestamp.replace(" ", "T") + "Z"
+        : row.timestamp,
+    }));
   }
 
   async create(
@@ -39,7 +53,12 @@ export class RecentActivityRepository {
       .select({ id: recentActivity.id })
       .from(recentActivity)
       .where(eq(recentActivity.userId, userId))
-      .orderBy(desc(recentActivity.timestamp));
+      .orderBy(
+        this.context.dialect === "sqlite"
+          ? desc(sql`julianday(${recentActivity.timestamp})`)
+          : desc(recentActivity.timestamp),
+        desc(recentActivity.id),
+      );
 
     const idsToDelete = rows
       .slice(keepCount)

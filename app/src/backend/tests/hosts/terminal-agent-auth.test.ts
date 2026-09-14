@@ -258,3 +258,70 @@ it.each(["sha256", "sha512"] as const)(
     expect(key.verify(data, signature, hash)).toBe(true);
   },
 );
+
+it.each([false, true])(
+  "rejects signing with an unselected identity (options=%s)",
+  (withOptions) => {
+    const make = () =>
+      ssh2Pkg.utils.parseKey(
+        generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({
+          type: "pkcs1",
+          format: "pem",
+        }),
+      ) as ParsedKey;
+    const selected = make(),
+      other = make(),
+      inner = { getIdentities: vi.fn(), getStream: vi.fn(), sign: vi.fn() };
+    const filtered = new FilteredAgent(
+      inner as unknown as ConstructorParameters<typeof FilteredAgent>[0],
+      selected.getPublicSSH(),
+    );
+    const callback = vi.fn(),
+      data = Buffer.from("authentication challenge");
+    if (withOptions) filtered.sign(other, data, { hash: "sha256" }, callback);
+    else filtered.sign(other, data, callback);
+    expect(inner.sign).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback.mock.calls[0][0]).toMatchObject({
+      message: "SSH_AGENT_IDENTITY_MISMATCH",
+    });
+    filtered.sign(selected, data, { hash: "sha256" }, callback);
+    expect(inner.sign).toHaveBeenCalledWith(
+      selected,
+      data,
+      { hash: "sha256" },
+      callback,
+    );
+  },
+);
+
+it("accepts the selected public key as parsed key, wire bytes and OpenSSH text", () => {
+  const selected = ssh2Pkg.utils.parseKey(
+    generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({
+      type: "pkcs1",
+      format: "pem",
+    }),
+  ) as ParsedKey;
+  const inner = { getIdentities: vi.fn(), getStream: vi.fn(), sign: vi.fn() },
+    filtered = new FilteredAgent(
+      inner as unknown as ConstructorParameters<typeof FilteredAgent>[0],
+      selected.getPublicSSH(),
+    );
+  const data = Buffer.from("challenge"),
+    callback = vi.fn();
+  for (const value of [
+    selected,
+    selected.getPublicSSH(),
+    "ssh-rsa " + selected.getPublicSSH().toString("base64") + " fixture",
+  ]) {
+    filtered.sign(value, data, { hash: "sha512" }, callback);
+    expect(inner.sign).toHaveBeenLastCalledWith(
+      value,
+      data,
+      { hash: "sha512" },
+      callback,
+    );
+  }
+  expect(callback).not.toHaveBeenCalled();
+  expect(inner.sign).toHaveBeenCalledTimes(3);
+});

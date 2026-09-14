@@ -35,6 +35,7 @@ export function DownloadTreeDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const [failedStart, setFailedStart] = useState(false);
   const [source, setSource] = useState<DownloadTreePreview>();
   const [target, setTarget] = useState<LocalDownloadTreePreview>();
   const [names, setNames] = useState<Record<string, string>>({});
@@ -176,6 +177,7 @@ export function DownloadTreeDialog({
       ),
     );
     setDirty(false);
+    setFailedStart(false);
   };
   const choose = async () => {
     if (!native || !source) return;
@@ -237,6 +239,8 @@ export function DownloadTreeDialog({
       if (refs.current.live) {
         setError(downloadErrorCode(e));
         setBusy("");
+        setDirty(true);
+        setFailedStart(true);
       } else await release();
     }
   };
@@ -314,7 +318,11 @@ export function DownloadTreeDialog({
         )}
         {dirty && (
           <p role="status" className="text-sm text-amber-500">
-            {t("tandem.downloadTree.dirty")}
+            {t(
+              failedStart
+                ? "tandem.downloadTree.recheckAfterFailure"
+                : "tandem.downloadTree.dirty",
+            )}
           </p>
         )}
         {target && (

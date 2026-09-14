@@ -1,3 +1,4 @@
+import { aiSessionKeys } from "./ai-session-keys.js";
 import { randomUUID } from "node:crypto";
 import { FieldCrypto } from "../../utils/field-crypto.js";
 import { and, desc, eq, lt, or } from "drizzle-orm";
@@ -15,7 +16,9 @@ import { formatSqlTimestamp } from "./sql-timestamp.js";
 
 const now = (): string => formatSqlTimestamp(new Date());
 
-export type AiProviderRecord = typeof aiProviders.$inferSelect;
+export type AiProviderRecord = typeof aiProviders.$inferSelect & {
+  apiKeyStorage?: "memory" | "encrypted" | "none";
+};
 export type AiConversationRecord = typeof aiConversations.$inferSelect;
 export type AiMessageRecord = typeof aiMessages.$inferSelect;
 export type AiProposalRecord = typeof aiProposals.$inferSelect;
@@ -26,6 +29,7 @@ export interface AiProviderInput {
   label: string;
   baseUrl?: string | null;
   apiKey?: string | null;
+  apiKeyStorage?: "memory" | "encrypted";
   defaultModel?: string | null;
   enabled?: boolean;
 }
@@ -102,6 +106,18 @@ export class AiRepository {
     }
   }
 
+  private publicProvider(
+    row: typeof aiProviders.$inferSelect,
+  ): AiProviderRecord {
+    const memory = aiSessionKeys.get(row.userId, row.id);
+    return {
+      ...row,
+      apiKey: null,
+      apiKeyPrefix: memory ? apiKeyPrefix(memory) : row.apiKeyPrefix,
+      apiKeyStorage: memory ? "memory" : row.apiKey ? "encrypted" : "none",
+    };
+  }
+
   // --- providers ---
 
   /** Never includes the key material; callers get the masked prefix only. */
@@ -112,7 +128,7 @@ export class AiRepository {
       .where(eq(aiProviders.userId, userId))
       .orderBy(aiProviders.id);
 
-    return rows.map((row) => ({ ...row, apiKey: null }));
+    return rows.map((row) => this.publicProvider(row));
   }
 
   async findProvider(
@@ -126,7 +142,7 @@ export class AiRepository {
       .limit(1);
 
     if (!rows[0]) return null;
-    return { ...rows[0], apiKey: null };
+    return this.publicProvider(rows[0]);
   }
 
   /**
@@ -145,6 +161,9 @@ export class AiRepository {
 
     const row = rows[0];
     if (!row) return null;
+    const memory = aiSessionKeys.get(userId, id);
+    if (memory !== undefined)
+      return { ...row, apiKey: memory, apiKeyStorage: "memory" };
     if (!row.apiKey) return row;
     return {
       ...row,
@@ -153,22 +172,35 @@ export class AiRepository {
   }
 
   async createProvider(input: AiProviderInput): Promise<AiProviderRecord> {
-    const encryptedKey = input.apiKey
-      ? this.encryptApiKey(input.apiKey, input.userId, randomUUID())
-      : null;
-    const [created] = await insertReturning(this.context, aiProviders, {
-      userId: input.userId,
-      providerType: input.providerType,
-      label: input.label,
-      baseUrl: input.baseUrl ?? null,
-      apiKey: encryptedKey,
-      apiKeyPrefix: apiKeyPrefix(input.apiKey),
-      defaultModel: input.defaultModel ?? null,
-      enabled: input.enabled ?? true,
-    });
+    if (input.apiKey) aiSessionKeys.validate(input.apiKey);
+    const memory = input.apiKeyStorage === "memory";
+    const pendingKey =
+      memory && input.apiKey
+        ? aiSessionKeys.prepare(input.userId, input.apiKey)
+        : undefined;
+    try {
+      const encryptedKey =
+        input.apiKey && !memory
+          ? this.encryptApiKey(input.apiKey, input.userId, randomUUID())
+          : null;
+      const [created] = await insertReturning(this.context, aiProviders, {
+        userId: input.userId,
+        providerType: input.providerType,
+        label: input.label,
+        baseUrl: input.baseUrl ?? null,
+        apiKey: encryptedKey,
+        apiKeyPrefix: memory ? null : apiKeyPrefix(input.apiKey),
+        defaultModel: input.defaultModel ?? null,
+        enabled: input.enabled ?? true,
+      });
 
-    await this.afterWrite();
-    return { ...created, apiKey: null };
+      pendingKey?.bind(created.id);
+      await this.afterWrite();
+      pendingKey?.commit(created.id);
+      return this.publicProvider(created);
+    } finally {
+      pendingKey?.discard();
+    }
   }
 
   async updateProvider(
@@ -179,33 +211,52 @@ export class AiRepository {
     const existing = await this.findProvider(id, userId);
     if (!existing) return null;
 
-    const updates: Record<string, unknown> = { updatedAt: now() };
-    if (input.providerType !== undefined)
-      updates.providerType = input.providerType;
-    if (input.label !== undefined) updates.label = input.label;
-    if (input.baseUrl !== undefined) updates.baseUrl = input.baseUrl;
-    if (input.defaultModel !== undefined)
-      updates.defaultModel = input.defaultModel;
-    if (input.enabled !== undefined) updates.enabled = input.enabled;
+    if (input.apiKey) aiSessionKeys.validate(input.apiKey);
+    const memory = input.apiKeyStorage === "memory";
+    const pendingKey =
+      memory && input.apiKey
+        ? aiSessionKeys.prepare(userId, input.apiKey, id)
+        : undefined;
+    try {
+      const updates: Record<string, unknown> = { updatedAt: now() };
+      if (input.providerType !== undefined)
+        updates.providerType = input.providerType;
+      if (input.label !== undefined) updates.label = input.label;
+      if (input.baseUrl !== undefined) updates.baseUrl = input.baseUrl;
+      if (input.defaultModel !== undefined)
+        updates.defaultModel = input.defaultModel;
+      if (input.enabled !== undefined) updates.enabled = input.enabled;
 
-    // An empty string clears the key; undefined leaves it untouched.
-    if (input.apiKey !== undefined) {
-      if (input.apiKey) {
-        updates.apiKey = this.encryptApiKey(input.apiKey, userId, id);
-        updates.apiKeyPrefix = apiKeyPrefix(input.apiKey);
-      } else {
-        updates.apiKey = null;
-        updates.apiKeyPrefix = null;
+      // An empty string clears the key; undefined leaves it untouched.
+      if (input.apiKey !== undefined) {
+        if (input.apiKey && !memory) {
+          updates.apiKey = this.encryptApiKey(input.apiKey, userId, id);
+          updates.apiKeyPrefix = apiKeyPrefix(input.apiKey);
+        } else {
+          updates.apiKey = null;
+          updates.apiKeyPrefix = null;
+        }
       }
+
+      if (pendingKey) pendingKey.bind(id);
+      else if (
+        input.apiKey !== undefined ||
+        input.baseUrl !== undefined ||
+        input.providerType !== undefined ||
+        input.enabled === false
+      )
+        aiSessionKeys.remove(userId, id);
+      await this.context.drizzle
+        .update(aiProviders)
+        .set(updates)
+        .where(and(eq(aiProviders.id, id), eq(aiProviders.userId, userId)));
+
+      await this.afterWrite();
+      pendingKey?.commit(id);
+      return this.findProvider(id, userId);
+    } finally {
+      pendingKey?.discard();
     }
-
-    await this.context.drizzle
-      .update(aiProviders)
-      .set(updates)
-      .where(and(eq(aiProviders.id, id), eq(aiProviders.userId, userId)));
-
-    await this.afterWrite();
-    return this.findProvider(id, userId);
   }
 
   async deleteProvider(id: number, userId: string): Promise<boolean> {
@@ -214,7 +265,10 @@ export class AiRepository {
       .where(and(eq(aiProviders.id, id), eq(aiProviders.userId, userId)));
 
     const deleted = rowsAffected(result) > 0;
-    if (deleted) await this.afterWrite();
+    if (deleted) {
+      aiSessionKeys.remove(userId, id);
+      await this.afterWrite();
+    }
     return deleted;
   }
 

@@ -16,6 +16,10 @@ export const backupTunnelSchema = z.object({
   maxRetries: z.number().int().min(0).max(100).default(0),
   retryInterval: z.number().int().min(0).max(3600000).default(5000),
 });
+export const backupLocalTunnelSchema = backupTunnelSchema.extend({
+  scope: z.literal("c2s"),
+  displayName: z.string().max(512).optional(),
+});
 export const backupNetworkSchema = z.object({
   jumpHostRefs: z.array(z.string().uuid()).max(10).default([]),
   tunnels: z.array(backupTunnelSchema).max(100).default([]),
@@ -31,6 +35,7 @@ export type BackupPreset = z.infer<typeof backupPresetSchema>;
 export function validateNetworkReferences(
   hosts: Array<{ ref: string; network?: BackupNetwork }>,
   presets: BackupPreset[],
+  localTunnels: BackupTunnel[] = [],
 ) {
   const known = new Map(hosts.map((h) => [h.ref, h]));
   const requireRef = (ref: string) => {
@@ -44,6 +49,10 @@ export function validateNetworkReferences(
         throw Error("BACKUP_HOST_REFERENCE");
       if (tunnel.endpointHostRef) requireRef(tunnel.endpointHostRef);
     }
+  }
+  for (const tunnel of localTunnels) {
+    requireRef(tunnel.sourceHostRef);
+    if (tunnel.endpointHostRef) throw Error("BACKUP_HOST_REFERENCE");
   }
   for (const preset of presets)
     for (const tunnel of preset.tunnels) {
@@ -133,9 +142,23 @@ export function projectNetwork(
             ? byId(t.sourceHostId)
             : undefined,
       endpoint = scope === "s2s" ? resolveEndpoint(t.endpointHost) : undefined;
+    // A saved reviewed identity must not silently follow a recycled host ID.
+    const identity = t.sourceIdentity as Record<string, unknown> | null;
+    const hasIdentity =
+      Object.hasOwn(t, "sourceIdentity") || t.relayOrigin !== undefined;
+    const identityMatches =
+      !hasIdentity ||
+      (t.relayOrigin === "local" &&
+        identity !== null &&
+        typeof identity === "object" &&
+        !Array.isArray(identity) &&
+        identity.ip === source?.ip &&
+        identity.port === source?.port &&
+        identity.username === source?.username);
     const sourceHostRef = source && refs.get(source),
       endpointHostRef = endpoint && refs.get(endpoint);
     if (
+      (scope === "c2s" && !identityMatches) ||
       (!clientPreset && source !== host) ||
       !sourceHostRef ||
       (scope === "s2s" &&
@@ -179,7 +202,7 @@ export function restoreTunnel(t: BackupTunnel, ids: Map<string, number>) {
   return {
     scope: t.scope,
     mode: t.mode,
-    tunnelType: t.mode === "remote" ? "remote" : "local",
+    tunnelType: t.mode === "remote" ? ("remote" as const) : ("local" as const),
     sourceHostId,
     endpointHost:
       t.scope === "c2s"

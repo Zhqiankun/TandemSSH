@@ -78,6 +78,24 @@ it.runIf(!!process.env.TANDEM_LINUX_MANIFEST)(
         expect((stat.mode & 0o7777).toString(8).padStart(4, "0")).toBe(mode);
       }
     }
+    for (const target of [file, directory]) {
+      const link = target + "-link";
+      await new Promise<void>((resolve, reject) =>
+        f.sftp.symlink(target, link, (error) =>
+          error ? reject(error) : resolve(),
+        ),
+      );
+      const before = await f.io.stat(target);
+      for (const requestPath of target === directory
+        ? [link, link + "/"]
+        : [link]) {
+        expect(await change(requestPath, "0777")).toEqual({
+          status: 409,
+          body: { error: "FILE_SYMLINK_TARGET_REQUIRED" },
+        });
+        expect((await f.io.stat(target)).mode).toBe(before.mode);
+      }
+    }
     expect(await f.exists(f.root + "/SHOULD_NOT_EXIST")).toBe(false);
     expect(await f.exists("/home/alpine/SHOULD_NOT_EXIST")).toBe(false);
     expect((await change(file, "888")).status).toBe(400);

@@ -51,6 +51,10 @@ function c2sErrorMessage(
   t: ReturnType<typeof useTranslation>["t"],
 ) {
   const message = getErrorMessage(error, t("tunnels.manualControlError"));
+  if (message === "C2S_MESSAGE_TOO_LARGE" || /max(?:imum)? payload size exceeded/i.test(message)) return t("tunnels.c2sMessageTooLarge");
+  if (message === "Access denied to this host") return t("tunnels.hostAccessDenied");
+  if (["Invalid local port", "Invalid remote port", "Invalid remote target port", "Invalid client tunnel target"].includes(message))
+    return t("tunnels.invalidForwardPort");
   if (/eaddrinuse|already uses|address already in use/i.test(message))
     return t("tunnels.listenPortOccupied");
   if (/unable to bind|remote port is not available/i.test(message))
@@ -483,7 +487,7 @@ export function C2STunnelPresetManager(): React.ReactElement {
     const result =
       await window.electronAPI.saveC2STunnelConfig(normalizedConfig);
     if (!result.success)
-      throw new Error(result.error || t("tunnels.localSaveError"));
+      throw new Error(c2sErrorMessage(new Error(result.error || t("tunnels.localSaveError")), t));
     setLocalConfig(normalizedConfig);
     setSavedLocalConfig(normalizedConfig);
   };
@@ -1113,41 +1117,9 @@ export function C2STunnelPresetManager(): React.ReactElement {
                         </div>
                       )}
 
-                      {/* Retries */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="flex flex-col gap-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                            {t("tunnels.maxRetries")}
-                          </label>
-                          <Input
-                            type="number"
-                            value={tunnel.maxRetries}
-                            onChange={(e) =>
-                              updateTunnel(index, {
-                                maxRetries: Number(e.target.value),
-                              })
-                            }
-                            placeholder={t("placeholders.maxRetries")}
-                            className="h-7 text-xs bg-muted/50 border-border rounded-none"
-                          />
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                            {t("tunnels.retryInterval")}
-                          </label>
-                          <Input
-                            type="number"
-                            value={tunnel.retryInterval}
-                            onChange={(e) =>
-                              updateTunnel(index, {
-                                retryInterval: Number(e.target.value),
-                              })
-                            }
-                            placeholder={t("placeholders.retryInterval")}
-                            className="h-7 text-xs bg-muted/50 border-border rounded-none"
-                          />
-                        </div>
-                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {t(mode === "remote" ? "tunnels.clientRemoteReconnectHint" : "tunnels.clientListenerReconnectHint")}
+                      </p>
 
                       {/* Auto-start */}
                       <div className="flex items-center justify-between border border-border bg-muted/20 px-2 py-1.5">

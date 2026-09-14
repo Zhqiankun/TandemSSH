@@ -9,10 +9,16 @@ import {
 import { authApi } from "@/main-axios";
 import type {
   AuditHistoryQuery,
+  AuditStorageInfo,
+  AuditCleanupResult,
   AuditHistoryPage,
   AuditHistoryDetail,
 } from "@/types/task-history";
 export const taskHistoryApi = {
+  storage: async (): Promise<AuditStorageInfo> =>
+    (await authApi.get("/tandem/history/storage")).data,
+  cleanup: async (): Promise<AuditCleanupResult> =>
+    (await authApi.post("/tandem/history/cleanup", { confirmed: true })).data,
   export: async (
     input: AuditExportQuery,
     signal: AbortSignal,

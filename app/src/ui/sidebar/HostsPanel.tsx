@@ -1,3 +1,4 @@
+import { importedSettingGroups } from "./host-import-preview";
 import { translateUiText } from "@/i18n/ui-text";
 import { getErrorMessage } from "../lib/error-message.js";
 import { useEffect, useRef, useState } from "react";
@@ -485,7 +486,13 @@ export function HostsPanel({
                       " · " +
                       String(address).slice(0, 2048) +
                       ":" +
-                      String(item.port)
+                      String(item.port) +
+                      "\n  " +
+                      t("hosts.importSettings", {
+                        settings: importedSettingGroups(item)
+                          .map(group => t("hosts.importSettingGroups." + group))
+                          .join("、") || t("hosts.importNoAdvancedSettings"),
+                      })
                     );
                   })
                   .join("\n");
@@ -514,7 +521,11 @@ export function HostsPanel({
                   skipped: result.skipped,
                   failed: result.failed,
                 });
-                if (result.failed) toast.warning(msg);
+                if (result.failed)
+                  toast.warning(msg, {
+                    description: result.errors.slice(0, 3).join("\n"),
+                    duration: 10000,
+                  });
                 else toast.success(msg);
               } catch (err: unknown) {
                 toast.error(
@@ -571,7 +582,11 @@ export function HostsPanel({
                   skipped: result.skipped,
                   failed: result.failed,
                 });
-                if (result.failed) toast.warning(msg);
+                if (result.failed)
+                  toast.warning(msg, {
+                    description: result.errors.slice(0, 3).join("\n"),
+                    duration: 10000,
+                  });
                 else toast.success(msg);
               } catch (err: unknown) {
                 toast.error(
@@ -637,6 +652,15 @@ export function HostsPanel({
                   >
                     <Upload className="size-3.5 mr-2" />
                     {t("hosts.importSSHConfig")}
+                  </DropdownMenuItem>
+<DropdownMenuItem
+                    onClick={() => {
+                      importOverwriteRef.current = true;
+                      sshConfigInputRef.current?.click();
+                    }}
+                  >
+                    <Upload className="size-3.5 mr-2" />
+                    {t("hosts.importSSHConfigOverwrite")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => {
@@ -1040,6 +1064,15 @@ export function HostsPanel({
                       >
                         <Upload className="size-3.5 mr-2" />
                         {t("hosts.importSSHConfig")}
+                      </DropdownMenuItem>
+<DropdownMenuItem
+                        onClick={() => {
+                          importOverwriteRef.current = true;
+                          sshConfigInputRef.current?.click();
+                        }}
+                      >
+                        <Upload className="size-3.5 mr-2" />
+                        {t("hosts.importSSHConfigOverwrite")}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => {

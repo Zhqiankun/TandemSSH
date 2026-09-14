@@ -227,3 +227,68 @@ it("uses the local-panel destination snapshot and still requires explicit confli
   f.unmount();
   await waitFor(() => expect(f.native.cancel).toHaveBeenCalledWith("native"));
 });
+
+it("does not treat batch file overwrite as permission to merge directories", async () => {
+  await fixture();
+  fireEvent.click(screen.getByRole("button", { name: "本批覆盖已有文件" }));
+  expect(screen.getByLabelText("tree 的处理方式")).toHaveValue("");
+  expect(screen.getByRole("button", { name: "确认并开始下载" })).toBeDisabled();
+  expect(downloadBatches.start).not.toHaveBeenCalled();
+});
+it("skipping a parent suppresses both previously approved and new descendant files", async () => {
+  await fixture();
+  fireEvent.click(screen.getByRole("button", { name: "本批覆盖已有文件" }));
+  fireEvent.change(screen.getByLabelText("tree 的处理方式"), {
+    target: { value: "skip" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "确认并开始下载" }));
+  await waitFor(() => expect(downloadBatches.start).toHaveBeenCalledOnce());
+  expect(vi.mocked(downloadBatches.start).mock.calls[0][0].decisions).toEqual([
+    { id: "dir", action: "skip" },
+    { id: "old", action: "skip" },
+    { id: "new", action: "skip" },
+  ]);
+});
+
+it("invalidates old download approvals after batch start fails", async () => {
+  await fixture();
+  fireEvent.click(screen.getByRole("button", { name: "本批合并已有目录" }));
+  fireEvent.click(screen.getByRole("button", { name: "本批覆盖已有文件" }));
+  vi.mocked(downloadBatches.start).mockRejectedValueOnce(
+    Error("DOWNLOAD_TARGET_CHANGED"),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "确认并开始下载" }));
+  await waitFor(() => expect(downloadBatches.start).toHaveBeenCalledOnce());
+  await screen.findByText("本次启动未完成，请重新检查目标并确认处理方式后再开始。");
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "确认并开始下载" }),
+    ).toBeDisabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "重新检查目标" }));
+  await waitFor(() =>
+    expect(screen.getByLabelText("tree 的处理方式")).toHaveValue(""),
+  );
+  expect(screen.getByRole("button", { name: "确认并开始下载" })).toBeDisabled();
+  expect(downloadBatches.start).toHaveBeenCalledOnce();
+});
+
+it("clears parent and child approvals when a parent destination is renamed", async () => {
+  const f = await fixture();
+  fireEvent.click(screen.getByRole("button", { name: "本批合并已有目录" }));
+  fireEvent.click(screen.getByRole("button", { name: "本批覆盖已有文件" }));
+  fireEvent.change(screen.getByLabelText("修改 tree 的目标名称"), {
+    target: { value: "改名后的目录" },
+  });
+  expect(screen.getByRole("button", { name: "确认并开始下载" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "重新检查目标" }));
+  await waitFor(() => expect(screen.queryByText("目标名称已修改，请重新检查后再开始。")).not.toBeInTheDocument());
+  const entries = vi.mocked(f.native.preview!).mock.calls[1][1];
+  expect(entries.find((e) => e.id === "dir")?.name).toBe("改名后的目录");
+  expect(entries.find((e) => e.id === "old")).toMatchObject({ parentId: "dir", name: "file.txt" });
+  expect(screen.getByLabelText("tree 的处理方式")).toHaveValue("");
+  expect(screen.getByLabelText("tree/file.txt 的处理方式")).toHaveValue("");
+  expect(screen.getByRole("button", { name: "确认并开始下载" })).toBeDisabled();
+  expect(downloadBatches.start).not.toHaveBeenCalled();
+
+});

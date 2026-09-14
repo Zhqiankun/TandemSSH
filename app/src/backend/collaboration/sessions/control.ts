@@ -17,6 +17,8 @@ export class ControlError extends Error {
 
 export interface SessionWritePort {
   isReady(): boolean;
+  // Synchronous, side-effect-free preflight: must never write transport bytes.
+  validateWrite?(data: Uint8Array): void;
   // Must synchronously hand bytes to the existing stream. No asynchronous
   // preparation, retries or second SSH connection is permitted in this port.
   write(data: Uint8Array): void;
@@ -211,6 +213,7 @@ export class SessionControl {
     this.validateInput(data);
     if (!this.transport.isReady())
       throw new ControlError("TRANSPORT_UNAVAILABLE");
+    this.transport.validateWrite?.(data);
     try {
       this.transport.write(data);
     } catch {

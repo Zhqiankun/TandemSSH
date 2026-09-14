@@ -225,3 +225,188 @@ it.each(["/bulk-import", "/ssh-config-import"])(
     );
   },
 );
+
+it("imports a credential-free SSH export as unconfigured without binding existing credentials", async () => {
+  const response = await fetch(url + "/bulk-import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      hosts: [
+        {
+          name: "待配置主机",
+          ip: "127.0.0.1",
+          port: 2222,
+          username: "fixture",
+          authType: "unconfigured",
+          password: "must-not-import",
+          key: "must-not-import-key",
+          credentialId: 123,
+          notes: "中文备注",
+        },
+      ],
+    }),
+  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ success: 1, failed: 0 });
+  const rows = await repo.listDecryptedByUserId("owner");
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({
+    authType: "unconfigured",
+    password: null,
+    key: null,
+    credentialId: null,
+    notes: "中文备注",
+    enableTunnel: false,
+  });
+  expect(JSON.parse(rows[0].statsConfig!)).toMatchObject({
+    metricsEnabled: false,
+    statusCheckEnabled: false,
+  });
+});
+
+it.each([false, true])("refuses missing credential references without selecting another secret, overwrite=%s", async overwrite => {
+  const credentials = factories.credential() as CredentialRepository;
+  const credential = await credentials.createEncryptedForUser("owner", {
+    userId: "owner", name: "unrelated-account", authType: "password",
+    username: "private-user", password: "fixture-secret-never-selected",
+  });
+  if (overwrite) await repo.createEncryptedForUser("owner", {
+    userId: "owner", name: "keep-original", ip: "127.0.0.1", port: 2222,
+    username: "fixture", authType: "none", notes: "保留备注",
+  });
+  const before = await repo.listDecryptedByUserId("owner");
+  const response = await fetch(url + "/bulk-import", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ overwrite, hosts: [{ name: "imported", ip: "127.0.0.1",
+      port: 2222, username: "fixture", authType: "credential", credentialId: 999999,
+      password: "also-not-authorized-as-fallback" }] }),
+  });
+  expect(response.status).toBe(200);
+  const result = await response.json();
+  expect(result).toMatchObject({ success: 0, updated: 0, failed: 1 });
+  expect(result.errors.join(" ")).toContain("HOST_IMPORT_CREDENTIAL_NOT_FOUND");
+  expect(await repo.listDecryptedByUserId("owner")).toEqual(before);
+  expect(await credentials.findByIdForUser("owner", credential.id as number)).toBeTruthy();
+  expect(JSON.stringify(result)).not.toContain("fixture-secret-never-selected");
+});
+
+it.each([
+  ["owner", false], ["owner", true], ["other", false], ["other", true],
+] as const)("imports only explicitly accessible credentials, credential owner=%s overwrite=%s", async (credentialOwner, overwrite) => {
+  const credentials = factories.credential() as CredentialRepository;
+  const unrelated = await credentials.createEncryptedForUser("owner", {
+    userId: "owner", name: "first-unselected", authType: "password", password: "first-secret",
+  });
+  const selected = await credentials.createEncryptedForUser(credentialOwner, {
+    userId: credentialOwner, name: "selected-account", authType: "password", password: "selected-secret",
+  });
+  if (overwrite) await repo.createEncryptedForUser("owner", {
+    userId: "owner", name: "existing", ip: "127.0.0.1", port: 2222, username: "fixture", authType: "none",
+  });
+  const before = await repo.listDecryptedByUserId("owner");
+  const response = await fetch(url + "/bulk-import", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ overwrite, hosts: [{ name: "imported", ip: "127.0.0.1", port: 2222,
+      username: "fixture", authType: "credential", credentialId: selected.id }] }),
+  });
+  expect(response.status).toBe(200);
+  const result = await response.json();
+  const after = await repo.listDecryptedByUserId("owner");
+  if (credentialOwner === "other") {
+    expect(result).toMatchObject({ success: 0, updated: 0, failed: 1 });
+    expect(result.errors.join(" ")).toContain("HOST_IMPORT_CREDENTIAL_NOT_FOUND");
+    expect(after).toEqual(before);
+  } else {
+    expect(result).toMatchObject({ success: overwrite ? 0 : 1, updated: overwrite ? 1 : 0, failed: 0 });
+    expect(after).toHaveLength(1);
+    expect(after[0]).toMatchObject({ authType: "credential", credentialId: selected.id,
+      password: null, key: null, enableTunnel: false });
+    expect(after[0].credentialId).not.toBe(unrelated.id);
+    if (overwrite) expect(after[0].id).toBe(before[0].id);
+  }
+  expect(await repo.listByUserId("other")).toEqual([]);
+  expect(await credentials.findByIdForUser(credentialOwner, selected.id as number)).toBeTruthy();
+  expect(JSON.stringify(result)).not.toMatch(/first-secret|selected-secret/);
+});
+
+it.each([false, true])("rejects ambiguous credential names, imported alias=%s", async importedAlias => {
+  const credentials = factories.credential() as CredentialRepository;
+  for (const name of ["Deploy", "deploy"]) await credentials.createEncryptedForUser("owner", {
+    userId: "owner", name, authType: "password", password: "fixture-" + name,
+  });
+  const response = await fetch(url + "/bulk-import", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...(importedAlias ? { credentials: [{ alias: "remote-alias", name: "DEPLOY", authType: "password" }] } : {}),
+      hosts: [{ ip: "127.0.0.1", port: 2222, username: "fixture", authType: "credential",
+        credentialAlias: importedAlias ? "remote-alias" : "DEPLOY" }],
+    }),
+  });
+  expect(response.status).toBe(200);
+  const result = await response.json();
+  expect(result).toMatchObject({ success: 0, updated: 0, failed: 1 });
+  expect(result.errors.join(" ")).toContain("HOST_IMPORT_CREDENTIAL_AMBIGUOUS");
+  expect(await repo.listByUserId("owner")).toEqual([]);
+  expect(await credentials.listByUserId("owner")).toHaveLength(2);
+});
+
+it.each(["/bulk-import", "/ssh-config-import"])("%s refuses ambiguous overwrite targets", async route => {
+  for (const name of ["keep-first", "keep-second"]) await repo.createEncryptedForUser("owner", {
+    userId: "owner", name, ip: "127.0.0.1", port: 2222, username: "fixture", authType: "none", notes: name,
+  });
+  const before = await repo.listDecryptedByUserId("owner");
+  const response = await fetch(url + route, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(route === "/bulk-import" ? { overwrite: true, hosts: [{ name: "replacement",
+      ip: "127.0.0.1", port: 2222, username: "fixture", authType: "none" }] }
+      : { overwrite: true, content: "Host replacement\n HostName 127.0.0.1\n Port 2222\n User fixture\n" }),
+  });
+  expect(response.status).toBe(200);
+  const result = await response.json();
+  expect(result).toMatchObject({ success: 0, updated: 0, failed: 1 });
+  expect(result.errors.join(" ")).toContain("HOST_IMPORT_TARGET_AMBIGUOUS");
+  expect(await repo.listDecryptedByUserId("owner")).toEqual(before);
+});
+
+it.each([
+  ["/bulk-import", false], ["/bulk-import", true],
+  ["/ssh-config-import", false], ["/ssh-config-import", true],
+] as const)("%s skips duplicates without overwrite, preexisting=%s", async (route, preexisting) => {
+  if (preexisting) await repo.createEncryptedForUser("owner", { userId: "owner", name: "keep-original",
+    ip: "127.0.0.1", port: 2222, username: "fixture", authType: "none", notes: "保留" });
+  const before = await repo.listDecryptedByUserId("owner");
+  const host = { name: "first-import", ip: "127.0.0.1", port: 2222, username: "fixture", authType: "none" };
+  const response = await fetch(url + route, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(route === "/bulk-import" ? { overwrite: false, hosts: [host, { ...host, name: "second-import" }] }
+      : { overwrite: false, content: "Host first-import\n HostName 127.0.0.1\n Port 2222\n User fixture\nHost second-import\n HostName 127.0.0.1\n Port 2222\n User fixture\n" }),
+  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ success: preexisting ? 0 : 1, updated: 0, skipped: preexisting ? 2 : 1, failed: 0 });
+  const after = await repo.listDecryptedByUserId("owner");
+  expect(after).toHaveLength(1);
+  if (preexisting) expect(after).toEqual(before);
+  else expect(after[0].name).toBe("first-import");
+});
+
+it("does not import policy or execution claims through legacy JSON host import", async () => {
+  const policy = JSON.stringify({ revision: 7, sets: [{ id: "strict", strictAllowlist: true,
+    scope: { type: "global" }, rules: [{ id: "deny", effect: "deny", match: { kind: "program", program: "rm" } }] }] });
+  await db.run(sql`INSERT INTO settings (key,value) VALUES ('tandem-policy:owner',${policy})`);
+  const response = await fetch(url + "/bulk-import", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ policy: { sets: [] }, rules: [], runAfterImport: "must-not-run",
+      hosts: [{ name: "host", ip: "127.0.0.1", port: 2222, username: "fixture", authType: "none",
+        policy: { sets: [] }, allowedHostIds: [999], autoConnect: true, runAfterImport: "must-not-run",
+        enableTunnel: true, tunnelConnections: [{ id: "import", autoStart: true }] }] }),
+  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ success: 1, failed: 0 });
+  const rows = await db.query<{ value: string }>(sql`SELECT value FROM settings WHERE key='tandem-policy:owner'`);
+  expect(rows).toEqual([{ value: policy }]);
+  const hosts = await repo.listDecryptedByUserId("owner");
+  expect(hosts).toHaveLength(1);
+  expect(hosts[0].enableTunnel).toBe(false);
+  expect(JSON.stringify(hosts)).not.toMatch(/must-not-run|allowedHostIds|autoConnect/);
+  expect(JSON.parse(hosts[0].tunnelConnections!)[0].autoStart).toBe(false);
+});

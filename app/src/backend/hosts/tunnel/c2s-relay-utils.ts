@@ -1,3 +1,4 @@
+export const C2S_MAX_MESSAGE_BYTES = 1024 * 1024;
 import type { IncomingMessage } from "http";
 import type { Duplex } from "stream";
 import type { ClientChannel } from "ssh2";
@@ -91,7 +92,16 @@ export function sendC2SMessage(
   }
 }
 
-export function writeC2SRemoteChunk(
+/** Binary frames use the same source backpressure as remote control frames. */
+export function sendC2SBinary(ws: WebSocket, chunk: Buffer, source: Duplex): void {
+  if (ws.readyState !== 1 || source.destroyed) return;
+  ws.send(chunk, (error) => {
+    if (error && !source.destroyed) source.destroy(error);
+  });
+  pauseSourceForC2SWebSocket(ws, source);
+}
+
+export function writeC2SStreamChunk(
   target: ClientChannel,
   chunk: Buffer,
   ws: WebSocket,

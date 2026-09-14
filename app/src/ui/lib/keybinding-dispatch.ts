@@ -8,6 +8,12 @@ import {
 
 export interface KeybindingDispatchContext {
   terminal: Terminal;
+  /** Display a safe message; underlying errors may contain sensitive data. */
+  onFailure?: () => void;
+  /** SSH session may end while its WebSocket remains open. */
+  isSessionCurrent?: () => boolean;
+  /** Caller-owned clipboard read/confirmation policy. */
+  pasteFromClipboard?: () => void;
   webSocketRef: React.MutableRefObject<WebSocket | null>;
   writeTextToClipboard: (text: string) => Promise<boolean>;
   readTextFromClipboard: () => Promise<string>;
@@ -19,7 +25,10 @@ export interface KeybindingDispatchContext {
    * unresolved $INPUT_n placeholders after host-variable substitution -- the
    * caller is expected to collect values (e.g. via a dialog) and send itself.
    */
-  onSnippetNeedsInputs?: (snippet: { id: string; content: string }) => void;
+  onSnippetNeedsInputs?: (
+    snippet: { id: string; content: string },
+    sendResolved: (text: string) => boolean,
+  ) => void;
 }
 
 export function sendRawToSocket(
@@ -35,21 +44,48 @@ export function dispatchKeybindingAction(
   action: KeybindingAction,
   ctx: KeybindingDispatchContext,
 ): void {
-  const sendRaw = (data: string) => sendRawToSocket(ctx.webSocketRef, data);
+  const destination = ctx.webSocketRef.current;
+  const isCurrentDestination = () =>
+    destination !== null &&
+    destination.readyState === 1 &&
+    ctx.webSocketRef.current === destination &&
+    (ctx.isSessionCurrent?.() ?? true);
+  const sendRaw = (data: string) => {
+    if (isCurrentDestination()) sendRawToSocket(ctx.webSocketRef, data);
+  };
 
   switch (action.type) {
     case "copy": {
       const selection = ctx.terminal.getSelection();
       if (selection) {
-        ctx.writeTextToClipboard(selection);
-        ctx.terminal.clearSelection();
+        void ctx
+          .writeTextToClipboard(selection)
+          .then((copied) => {
+            if (!copied) {
+              ctx.onFailure?.();
+              return;
+            }
+            if (ctx.terminal.getSelection() === selection)
+              ctx.terminal.clearSelection();
+          })
+          .catch(() => ctx.onFailure?.());
       }
       return;
     }
     case "paste": {
-      ctx.readTextFromClipboard().then((text) => {
-        if (text) ctx.terminal.paste(text);
-      });
+      if (ctx.pasteFromClipboard) {
+        ctx.pasteFromClipboard();
+        return;
+      }
+      if (!isCurrentDestination()) return;
+      void ctx
+        .readTextFromClipboard()
+        .then((text) => {
+          if (text && isCurrentDestination()) ctx.terminal.paste(text);
+        })
+        .catch(() => {
+          if (isCurrentDestination()) ctx.onFailure?.();
+        });
       return;
     }
     case "sendControlCode": {
@@ -63,23 +99,39 @@ export function dispatchKeybindingAction(
       return;
     }
     case "runSnippet": {
-      if (!action.snippetId) return;
-      ctx.getSnippetById(action.snippetId).then((snippet) => {
-        if (!snippet) return;
-        if (hasSnippetInputs(snippet.content)) {
-          ctx.onSnippetNeedsInputs?.({
-            id: action.snippetId!,
-            content: snippet.content,
-          });
-          return;
-        }
-        const resolved = resolveSnippetContent(
-          snippet.content,
-          ctx.hostContext ?? null,
-          {},
-        );
-        sendRaw(resolved + (action.appendEnter !== false ? "\r" : ""));
-      });
+      if (!action.snippetId || !isCurrentDestination()) return;
+      void ctx
+        .getSnippetById(action.snippetId)
+        .then((snippet) => {
+          if (!snippet || !isCurrentDestination()) return;
+          if (hasSnippetInputs(snippet.content)) {
+            let consumed = false;
+            const sendResolved = (text: string): boolean => {
+              if (consumed) return false;
+              consumed = true;
+              if (!isCurrentDestination()) return false;
+              sendRaw(text);
+              return true;
+            };
+            ctx.onSnippetNeedsInputs?.(
+              {
+                id: action.snippetId!,
+                content: snippet.content,
+              },
+              sendResolved,
+            );
+            return;
+          }
+          const resolved = resolveSnippetContent(
+            snippet.content,
+            ctx.hostContext ?? null,
+            {},
+          );
+          sendRaw(resolved + (action.appendEnter !== false ? "\r" : ""));
+        })
+        .catch(() => {
+          if (isCurrentDestination()) ctx.onFailure?.();
+        });
       return;
     }
   }

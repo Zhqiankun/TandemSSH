@@ -35,6 +35,7 @@
 }
 .tandem-control-strip {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   padding: 10px 16px;
@@ -295,8 +296,53 @@
   border-top: 1px solid var(--border);
 }
 
-.tandem-agent-transcript{display:flex;flex-direction:column;gap:9px;border-top:1px solid var(--border);padding-top:12px}.tandem-agent-messages{display:flex;flex-direction:column;gap:10px;max-height:260px;overflow:auto}.tandem-agent-message{font-size:11px;line-height:1.85;white-space:pre-wrap;overflow-wrap:anywhere}.tandem-agent-message small{color:var(--muted-foreground);font-size:10px}
+.tandem-agent-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.tandem-agent-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 260px;
+  overflow: auto;
+}
+.tandem-agent-message {
+  font-size: 11px;
+  line-height: 1.85;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tandem-agent-message small {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
 
-.tandem-workflow-runs{display:flex;flex-direction:column;gap:8px}.tandem-parent-workflow{border-left:2px solid var(--primary);padding:8px 10px;background:var(--muted)}.tandem-parent-workflow small{color:var(--muted-foreground);font-size:10px}.tandem-parent-workflow .tandem-task-help{margin:6px 0 0}
+.tandem-workflow-runs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tandem-parent-workflow {
+  border-left: 2px solid var(--primary);
+  padding: 8px 10px;
+  background: var(--muted);
+}
+.tandem-parent-workflow small {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.tandem-parent-workflow .tandem-task-help {
+  margin: 6px 0 0;
+}
 
-.tandem-parent-workflow h4{font-size:12px;font-weight:600;overflow-wrap:anywhere;flex:1;min-width:0}
+.tandem-parent-workflow h4 {
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  flex: 1;
+  min-width: 0;
+}

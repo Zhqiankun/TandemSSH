@@ -669,6 +669,7 @@ class DownloadSink {
       );
       if (current.hashes.some((h, i) => h !== r.spec.hashes[i]))
         throw Error("DOWNLOAD_CHECKPOINT_CHANGED");
+      await this.targetUnchanged(r);
       await r.handle.truncate(r.view.writtenBytes);
       await r.handle.sync();
       r.view.state = "writing";

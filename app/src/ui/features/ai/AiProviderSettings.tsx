@@ -1,5 +1,6 @@
+import { AiKeyStorageChoice } from "./AiKeyStorageChoice";
 import { getErrorMessage } from "../../lib/error-message.js";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Loader2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
@@ -81,6 +82,10 @@ function AiProviderEditForm({
 }) {
   const { t } = useTranslation();
   const [label, setLabel] = useState(provider.label);
+  const [replacementKey, setReplacementKey] = useState("");
+  const [memoryKey, setMemoryKey] = useState(
+    provider.apiKeyStorage === "memory",
+  );
   const [defaultModel, setDefaultModel] = useState(provider.defaultModel ?? "");
   const [models, setModels] = useState<string[]>([]);
   const [customModel, setCustomModel] = useState(false);
@@ -118,6 +123,14 @@ function AiProviderEditForm({
     try {
       await updateAiProvider(provider.id, {
         label: label.trim(),
+        ...(replacementKey.trim()
+          ? {
+              apiKey: replacementKey.trim(),
+              apiKeyStorage: memoryKey
+                ? ("memory" as const)
+                : ("encrypted" as const),
+            }
+          : {}),
         defaultModel: defaultModel.trim() || null,
       });
       toast.success(t("ai.providerUpdated"));
@@ -128,7 +141,9 @@ function AiProviderEditForm({
         code === "AI_KEY_ENCRYPTION_UNAVAILABLE" ||
           code === "AI_KEY_ENCRYPTION_FAILED"
           ? t("ai.providerKeyStorageFailed")
-          : getErrorMessage(error, t("ai.providerSaveFailed")),
+          : typeof code === "string" && code.startsWith("AI_SESSION_KEY_")
+            ? t("ai.memoryKeyFailed")
+            : getErrorMessage(error, t("ai.providerSaveFailed")),
       );
     } finally {
       setSaving(false);
@@ -137,6 +152,17 @@ function AiProviderEditForm({
 
   return (
     <div className="space-y-3 rounded-none border border-border p-3">
+      <div className="space-y-1.5">
+        <Label>{t("ai.replaceKey")}</Label>
+        <Input
+          type="password"
+          autoComplete="off"
+          value={replacementKey}
+          onChange={(e) => setReplacementKey(e.target.value)}
+          placeholder={t("ai.keepKeyBlank")}
+        />
+        <AiKeyStorageChoice memory={memoryKey} onChange={setMemoryKey} />
+      </div>
       <div className="space-y-1.5">
         <Label htmlFor={`ai-provider-label-${provider.id}`}>
           {t("ai.providerLabel")}
@@ -242,6 +268,7 @@ export function AiProviderSettings({
   const [label, setLabel] = useState("");
   const [baseUrl, setBaseUrl] = useState("http://localhost:11434");
   const [apiKey, setApiKey] = useState("");
+  const [memoryKey, setMemoryKey] = useState(false);
   const [defaultModel, setDefaultModel] = useState("");
 
   const [models, setModels] = useState<string[]>([]);
@@ -249,9 +276,13 @@ export function AiProviderSettings({
   const [detectWarning, setDetectWarning] = useState<string | null>(null);
   const [customModel, setCustomModel] = useState(false);
 
+  const detection = useRef(0);
+  const modelEdited = useRef(false);
+
   const spec = PROVIDER_TYPES.find((entry) => entry.value === providerType)!;
 
   useEffect(() => {
+    modelEdited.current = false;
     setBaseUrl(spec.defaultBaseUrl ?? "");
     setApiKey("");
     setModels([]);
@@ -266,6 +297,7 @@ export function AiProviderSettings({
    * and a free-text field is always available for anything not listed.
    */
   const detectModels = useCallback(async () => {
+    const version = ++detection.current;
     setDetecting(true);
     setDetectWarning(null);
     try {
@@ -274,26 +306,37 @@ export function AiProviderSettings({
         baseUrl: baseUrl.trim() || null,
         apiKey: apiKey.trim() || null,
       });
+      if (version !== detection.current) return;
       setModels(result.models);
       if (result.source === "fallback") {
         setDetectWarning(t("ai.modelDetectFailed"));
       }
-      // Pick the first suggestion so the field is never left empty.
-      setDefaultModel((current) => current || result.models[0] || "");
+      if (!modelEdited.current) setDefaultModel(result.models[0] || "");
     } catch {
-      setDetectWarning(t("ai.modelDetectFailed"));
+      if (version === detection.current)
+        setDetectWarning(t("ai.modelDetectFailed"));
     } finally {
-      setDetecting(false);
+      if (version === detection.current) setDetecting(false);
     }
   }, [providerType, baseUrl, apiKey, t]);
 
   // Detect as soon as the provider has enough detail to be reachable.
   useEffect(() => {
+    detection.current++;
+    setDetecting(false);
+    setModels([]);
+    setDetectWarning(null);
+    if (!modelEdited.current) setDefaultModel("");
     if (!adding) return;
     const ready = spec.needsApiKey ? apiKey.trim().length > 0 : true;
     if (!ready) return;
     const timer = setTimeout(() => void detectModels(), 400);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      // This counter invalidates the active request, not a captured DOM node.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      detection.current++;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adding, providerType, baseUrl, apiKey]);
 
@@ -309,11 +352,13 @@ export function AiProviderSettings({
         label: label.trim(),
         baseUrl: baseUrl.trim() || null,
         apiKey: apiKey.trim() || null,
+        apiKeyStorage: memoryKey ? "memory" : "encrypted",
         defaultModel: defaultModel.trim() || null,
       });
       setAdding(false);
       setLabel("");
       setApiKey("");
+      setMemoryKey(false);
       setDefaultModel("");
       onChanged(created.id);
       onAdded?.();
@@ -323,7 +368,9 @@ export function AiProviderSettings({
         code === "AI_KEY_ENCRYPTION_UNAVAILABLE" ||
           code === "AI_KEY_ENCRYPTION_FAILED"
           ? t("ai.providerKeyStorageFailed")
-          : getErrorMessage(error, t("ai.providerSaveFailed")),
+          : typeof code === "string" && code.startsWith("AI_SESSION_KEY_")
+            ? t("ai.memoryKeyFailed")
+            : getErrorMessage(error, t("ai.providerSaveFailed")),
       );
     } finally {
       setSaving(false);
@@ -366,6 +413,9 @@ export function AiProviderSettings({
                 {provider.defaultModel ? ` · ${provider.defaultModel}` : ""}
                 {provider.baseUrl ? ` · ${provider.baseUrl}` : ""}
                 {provider.apiKeyPrefix ? ` · ${provider.apiKeyPrefix}…` : ""}
+                {provider.apiKeyStorage === "memory"
+                  ? ` · ${t("ai.memoryKeyActive")}`
+                  : ""}
               </div>
             </div>
             <div className="flex shrink-0 items-center">
@@ -458,6 +508,7 @@ export function AiProviderSettings({
           {(spec.needsApiKey || providerType === "openai_compatible") && (
             <div className="space-y-1.5">
               <Label>{t("ai.apiKey")}</Label>
+              <AiKeyStorageChoice memory={memoryKey} onChange={setMemoryKey} />
               <Input
                 className="rounded-none"
                 type="password"
@@ -490,6 +541,7 @@ export function AiProviderSettings({
               <Select
                 value={defaultModel || undefined}
                 onValueChange={(value) => {
+                  modelEdited.current = true;
                   if (value === "__custom__") {
                     setCustomModel(true);
                     setDefaultModel("");
@@ -517,7 +569,11 @@ export function AiProviderSettings({
               <Input
                 className="rounded-none"
                 value={defaultModel}
-                onChange={(event) => setDefaultModel(event.target.value)}
+                onChange={(event) => {
+                  modelEdited.current = true;
+                  setCustomModel(true);
+                  setDefaultModel(event.target.value);
+                }}
                 placeholder={t("ai.defaultModelPlaceholder")}
               />
             )}

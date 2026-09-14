@@ -213,3 +213,45 @@ describe("HostExportDialog - credential handling", () => {
     expect(parsed.hosts[0].guacamoleConfig["gateway-password"]).toBeNull();
   });
 });
+
+it("restores cached credential-free export while an obsolete full request is pending", async () => {
+  let release!: (value: ReturnType<typeof rawPayload>) => void;
+  mainAxios.exportAllSSHHosts
+    .mockResolvedValueOnce(rawPayload())
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+  render(<HostExportDialog open onClose={() => {}} hosts={[sshHost()]} />);
+  const button = screen.getByText("hosts.export.confirm").closest("button")!;
+  await waitFor(() => expect(button.disabled).toBe(false));
+  fireEvent.click(checkboxFor("hosts.export.groupCredentials"));
+  await waitFor(() =>
+    expect(mainAxios.exportAllSSHHosts).toHaveBeenCalledTimes(2),
+  );
+  expect(button.disabled).toBe(true);
+  fireEvent.click(checkboxFor("hosts.export.groupCredentials"));
+  await waitFor(() => expect(button.disabled).toBe(false));
+  const late = rawPayload();
+  late.hosts[0].name = "late-full-response";
+  release(late);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(document.querySelector("pre")?.textContent).not.toContain(
+    "late-full-response",
+  );
+  let downloaded: Blob | undefined;
+  vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+    downloaded = blob as Blob;
+    return "blob:fixture";
+  });
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  fireEvent.click(button);
+  await waitFor(() => expect(downloaded).toBeDefined());
+  const content = await downloaded!.text();
+  expect(content).not.toContain("hunter2");
+  expect(content).not.toContain("gw-secret");
+  expect(content).not.toContain("late-full-response");
+});

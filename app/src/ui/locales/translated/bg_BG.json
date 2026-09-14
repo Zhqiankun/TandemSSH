@@ -1742,7 +1742,25 @@
     },
     "arrangeUnlockedSwitchedToManual": "Преминахме към ръчно сортиране, за да се запази редът ви",
     "dragToRearrange": "Плъзнете, за да пренаредите",
-    "arrangeUnlocked": "Отключете плъзгането, за да пренаредите"
+    "arrangeUnlocked": "Отключете плъзгането, за да пренаредите",
+    "duplicateName": "{{name}} (copy)",
+    "duplicateInactive": "Authentication settings were retained. Automatic monitoring and startup are off for the copy; verify the server identity when first connecting.",
+    "terminalEncodingLabel": "Terminal character encoding",
+    "terminalEncodingHint": "Match the remote terminal encoding. Reconnect after changing. Default: UTF-8.",
+    "importSettingGroups": {
+      "authentication": "Authentication / credential references",
+      "proxy": "Proxy",
+      "jump": "Jump hosts / parent connection",
+      "terminal": "Terminal / quick actions",
+      "tunnels": "Tunnels",
+      "monitoring": "Monitoring",
+      "docker": "Docker",
+      "proxmox": "Proxmox",
+      "portKnocking": "Port knocking"
+    },
+    "importSettings": "Settings supplied in file (not necessarily enabled): {{settings}}",
+    "importNoAdvancedSettings": "None of the listed advanced settings",
+    "importSSHConfigOverwrite": "Import SSH Config (Overwrite)"
   },
   "commandPalette": {
     "searchPlaceholder": "Търсене на хостове, команди или настройки...",
@@ -2009,8 +2027,20 @@
     "split": {
       "splitTab": "Разделяне на раздела",
       "addToSplit": "Добави към Сплит",
-      "removeFromSplit": "Премахване от Сплит"
-    }
+      "removeFromSplit": "Премахване от Сплит",
+      "defaultTitle": "Split #{{number}}"
+    },
+    "privateKeyInvalid": "Unable to load the SSH private key. Check its format and passphrase. Automatic retry is disabled.",
+    "sshAuthenticationRejected": "SSH authentication failed. Check the username, password or key, then retry manually.",
+    "pastePreviewTitle": "Multiline paste preview",
+    "pastePreviewHint": "Target: {{target}}. Line breaks may execute commands immediately. Review the full text before pasting.",
+    "pasteConnectionChanged": "The connection changed. Nothing was sent. Cancel and paste again.",
+    "confirmPaste": "Confirm paste",
+    "pasteReadFailed": "Unable to read the clipboard. Please try again.",
+    "encodingInputRejected": "The text contains characters unavailable in this terminal encoding and was not sent. Edit the text or change the encoding and reconnect.",
+    "snippetConnectionChanged": "The connection changed or this confirmation was already used. No command was sent. Start the snippet again.",
+    "shortcutActionFailed": "Shortcut action failed. Check the connection or clipboard permissions and confirm the terminal state before retrying.",
+    "tmuxEncodingRequired": "Managed tmux connections require UTF-8. Select UTF-8 terminal encoding or disable automatic tmux."
   },
   "fileManager": {
     "noHostSelected": "Няма избран хост",
@@ -2286,7 +2316,15 @@
     "cannotLoadPdf": "Не може да се зареди PDF файл",
     "pdfLoadError": "Възникна грешка при зареждането на този PDF файл.",
     "loadingPdf": "Зареждане на PDF файл...",
-    "loadingPage": "Зареждане на страницата..."
+    "loadingPage": "Зареждане на страницата...",
+    "symlinkPermissionsReadOnly": "These are the symbolic link’s own attributes. Permission bits cannot be changed here. To change target permissions, open the target’s directory and edit its properties. Owner/group changes apply to the link itself.",
+    "editorTabs": "Open editor files",
+    "backToFileList": "File list",
+    "showHiddenFiles": "Show hidden files",
+    "moveBatchStopped": "Move stopped: {{completed}}/{{total}} items confirmed. Unconfirmed results may be unknown; check the remote state",
+    "dropFileTooLarge": "File \"{{name}}\" exceeds the maximum size of {{size}} MB.",
+    "dropTypeNotAllowed": "File type \"{{type}}\" is not allowed.",
+    "dropUnknownType": "Unknown type"
   },
   "transfer": {
     "copyToHost": "Копиране към хост…",
@@ -2480,7 +2518,19 @@
     "host": "Домакин",
     "mode": "Режим",
     "noHostSelected": "Няма избран хост",
-    "working": "Работа..."
+    "working": "Работа...",
+    "invalidForwardPort": "Invalid forwarding target or port. Enter a valid address and an integer port from 1 to 65535.",
+    "hostAccessDenied": "Host access is not available for this tunnel. Check your permissions before retrying.",
+    "clientRemoteReconnectHint": "Remote forwarding does not reconnect on a timer. Check the connection and click Start again.",
+    "clientListenerReconnectHint": "This tunnel does not retry on a timer. While the listener is open, each new client connection opens a forwarding channel. Stop the tunnel while troubleshooting if needed.",
+    "c2sMessageTooLarge": "The relay message exceeded the size limit and the connection was closed. Check the sender before retrying.",
+    "c2sErrors": {
+      "C2S_CONNECTION_LIMIT": "The relay connection limit has been reached. Close unused connections and retry.",
+      "C2S_TUNNEL_LIMIT": "The limit of 32 active or pending tunnels has been reached. Stop unused tunnels first.",
+      "C2S_REQUEST_LIMIT": "This tunnel has too many pending requests. Wait or cancel them before retrying."
+    },
+    "s2sTunnelLimit": "The limit of 32 active or pending S2S tunnels has been reached. Stop unused tunnels first.",
+    "s2sStartLimit": "This S2S tunnel has too many pending starts. Wait or cancel before retrying."
   },
   "cardGrid": {
     "dragToMove": "Плъзнете, за да преместите",
@@ -3761,7 +3811,8 @@
         "variablesDialogTitle": "Изпълни „{{name}}“",
         "variablesDialogDescription": "Попълнете стойностите, необходими на този фрагмент, преди да го изпълните.",
         "variablesPreviewLabel": "Преглед",
-        "variablesConfirmButton": "Бягане"
+        "variablesConfirmButton": "Бягане",
+        "inputLabel": "Input {{number}}"
       },
       "automations": {
         "title": "Автоматизации",
@@ -4524,6 +4575,12 @@
     "ruleSaveFailed": "Запазването на правилото не бе успешно"
   },
   "ai": {
+    "memoryKeyFailed": "The temporary Key was not saved. Check its length, release unused temporary Keys, and enter it again in the current login.",
+    "memoryKeyOnly": "Use Key for this run only",
+    "memoryKeyHint": "The Key is not written to the database. Enter it again after logout or restart. Provider address and model settings are still saved.",
+    "replaceKey": "Replace API Key",
+    "keepKeyBlank": "Leave blank to keep the current Key",
+    "memoryKeyActive": "Temporary Key",
     "loadOlderConversations": "Load older chats",
     "chatHistory": "Chat history",
     "newConversation": "New chat",
@@ -4675,5 +4732,62 @@
     },
     "seconds": "секунди",
     "secondsShort": "{{count}}с"
+  },
+  "tandem": {
+    "collaboration": {
+      "errors": {
+        "TASK_PAUSED_BY_USER": "You paused this task. Sent actions may still be running; review before authorizing again.",
+        "MODEL_AUTH_FAILED": "The model service rejected authentication or access (401/403). Check your key and model permissions. Manual SSH remains available.",
+        "MODEL_RATE_LIMITED": "The model service is rate limited or out of quota (429). Automation is paused. Wait or check the service quota before authorizing again.",
+        "TERMINAL_INPUT_NOT_REPRESENTABLE": "The text contains characters unavailable in this terminal encoding and was not sent. Edit the text or change the encoding and reconnect.",
+        "COMMAND_OUTPUT_INCOMPLETE": "The command exit status is known, but its output is incomplete. Automation is paused; review the result manually."
+      },
+      "pause": "Pause task",
+      "pauseHint": "Stop further AI requests and actions and return control. Does not send Ctrl+C. Review results and authorize again to continue.",
+      "interrupt": "Send Ctrl+C",
+      "interruptHint": "Take control of this session and send Ctrl+C once. Verify whether the remote program stopped.",
+      "cancelledUnknownHint": "This task is cancelled and will not dispatch more actions. Manually verify the actual results of actions already sent."
+    },
+    "history": {
+      "events": {
+        "task.paused": "Task paused by user",
+        "session.interrupt_requested": "User requested terminal interrupt"
+      },
+      "archiveUnknownConfirm": "{{count}} command results remain unknown. Check their actual effects on the server before continuing. Confirm you have checked them and archive? Unknown states and your acknowledgement are retained; no command is rerun.",
+      "archivedUnknownReviewed": "A human has reviewed {{count}} unknown command results; their original execution outcomes remain unknown.",
+      "retainedOutput": "View retained output"
+    },
+    "agent": {
+      "errors": {
+        "MODEL_AUTH_FAILED": "The model service rejected authentication or access (401/403). Check your key and model permissions. Manual SSH remains available.",
+        "MODEL_RATE_LIMITED": "The model service is rate limited or out of quota (429). Automation is paused. Wait or check the service quota before authorizing again.",
+        "COMMAND_OUTPUT_INCOMPLETE": "The command exit status is known, but its output is incomplete. Automation is paused; review the result manually."
+      }
+    },
+    "downloadTree": {
+      "recheckAfterFailure": "This start did not complete. Recheck the destination and confirm the choices before starting again."
+    }
+  },
+  "historyDialog": {
+    "title": "Command history",
+    "hint": "Preview and manage this host’s saved input. Appending never presses Enter.",
+    "search": "Search history",
+    "refresh": "Refresh",
+    "entries": "Saved commands",
+    "preview": "Full command preview",
+    "empty": "No matching history",
+    "loadFailed": "Could not load history. Try refreshing.",
+    "changeFailed": "Could not confirm the result. Refresh to check.",
+    "copied": "Copied",
+    "copyFailed": "Could not copy this command.",
+    "controls": "This record contains control characters. Copy and review it before using it.",
+    "sessionChanged": "The original session is unavailable or has changed. Reopen history from the current session to append.",
+    "clearConfirm": "Clear all saved command history for this host? This cannot be undone.",
+    "confirmClear": "Confirm clear",
+    "clear": "Clear history",
+    "delete": "Delete selected",
+    "copy": "Copy",
+    "append": "Append to terminal",
+    "updating": "Updating history…"
   }
 }

@@ -49,20 +49,42 @@ function isSecretKey(key: string): boolean {
   return SECRET_KEY_SUBSTRINGS.some((marker) => lower.includes(marker));
 }
 
+// PTY line editing can hard-wrap a sensitive field name across CR/CRLF.
+// Match that representation without joining unrelated lines in returned text.
+const wrappedSecretName = [
+  "password",
+  "passwd",
+  "secret",
+  "token",
+  "apikey",
+  "api_key",
+  "api-key",
+  "privatekey",
+  "private_key",
+  "private-key",
+  "passphrase",
+]
+  .map((name) => [...name].join("(?:\\r{1,2}\\n)?"))
+  .join("|");
+// Quoted values may contain spaces, line wraps, and escaped double quotes.
+const secretValue = String.raw`(?:"(?:\\[\s\S]|[^"\\])*"|'[^']*'|[^\s,;]+(?:\r{1,2}\n[^\s,;]+)*)`;
+const assignmentPattern = new RegExp(
+  String.raw`(\b[\w.-]*(?:${wrappedSecretName})[\w.-]*\s*[=:]\s*)${secretValue}`,
+  "gi",
+);
+const flagPattern = new RegExp(
+  String.raw`(--(?:${wrappedSecretName})\s+)${secretValue}`,
+  "gi",
+);
+
 export function redactString(value: string): string {
   let output = value;
   for (const { pattern, label } of VALUE_PATTERNS) {
     output = output.replace(pattern, label);
   }
   // Environment/config assignments and CLI secret flags lack typed object keys.
-  output = output.replace(
-    /(\b[\w.-]*(?:password|passwd|secret|token|api[_-]?key|private[_-]?key|passphrase)[\w.-]*\s*[=:]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi,
-    "$1[redacted]",
-  );
-  output = output.replace(
-    /(--(?:password|passwd|token|api-key|secret|passphrase)\s+)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)/gi,
-    "$1[redacted]",
-  );
+  output = output.replace(assignmentPattern, "$1[redacted]");
+  output = output.replace(flagPattern, "$1[redacted]");
   return output;
 }
 

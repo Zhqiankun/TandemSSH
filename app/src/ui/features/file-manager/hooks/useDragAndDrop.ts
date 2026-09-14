@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 
 interface DragAndDropState {
   isDragging: boolean;
@@ -21,6 +22,7 @@ export function useDragAndDrop({
   maxFileSize = 5120,
   allowedTypes = [],
 }: UseDragAndDropProps) {
+  const { t } = useTranslation();
   const [state, setState] = useState<DragAndDropState>({
     isDragging: false,
     dragCounter: 0,
@@ -35,7 +37,7 @@ export function useDragAndDrop({
         const file = files[i];
 
         if (file.size > maxSizeBytes) {
-          return `File "${file.name}" is too large. Maximum size is ${maxFileSize}MB.`;
+          return t("fileManager.dropFileTooLarge", { name: file.name, size: maxFileSize });
         }
 
         if (allowedTypes.length > 0) {
@@ -66,14 +68,14 @@ export function useDragAndDrop({
           });
 
           if (!isAllowed) {
-            return `File type "${file.type || "unknown"}" is not allowed.`;
+            return t("fileManager.dropTypeNotAllowed", { type: file.type || t("fileManager.dropUnknownType") });
           }
         }
       }
 
       return null;
     },
-    [maxFileSize, allowedTypes],
+    [maxFileSize, allowedTypes, t],
   );
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {

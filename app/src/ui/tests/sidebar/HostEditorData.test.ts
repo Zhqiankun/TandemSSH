@@ -627,3 +627,36 @@ describe("createHostEditorForm credentialId", () => {
     expect(createHostEditorForm(null).credentialId).toBe("");
   });
 });
+
+it.each(["utf-8", "gb18030", "big5", "shift_jis"] as const)(
+  "round-trips terminal encoding %s through the host form",
+  (encoding) => {
+    const form = createHostEditorForm(null);
+    const payload = buildHostEditorPayload({ ...form, encoding }, sshOnly);
+    expect(payload.terminalConfig?.encoding).toBe(encoding);
+    const reopened = createHostEditorForm({
+      ...payload,
+      id: "encoding",
+    } as unknown as Host);
+    expect(reopened.encoding).toBe(encoding);
+  },
+);
+it("uses UTF-8 for existing hosts without terminal encoding", () => {
+  expect(createHostEditorForm(null).encoding).toBe("utf-8");
+});
+
+it("keeps encoding independently configurable while inheriting terminal appearance", () => {
+  const form = createHostEditorForm(null);
+  const payload = buildHostEditorPayload(
+    { ...form, encoding: "big5", inheritTerminalAppearance: true },
+    sshOnly,
+  );
+  expect(payload.terminalConfig?.encoding).toBe("big5");
+  expect(payload.terminalConfig).not.toHaveProperty("fontFamily");
+  const restored = createHostEditorForm({
+    ...payload,
+    id: "inherit-encoding",
+  } as unknown as Host);
+  expect(restored.encoding).toBe("big5");
+  expect(restored.inheritTerminalAppearance).toBe(true);
+});

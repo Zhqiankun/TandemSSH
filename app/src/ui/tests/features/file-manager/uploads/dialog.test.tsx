@@ -223,3 +223,46 @@ it("previews a local-panel selection without reopening a picker or auto-starting
   f.unmount();
   await waitFor(() => expect(f.native.forget).toHaveBeenCalledWith("source"));
 });
+
+it("does not treat batch file overwrite as permission to merge directories", async () => {
+  await fixture();
+  fireEvent.click(screen.getByRole("button", { name: "本批覆盖已有文件" }));
+  expect(screen.getByLabelText("tree 的处理方式")).toHaveValue("");
+  expect(screen.getByRole("button", { name: "确认并开始上传" })).toBeDisabled();
+  expect(uploadBatches.start).not.toHaveBeenCalled();
+});
+it("skipping a parent suppresses both previously approved and new descendant files", async () => {
+  await fixture();
+  fireEvent.click(screen.getByRole("button", { name: "本批覆盖已有文件" }));
+  fireEvent.change(screen.getByLabelText("tree 的处理方式"), {
+    target: { value: "skip" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "确认并开始上传" }));
+  await waitFor(() => expect(uploadBatches.start).toHaveBeenCalledOnce());
+  expect(vi.mocked(uploadBatches.start).mock.calls[0][0].decisions).toEqual([
+    { id: "dir", action: "skip" },
+    { id: "old", action: "skip" },
+    { id: "new", action: "skip" },
+  ]);
+});
+
+it("clears parent and child approvals when a parent destination is renamed", async () => {
+  const f = await fixture();
+  fireEvent.click(screen.getByRole("button", { name: "本批合并已有目录" }));
+  fireEvent.click(screen.getByRole("button", { name: "本批覆盖已有文件" }));
+  fireEvent.change(screen.getByLabelText("修改 tree 的目标名称"), {
+    target: { value: "改名后的目录" },
+  });
+  expect(screen.getByRole("button", { name: "确认并开始上传" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "重新检查目标" }));
+  await waitFor(() => expect(screen.queryByText("目标名称已修改，请重新检查后再开始。")).not.toBeInTheDocument());
+  const entries = vi.mocked(uploadTreeApi.preview).mock.calls[1][0].entries;
+  expect(entries.find((e) => e.id === "dir")?.name).toBe("改名后的目录");
+  expect(entries.find((e) => e.id === "old")).toMatchObject({ parentId: "dir", name: "file.txt" });
+  expect(screen.getByLabelText("tree 的处理方式")).toHaveValue("");
+  expect(screen.getByLabelText("tree/file.txt 的处理方式")).toHaveValue("");
+  expect(screen.getByRole("button", { name: "确认并开始上传" })).toBeDisabled();
+  expect(uploadBatches.start).not.toHaveBeenCalled();
+  expect(uploadTreeApi.forget).toHaveBeenCalledWith("session", "target1");
+  f.unmount();
+});

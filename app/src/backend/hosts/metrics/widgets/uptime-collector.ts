@@ -5,27 +5,24 @@ export async function collectUptimeMetrics(client: Client): Promise<{
   seconds: number | null;
   formatted: string | null;
 }> {
-  let uptimeSeconds: number | null = null;
-  let uptimeFormatted: string | null = null;
-
   try {
-    const uptimeOut = await execMetricCommand(client, "uptime.1");
-    const uptimeParts = uptimeOut.stdout.trim().split(/\s+/);
-    if (uptimeParts.length >= 1) {
-      uptimeSeconds = Number(uptimeParts[0]);
-      if (Number.isFinite(uptimeSeconds)) {
-        const days = Math.floor(uptimeSeconds / 86400);
-        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
-        const minutes = Math.floor((uptimeSeconds % 3600) / 60);
-        uptimeFormatted = `${days}d ${hours}h ${minutes}m`;
-      }
-    }
+    const result = await execMetricCommand(client, "uptime.1");
+    const text = result.stdout.trim();
+    if (result.code !== 0 || !/^\d+(?:\.\d+)?[ \t]+\d+(?:\.\d+)?$/.test(text))
+      return { seconds: null, formatted: null };
+    const values = text.split(/[ \t]+/).map(Number);
+    if (
+      values.some(
+        (value) => !Number.isFinite(value) || value > Number.MAX_SAFE_INTEGER,
+      )
+    )
+      return { seconds: null, formatted: null };
+    const seconds = values[0];
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return { seconds, formatted: `${days}d ${hours}h ${minutes}m` };
   } catch {
-    // expected
+    return { seconds: null, formatted: null };
   }
-
-  return {
-    seconds: uptimeSeconds,
-    formatted: uptimeFormatted,
-  };
 }

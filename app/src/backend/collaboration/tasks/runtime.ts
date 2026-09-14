@@ -2093,9 +2093,65 @@ export class TaskRuntime {
     }
     return this.view(task, viewOptions);
   }
+  interruptSession(
+    actor: TaskActor,
+    sessionId: string,
+    expected: { generation: number; controlEpoch: number },
+  ) {
+    this.human(actor);
+    const session = this.sessionFor(actor, sessionId),
+      current = session.control.snapshot();
+    if (
+      current.closed ||
+      current.generation !== expected.generation ||
+      current.controlEpoch !== expected.controlEpoch
+    )
+      throw Error("STALE_CONTROL");
+    // Advancing the epoch also rejects a replay when the session was already human-owned.
+    session.control.takeover();
+    session.control.humanInput(Uint8Array.of(3));
+    const control = session.control.snapshot();
+    void Promise.resolve()
+      .then(() =>
+        this.ports.audit(actor.userId).record("session.interrupt_requested", {
+          sessionId,
+          hostId: session.hostId,
+          generation: control.generation,
+          controlEpoch: control.controlEpoch,
+        }),
+      )
+      .catch(() => {});
+    return { requested: true, control };
+  }
   takeover(actor: TaskActor, sessionId: string): void {
     this.human(actor);
     this.sessionFor(actor, sessionId).control.takeover();
+  }
+  pauseTask(
+    actor: TaskActor,
+    taskId: string,
+    viewOptions?: TaskViewOptions,
+  ): TaskView {
+    this.human(actor);
+    const task = this.owned(actor, taskId);
+    if (task.archiving || terminalState(task.view.state))
+      throw Error("TASK_STATE_INVALID");
+    if (task.view.state.startsWith("paused"))
+      return this.view(task, viewOptions);
+    this.pause(task, "TASK_PAUSED_BY_USER", "paused-human");
+    task.probe?.dispose();
+    void Promise.resolve()
+      .then(() =>
+        this.ports.audit(task.userId).record("task.paused", {
+          ...this.auditContext(task),
+          state: "paused-human",
+          reason: "TASK_PAUSED_BY_USER",
+        }),
+      )
+      .catch(() => {
+        task.view.error = "AUDIT_UNAVAILABLE";
+      });
+    return this.view(task, viewOptions);
   }
   cancel(
     actor: TaskActor,
@@ -2168,12 +2224,23 @@ export class TaskRuntime {
     actor: TaskActor,
     taskId: string,
     release: () => Promise<void>,
+    reviewedUnknownOperationIds: string[] = [],
   ) {
     this.human(actor);
     const task = this.owned(actor, taskId);
     if (task.archiving) throw Error("TASK_ARCHIVE_IN_PROGRESS");
     if (!terminalState(task.view.state)) throw Error("TASK_NOT_COMPLETE");
-    if (task.operationIds.some((id) => !task.gateway.canDiscard(id)))
+    const requiredReviews = task.operationIds.filter(
+      (id) => !task.gateway.canDiscard(id),
+    );
+    const reviewed = new Set(reviewedUnknownOperationIds);
+    if (
+      reviewed.size !== reviewedUnknownOperationIds.length ||
+      requiredReviews.length !== reviewed.size ||
+      requiredReviews.some(
+        (id) => !reviewed.has(id) || !task.gateway.canDiscard(id, true),
+      )
+    )
       throw Error("TASK_ARCHIVE_RECONCILIATION_REQUIRED");
     task.archiving = true;
     const metadata = {
@@ -2188,6 +2255,10 @@ export class TaskRuntime {
       error: task.view.error,
       createdAt: task.view.createdAt,
       operationCount: task.operationIds.length,
+      reviewedUnknownOperations: requiredReviews.map((id) => ({
+        id,
+        status: "unknown" as const,
+      })),
     };
     try {
       await this.ports
@@ -2247,9 +2318,13 @@ export class TaskRuntime {
       }
     }
   }
-  private pause(task: RecordTask, code: string): void {
+  private pause(
+    task: RecordTask,
+    code: string,
+    state: "paused-error" | "paused-human" = "paused-error",
+  ): void {
     task.view.error = code;
-    task.view.state = "paused-error";
+    task.view.state = state;
     task.generation++;
     this.notify(task);
     this.returnControl(task);
@@ -2287,7 +2362,8 @@ export class TaskRuntime {
       status: op.status,
       output:
         outputLimit === undefined ? output : output?.slice(0, outputLimit),
-      ...(outputLimit !== undefined && (output?.length ?? 0) > outputLimit
+      ...(op.outputTruncated ||
+      (outputLimit !== undefined && (output?.length ?? 0) > outputLimit)
         ? { outputTruncated: true }
         : {}),
       error: op.error,
@@ -2370,6 +2446,11 @@ export class TaskRuntime {
     const stepId = task.steps[task.view.nextStep]?.operationId;
     return {
       ...base,
+      archiveReviewIds:
+        terminalState(task.view.state) &&
+        task.operationIds.every((id) => task.gateway.canDiscard(id, true))
+          ? task.operationIds.filter((id) => !task.gateway.canDiscard(id))
+          : [],
       canArchive:
         terminalState(task.view.state) &&
         task.operationIds.every((id) => task.gateway.canDiscard(id)),

@@ -125,7 +125,7 @@ export function SplitScreenPanel({
           </span>
           {splitMode !== "none" && (
             <span className="text-xs border border-accent-brand/40 text-accent-brand px-1.5 py-0.5 leading-tight">
-              {splitMode}
+              {SPLIT_MODES.find((mode) => mode.id === splitMode)?.label}
             </span>
           )}
         </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useId } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/button";
 import { Input } from "@/components/input";
@@ -36,21 +36,31 @@ export function SnippetVariablesDialog({
   ) => void;
 }) {
   const { t } = useTranslation();
+  const inputId = useId();
   const inputs = useMemo(
-    () => extractSnippetInputs(snippet.content),
-    [snippet.content],
+    () =>
+      extractSnippetInputs(snippet.content, (number) =>
+        t("newUi.sidebar.snippets.inputLabel", { number }),
+      ),
+    [snippet.content, t],
   );
   const [values, setValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setValues({});
-  }, [snippet]);
+  }, [snippet.id, snippet.content]);
 
   const preview = resolveSnippetContent(snippet.content, host, values);
 
   return (
     <Dialog open onOpenChange={(v) => !v && onCancel()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent
+        className="sm:max-w-lg"
+        onEscapeKeyDown={(event) => {
+          if (event.isComposing || event.keyCode === 229)
+            event.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="text-lg font-bold">
             {t("newUi.sidebar.snippets.variablesDialogTitle", {
@@ -64,8 +74,14 @@ export function SnippetVariablesDialog({
         <div className="flex flex-col gap-4 mt-1">
           {inputs.map((input) => (
             <div key={input.key} className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold">{input.label}</label>
+              <label
+                htmlFor={`${inputId}-${input.key}`}
+                className="text-xs font-semibold"
+              >
+                {input.label}
+              </label>
               <Input
+                id={`${inputId}-${input.key}`}
                 autoFocus={inputs[0]?.key === input.key}
                 value={values[input.key] ?? ""}
                 onChange={(e) =>

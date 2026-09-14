@@ -1,3 +1,4 @@
+import { aiSessionKeys } from "../../database/repositories/ai-session-keys.js";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +7,7 @@ const jwtSecret = "a".repeat(64);
 const encryptionKey = crypto.randomBytes(32);
 
 const mocks = vi.hoisted(() => ({
+  revokeSession: vi.fn(async () => true),
   hasUserDEK: vi.fn(() => false),
   adoptRecoveredDEK: vi.fn(async () => {}),
 }));
@@ -18,7 +20,7 @@ vi.mock("../../database/db/index.js", () => ({
 
 vi.mock("../../database/repositories/factory.js", () => ({
   createCurrentSettingsRepository: () => ({ get: async () => null }),
-  createCurrentSessionRepository: () => ({}),
+  createCurrentSessionRepository: () => ({ revoke: mocks.revokeSession }),
   createCurrentUserRepository: () => ({}),
   createCurrentApiKeyRepository: () => ({}),
   createCurrentTrustedDeviceRepository: () => ({}),
@@ -132,4 +134,24 @@ describe("AuthManager token handling", () => {
     expect(payload?.userId).toBe("user-1");
     expect(mocks.adoptRecoveredDEK).not.toHaveBeenCalled();
   });
+});
+
+it("single-session revocation clears the target owner temporary keys and pending writes only", async () => {
+  const first = aiSessionKeys.prepare("owner", "first");
+  first.bind(7);
+  first.commit(7);
+  const pending = aiSessionKeys.prepare("owner", "pending", 8);
+  pending.bind(8);
+  const other = aiSessionKeys.prepare("admin", "other");
+  other.bind(7);
+  other.commit(7);
+  try {
+    expect(await authManager.revokeSession("session-1", "owner")).toBe(true);
+    expect(mocks.revokeSession).toHaveBeenCalledWith("session-1");
+    expect(aiSessionKeys.get("owner", 7)).toBeUndefined();
+    expect(() => pending.commit(8)).toThrow("AI_SESSION_KEY_EXPIRED");
+    expect(aiSessionKeys.get("admin", 7)).toBe("other");
+  } finally {
+    aiSessionKeys.clear();
+  }
 });

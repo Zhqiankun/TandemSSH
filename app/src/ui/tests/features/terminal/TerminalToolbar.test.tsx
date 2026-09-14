@@ -892,3 +892,11 @@ describe("TerminalToolbar Phase 1", () => {
     );
   });
 });
+it("opens the host command history from the toolbar", async () => {
+  const onOpenHistory = vi.fn();
+  renderToolbar({ onOpenHistory });
+  fireEvent.click(
+    await screen.findByRole("button", { name: "historyDialog.title" }),
+  );
+  expect(onOpenHistory).toHaveBeenCalledOnce();
+});

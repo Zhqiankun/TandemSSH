@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
+import * as runtime from "../../../../hosts/metrics/collection-runtime.js";
+import type { Client } from "ssh2";
+import { describe, it, expect, vi } from "vitest";
 import {
+  collectDiskMetrics,
   parseDfLines,
   findWorstMountIndex,
   buildFilesystemList,
@@ -221,4 +224,52 @@ describe("mergeMonitoredFilesystems", () => {
     expect(result).toHaveLength(1);
     expect(result[0].label).toBe("Media");
   });
+});
+it("preserves spaces in filesystem names and mount paths", () => {
+  const rows = parseDfLines(
+    "server:/shared data nfs4 1000 400 600 40% /mnt/项目  资料\n",
+  );
+  expect(rows[0]).toMatchObject({
+    filesystem: "server:/shared data",
+    type: "nfs4",
+    mount: "/mnt/项目  资料",
+  });
+});
+it("matches the same filesystem when equal-length human rows arrive in a different order", () => {
+  const list = buildFilesystemList(
+    parseDfLines(BYTES_OUTPUT),
+    parseDfLines(HUMAN_OUTPUT.trim().split("\n").reverse().join("\n")),
+  );
+  expect(list.find((r) => r.mount === "/")).toMatchObject({
+    totalHuman: "1.0K",
+    usedHuman: "400",
+  });
+  expect(list.find((r) => r.mount === "/data")).toMatchObject({
+    totalHuman: "2.0K",
+    usedHuman: "1.9K",
+  });
+});
+it("does not attach old display sizes after a filesystem replacement at the same mount", () => {
+  const list = buildFilesystemList(
+    parseDfLines("/dev/new ext4 1000 100 900 10% /data"),
+    parseDfLines("/dev/old ext4 2.0K 1.9K 100 95% /data"),
+  );
+  expect(list[0].totalHuman).toBeNull();
+  expect(list[0].usedHuman).toBeNull();
+});
+
+it("retains numeric capacities when only the human-readable sample fails", async () => {
+  const command = vi
+    .spyOn(runtime, "execMetricCommand")
+    .mockImplementation(async (_client, id) => {
+      if (id === "disk.1") throw Error("sample timeout");
+      return { stdout: BYTES_OUTPUT, stderr: "", code: 0 };
+    });
+  try {
+    const result = await collectDiskMetrics({} as Client);
+    expect(result).toMatchObject({ mount: "/", percent: 40, totalHuman: null });
+    expect(result.filesystems[0].totalBytes).toBe(1000);
+  } finally {
+    command.mockRestore();
+  }
 });

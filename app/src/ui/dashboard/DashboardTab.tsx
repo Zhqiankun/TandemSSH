@@ -1,3 +1,4 @@
+import { formatRecentActivityTime } from "@/features/homepage/recent-activity-time";
 import { TaskHistoryButton } from "@/features/collaboration/TaskHistory";
 import { DesktopUpdateButton } from "@/updates/UpdateCenter";
 import { translateUiText } from "@/i18n/ui-text";
@@ -149,7 +150,10 @@ function StatsBarCard({
   const { t } = useTranslation();
   const online = hosts.filter((h) => h.status === "online").length;
   return (
-    <Card className="grid grid-cols-4 divide-x divide-border overflow-hidden w-full h-full py-0 gap-0">
+    <Card
+      className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] divide-x divide-border w-full py-0 gap-0"
+      data-dashboard-overview
+    >
       <div className="flex flex-col justify-center px-4 py-2 gap-1">
         <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">
           {t("dashboard.version")}
@@ -570,7 +574,7 @@ function RecentActivityCard({
   onClear: () => void;
   statusLoading?: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const statusScheme = useStatusColorScheme();
   const typeIcon: Record<RecentActivityItem["type"], React.ReactNode> = {
     terminal: <Terminal className="size-2.5" />,
@@ -603,13 +607,11 @@ function RecentActivityCard({
     telnet: "Telnet",
   };
   function formatTime(ts: string) {
-    const diffMs = Date.now() - new Date(ts).getTime();
-    if (diffMs < 0) return t("dashboard.justNow");
-    const diff = Math.floor(diffMs / 1000);
-    if (diff < 60) return t("dashboard.justNow");
-    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-    return `${Math.floor(diff / 86400)}d`;
+    return formatRecentActivityTime(
+      ts,
+      i18n.resolvedLanguage ?? i18n.language,
+      t("dashboard.justNow"),
+    );
   }
   return (
     <Card className="flex flex-col overflow-hidden w-full h-full py-0 gap-0">
@@ -878,13 +880,20 @@ function CardItem({
     [slot.key, onHeightChange],
   );
 
-  const isFlex = slot.height === null;
+  const isOverview = slot.id === "stats_bar";
+  const isFlex = slot.height === null && !isOverview;
 
   return (
     <div
       ref={cardRef}
       className={`relative flex flex-col transition-opacity select-none ${isDragging ? "opacity-40" : "opacity-100"} ${isFlex ? "flex-1 min-h-0" : "shrink-0"}`}
-      style={!isFlex ? { height: slot.height } : undefined}
+      style={
+        isOverview
+          ? { minHeight: slot.height ?? undefined }
+          : !isFlex
+            ? { height: slot.height }
+            : undefined
+      }
       draggable={editMode}
       onDragStart={onDragStart}
       onDrop={onDrop}
@@ -906,7 +915,9 @@ function CardItem({
           </button>
         </div>
       )}
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div
+        className={isOverview ? "shrink-0" : "flex-1 min-h-0 overflow-hidden"}
+      >
         {slot.id === "stats_bar" && (
           <StatsBarCard
             hosts={hosts}
@@ -1124,7 +1135,7 @@ function PanelColumn({
   const allIds = slots.map((s) => s.id);
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto thin-scrollbar">
       <DropZone
         panel={panel}
         order={-1}
@@ -1135,7 +1146,7 @@ function PanelColumn({
       {sorted.map((slot, idx) => (
         <div
           key={slot.key}
-          className={`flex flex-col min-h-0 ${slot.height === null ? "flex-1" : "shrink-0"}`}
+          className={`flex flex-col min-h-0 ${slot.height === null && slot.id !== "stats_bar" ? "flex-1" : "shrink-0"}`}
         >
           {idx > 0 && (
             <div className={editMode ? "" : "h-4 shrink-0"}>
@@ -1845,9 +1856,12 @@ export function DashboardTab({
 
   return (
     <div className="flex flex-col w-full h-full min-h-0 overflow-hidden">
-      <Card className="flex-row items-center justify-between px-5 py-3 shrink-0 mx-5 mt-5 gap-0">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-0 bg-muted/40 border border-border p-0.5">
+      <Card
+        className="flex-row flex-wrap items-center justify-between px-5 py-3 shrink-0 mx-5 mt-5 gap-x-4 gap-y-2"
+        data-dashboard-toolbar
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex shrink-0 whitespace-nowrap items-center gap-0 bg-muted/40 border border-border p-0.5">
             <button
               onClick={() => setDashboardView("dashboard")}
               className={`px-3 py-1 text-sm font-medium transition-colors ${dashboardView === "dashboard" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
@@ -1867,8 +1881,8 @@ export function DashboardTab({
             </p>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          <div className="hidden sm:flex items-center gap-2 mr-2 bg-muted/50 px-2.5 py-1 rounded-none border border-border">
+        <div className="flex flex-wrap items-center gap-1">
+          <div className="hidden sm:flex shrink-0 whitespace-nowrap items-center gap-2 mr-2 bg-muted/50 px-2.5 py-1 rounded-none border border-border">
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
               {t("dashboardTab.commandPalette")}
             </span>

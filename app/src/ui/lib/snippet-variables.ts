@@ -13,7 +13,10 @@ export interface SnippetHostContext {
 const INPUT_PATTERN =
   /\$\{INPUT_(\d+)(?::([^}$]+))?\}|\$INPUT_(\d+)(?![a-zA-Z0-9_])/g;
 
-export function extractSnippetInputs(content: string): SnippetInput[] {
+export function extractSnippetInputs(
+  content: string,
+  defaultLabel: (number: string) => string = (number) => `Input ${number}`,
+): SnippetInput[] {
   const seen = new Map<string, SnippetInput>();
   let match: RegExpExecArray | null;
   INPUT_PATTERN.lastIndex = 0;
@@ -21,7 +24,7 @@ export function extractSnippetInputs(content: string): SnippetInput[] {
     const digits = match[1] ?? match[3];
     const key = `INPUT_${digits}`;
     if (!seen.has(key)) {
-      seen.set(key, { key, label: match[2]?.trim() || `Input ${digits}` });
+      seen.set(key, { key, label: match[2]?.trim() || defaultLabel(digits) });
     }
   }
   return Array.from(seen.values());

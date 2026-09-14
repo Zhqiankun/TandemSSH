@@ -683,6 +683,7 @@ export interface TermixAlert {
 // ============================================================================
 
 export interface TerminalConfig {
+  encoding?: import("./terminal-encoding.js").TerminalEncoding;
   localEcho?: "default" | "off" | "auto" | "on";
   cursorBlink: boolean;
   cursorStyle: "block" | "underline" | "bar";

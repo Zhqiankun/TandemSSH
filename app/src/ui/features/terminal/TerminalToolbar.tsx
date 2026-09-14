@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   ClipboardPaste,
+  History,
   GripVertical,
   ImagePlus,
   LayoutGrid,
@@ -118,6 +119,7 @@ interface TerminalToolbarProps {
   onPasteImage: () => void | Promise<void>;
   onOpenTab?: (type: TabType) => void;
   onOpenFiles?: () => void;
+  onOpenHistory?: () => void;
   isFocused: boolean;
 }
 
@@ -132,6 +134,7 @@ export const TerminalToolbar: React.FC<TerminalToolbarProps> = ({
   onPasteImage,
   onOpenTab,
   onOpenFiles,
+  onOpenHistory,
   isFocused,
 }) => {
   const { t } = useTranslation();
@@ -599,6 +602,18 @@ export const TerminalToolbar: React.FC<TerminalToolbarProps> = ({
 
   const imageButtons = (
     <>
+      {onOpenHistory && (
+        <button
+          type="button"
+          className={CONTROL}
+          title={t("historyDialog.title")}
+          aria-label={t("historyDialog.title")}
+          onClick={onOpenHistory}
+        >
+          <History className="size-4 shrink-0" />
+          {effectiveDensity !== "icon" && t("historyDialog.title")}
+        </button>
+      )}
       <button
         type="button"
         className={CONTROL}
@@ -725,6 +740,12 @@ export const TerminalToolbar: React.FC<TerminalToolbarProps> = ({
               {density !== "icon" && action.label}
             </span>
           ))}
+          {onOpenHistory && (
+            <span className={CONTROL}>
+              <History className="size-4" />
+              {density !== "icon" && t("historyDialog.title")}
+            </span>
+          )}
           {isTmuxAttached && (
             <span className={CONTROL}>
               <LogOut className="size-4" />

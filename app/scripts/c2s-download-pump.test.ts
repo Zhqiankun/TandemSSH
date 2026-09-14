@@ -1,0 +1,34 @@
+import { expect, it, vi } from "vitest";
+import { Writable } from "node:stream";
+import { createRequire } from "node:module";
+const { createC2SDownloadPump } = createRequire(import.meta.url)("../electron/c2s-download-pump.cjs");
+it.each([false, true])("pauses for a slow local writer; cancelled=%s", async cancelled => {
+  let complete!: () => void;
+  const chunks: Buffer[] = [];
+  const socket = new Writable({ highWaterMark: 1, write(chunk, _encoding, done) { chunks.push(Buffer.from(chunk)); complete = done; } });
+  const ws = { readyState: 1, pause: vi.fn(), resume: vi.fn() }, failure = vi.fn();
+  const pump = createC2SDownloadPump(socket, ws, failure), payload = Buffer.from("中文\0binary");
+  pump.write(payload);
+  expect(ws.pause).toHaveBeenCalledTimes(1);
+  expect(ws.resume).not.toHaveBeenCalled();
+  expect(socket.writableLength).toBe(payload.length);
+  if(cancelled) pump.close();
+  complete();
+  await new Promise(resolve => setImmediate(resolve));
+  expect(ws.resume).toHaveBeenCalledTimes(cancelled ? 0 : 1);
+  expect(Buffer.concat(chunks)).toEqual(payload);
+  expect(failure).not.toHaveBeenCalled();
+  pump.close();
+  expect(socket.listenerCount("drain")).toBe(0);
+  socket.destroy();
+});
+it("reports synchronous local write errors without resuming remote input", () => {
+  const socket = new Writable({ write(_data, _enc, cb) { cb(); } });
+  vi.spyOn(socket, "write").mockImplementation(() => { throw Error("write-failed"); });
+  const ws = { readyState: 1, pause: vi.fn(), resume: vi.fn() }, failure = vi.fn();
+  const pump = createC2SDownloadPump(socket, ws, failure);
+  pump.write(Buffer.from("data"));
+  expect(failure).toHaveBeenCalledWith(expect.objectContaining({ message: "write-failed" }));
+  expect(ws.resume).not.toHaveBeenCalled();
+  pump.close(); socket.destroy();
+});

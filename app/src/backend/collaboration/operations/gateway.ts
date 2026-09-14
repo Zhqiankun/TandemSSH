@@ -298,10 +298,14 @@ export class OperationGateway {
     return structuredClone(view);
   }
 
-  canDiscard(id: string): boolean {
+  canDiscard(id: string, reviewedUnknownCommand = false): boolean {
     const op = this.required(id).view;
     return (
-      ["succeeded", "failed", "cancelled-before-send"].includes(op.status) &&
+      (["succeeded", "failed", "cancelled-before-send"].includes(op.status) ||
+        (reviewedUnknownCommand &&
+          op.status === "unknown" &&
+          op.action.type === "terminal.command" &&
+          !op.fileResult)) &&
       !op.auditGap &&
       !(op.status === "succeeded" && op.error) &&
       !op.fileResult?.temporaryPath &&
@@ -750,6 +754,10 @@ export class OperationGateway {
           view.error = result.protocolError
             ? "SHELL_PROTOCOL_INVALID"
             : "RESULT_UNKNOWN";
+          this.pauseOwnLease(view.context.lease);
+        } else if (view.outputTruncated) {
+          view.status = "unknown";
+          view.error = "COMMAND_OUTPUT_INCOMPLETE";
           this.pauseOwnLease(view.context.lease);
         }
       }

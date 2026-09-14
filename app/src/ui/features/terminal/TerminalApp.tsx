@@ -1,3 +1,4 @@
+import { terminalEncoding } from "@/types/terminal-encoding";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { Terminal } from "@/features/terminal/Terminal.tsx";
@@ -42,6 +43,19 @@ const TerminalApp: React.FC<TerminalAppProps> = ({ hostId, tmuxSession }) => {
             </div>
           );
         }
+
+        if (
+          tmuxSession &&
+          terminalEncoding(hostConfig.terminalConfig?.encoding) !== "utf-8"
+        )
+          return (
+            <div className="relative h-full w-full">
+              <ConnectionScreen
+                status="disconnected"
+                message={t("terminal.tmuxEncodingRequired")}
+              />
+            </div>
+          );
 
         return (
           <Terminal

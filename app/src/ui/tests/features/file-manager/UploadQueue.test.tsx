@@ -473,3 +473,93 @@ it.each([false, true])(
     ]);
   },
 );
+
+it("applies live concurrency changes from the panel without interrupting active uploads", async () => {
+  const f = fixture();
+  const ids = Array.from({ length: 5 }, (_, index) =>
+    f.queue.add({
+      file: file(Buffer.from("dynamic-" + index)),
+      sessionId: "session",
+      hostId: 7,
+      path: "/srv/dynamic-" + index,
+      hostLabel: "并发验收",
+    }),
+  );
+  await vi.waitFor(() =>
+    expect(
+      f.queue.getSnapshot().every((j) => j.state === "awaiting-review"),
+    ).toBe(true),
+  );
+  const chunk = vi.mocked(f.api.chunk).getMockImplementation()!;
+  const gates = new Map<string, ReturnType<typeof deferred>>(),
+    started: string[] = [];
+  let active = 0,
+    peak = 0;
+  vi.mocked(f.api.chunk).mockImplementation(async (...args) => {
+    const id = args[1],
+      gate = deferred();
+    gates.set(id, gate);
+    started.push(id);
+    active++;
+    peak = Math.max(peak, active);
+    try {
+      await gate.promise;
+      return await chunk(...args);
+    } finally {
+      active--;
+    }
+  });
+  f.queue.setConcurrency(1);
+  render(
+    <UploadQueuePanel
+      queue={f.queue}
+      sessionId="session"
+      hostId={7}
+      onRefresh={() => {}}
+    />,
+  );
+  const setLimit = (value: number) =>
+    fireEvent.change(screen.getByRole("spinbutton", { name: "同时上传" }), {
+      target: { value: String(value) },
+    });
+  try {
+    ids.forEach((id) => f.queue.start(id, false));
+    await vi.waitFor(() => expect(started).toHaveLength(1));
+    setLimit(3);
+    await vi.waitFor(() => expect(started).toHaveLength(3));
+    expect(active).toBe(3);
+    setLimit(1);
+    expect(active).toBe(3);
+    expect(f.calls).not.toContain("cancel");
+    expect(f.calls).not.toContain("pause");
+    gates.get(started[0])!.resolve();
+    gates.get(started[1])!.resolve();
+    await vi.waitFor(() =>
+      expect(
+        f.queue.getSnapshot().filter((j) => j.state === "completed"),
+      ).toHaveLength(2),
+    );
+    expect(started).toHaveLength(3);
+    expect(active).toBe(1);
+    gates.get(started[2])!.resolve();
+    await vi.waitFor(() => expect(started).toHaveLength(4));
+    expect(active).toBe(1);
+    gates.get(started[3])!.resolve();
+    await vi.waitFor(() => expect(started).toHaveLength(5));
+    expect(active).toBe(1);
+    gates.get(started[4])!.resolve();
+    await vi.waitFor(() =>
+      expect(f.queue.getSnapshot().every((j) => j.state === "completed")).toBe(
+        true,
+      ),
+    );
+    expect(peak).toBe(3);
+    expect(f.queue.getConcurrency()).toBe(1);
+    for (const row of f.rows.values())
+      expect(Buffer.concat(row.chunks).toString()).toBe(
+        "dynamic-" + row.view.path.split("-").at(-1),
+      );
+  } finally {
+    for (const gate of gates.values()) gate.resolve();
+  }
+});

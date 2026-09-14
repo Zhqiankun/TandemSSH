@@ -1,3 +1,4 @@
+import { PermissionManager } from "../../utils/permission-manager.js";
 import { getErrorMessage } from "../../utils/error-message.js";
 import type { AuthenticatedRequest } from "../../../types/index.js";
 import express, {
@@ -361,9 +362,14 @@ router.post(
   requireDataAccess,
   async (req: Request, res: Response) => {
     const userId = (req as AuthenticatedRequest).userId;
-    const { hostId, command } = req.body;
+    const { hostId, command } = req.body ?? {};
 
-    if (!isNonEmptyString(userId) || !hostId || !isNonEmptyString(command)) {
+    if (
+      !isNonEmptyString(userId) ||
+      !Number.isSafeInteger(hostId) ||
+      hostId <= 0 ||
+      !isNonEmptyString(command)
+    ) {
       authLogger.warn("Invalid command history save request", {
         operation: "command_history_save",
         userId,
@@ -373,65 +379,73 @@ router.post(
       return res.status(400).json({ error: "Missing required parameters" });
     }
 
-    const sensitivePatterns = [
-      /passw(or)?d/i,
-      /\bsecret\b/i,
-      /\btoken\b/i,
-      /\bapi.?key\b/i,
-      /PASS(WORD)?=/i,
-      /AWS_SECRET/i,
-      /mysql\b.*-p/i,
-      /sudo\s+-S\b/,
-      /htpasswd/i,
-      /sshpass/i,
-      /curl\b.*-u\s/i,
-      /export\b.*(?:PASSWORD|SECRET|TOKEN|KEY)=/i,
-    ];
-
-    const trimmedCommand = command.trim();
-    if (sensitivePatterns.some((p: RegExp) => p.test(trimmedCommand))) {
-      return res.status(201).json({
-        id: 0,
-        userId,
-        hostId: parseInt(hostId, 10),
-        command: trimmedCommand,
-        executedAt: new Date().toISOString(),
-      });
-    }
-
-    const globalEnabled = await createCurrentSettingsRepository().getBoolean(
-      "command_history_enabled",
-      true,
-    );
-    if (!globalEnabled) {
-      return res.status(201).json({
-        id: 0,
-        userId,
-        hostId: parseInt(hostId, 10),
-        command: trimmedCommand,
-        executedAt: new Date().toISOString(),
-      });
-    }
-
-    const hostRecord =
-      await createCurrentHostResolutionRepository().findHostById(
-        parseInt(hostId, 10),
-        userId,
-      );
-    if (hostRecord?.enableCommandHistory === false) {
-      return res.status(201).json({
-        id: 0,
-        userId,
-        hostId: parseInt(hostId, 10),
-        command: trimmedCommand,
-        executedAt: new Date().toISOString(),
-      });
-    }
-
     try {
+      const access = await PermissionManager.getInstance().canAccessHost(
+        userId,
+        hostId,
+        "connect",
+      );
+      if (!access.hasAccess)
+        return res.status(404).json({ error: "SSH host not found" });
+      const hostRecord =
+        await createCurrentHostResolutionRepository().findHostHistoryPreference(
+          hostId,
+        );
+      if (!hostRecord)
+        return res.status(404).json({ error: "SSH host not found" });
+      const sensitivePatterns = [
+        /passw(or)?d/i,
+        /\bsecret\b/i,
+        /\btoken\b/i,
+        /\bapi.?key\b/i,
+        /PASS(WORD)?=/i,
+        /AWS_SECRET/i,
+        /mysql\b.*-p/i,
+        /sudo\s+-S\b/,
+        /htpasswd/i,
+        /sshpass/i,
+        /curl\b.*-u\s/i,
+        /export\b.*(?:PASSWORD|SECRET|TOKEN|KEY)=/i,
+      ];
+
+      const trimmedCommand = command.trim();
+      if (sensitivePatterns.some((p: RegExp) => p.test(trimmedCommand))) {
+        return res.status(201).json({
+          id: 0,
+          userId,
+          hostId: hostId,
+          command: trimmedCommand,
+          executedAt: new Date().toISOString(),
+        });
+      }
+
+      const globalEnabled = await createCurrentSettingsRepository().getBoolean(
+        "command_history_enabled",
+        true,
+      );
+      if (!globalEnabled) {
+        return res.status(201).json({
+          id: 0,
+          userId,
+          hostId: hostId,
+          command: trimmedCommand,
+          executedAt: new Date().toISOString(),
+        });
+      }
+
+      if (hostRecord?.enableCommandHistory === false) {
+        return res.status(201).json({
+          id: 0,
+          userId,
+          hostId: hostId,
+          command: trimmedCommand,
+          executedAt: new Date().toISOString(),
+        });
+      }
+
       const result = await createCurrentCommandHistoryRepository().create(
         userId,
-        parseInt(hostId, 10),
+        hostId,
         trimmedCommand,
       );
 
@@ -476,9 +490,18 @@ router.get(
     const hostId = Array.isArray(req.params.hostId)
       ? req.params.hostId[0]
       : req.params.hostId;
-    const hostIdNum = parseInt(hostId, 10);
+    const hostIdNum =
+      typeof hostId === "string"
+        ? /^[1-9][0-9]*$/.test(hostId)
+          ? Number(hostId)
+          : NaN
+        : hostId;
 
-    if (!isNonEmptyString(userId) || isNaN(hostIdNum)) {
+    if (
+      !isNonEmptyString(userId) ||
+      !Number.isSafeInteger(hostIdNum) ||
+      hostIdNum <= 0
+    ) {
       authLogger.warn("Invalid command history fetch request", {
         userId,
         hostId: hostIdNum,
@@ -536,9 +559,14 @@ router.post(
   requireDataAccess,
   async (req: Request, res: Response) => {
     const userId = (req as AuthenticatedRequest).userId;
-    const { hostId, command } = req.body;
+    const { hostId, command } = req.body ?? {};
 
-    if (!isNonEmptyString(userId) || !hostId || !isNonEmptyString(command)) {
+    if (
+      !isNonEmptyString(userId) ||
+      !Number.isSafeInteger(hostId) ||
+      hostId <= 0 ||
+      !isNonEmptyString(command)
+    ) {
       authLogger.warn("Invalid command delete request", {
         operation: "command_history_delete",
         userId,
@@ -549,7 +577,12 @@ router.post(
     }
 
     try {
-      const hostIdNum = parseInt(hostId, 10);
+      const hostIdNum =
+        typeof hostId === "string"
+          ? /^[1-9][0-9]*$/.test(hostId)
+            ? Number(hostId)
+            : NaN
+          : hostId;
 
       await createCurrentCommandHistoryRepository().deleteCommandForHost(
         userId,
@@ -598,9 +631,18 @@ router.delete(
     const hostId = Array.isArray(req.params.hostId)
       ? req.params.hostId[0]
       : req.params.hostId;
-    const hostIdNum = parseInt(hostId, 10);
+    const hostIdNum =
+      typeof hostId === "string"
+        ? /^[1-9][0-9]*$/.test(hostId)
+          ? Number(hostId)
+          : NaN
+        : hostId;
 
-    if (!isNonEmptyString(userId) || isNaN(hostIdNum)) {
+    if (
+      !isNonEmptyString(userId) ||
+      !Number.isSafeInteger(hostIdNum) ||
+      hostIdNum <= 0
+    ) {
       authLogger.warn("Invalid command history clear request");
       return res.status(400).json({ error: "Invalid request" });
     }

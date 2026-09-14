@@ -15,6 +15,15 @@ export function HistoryRecordSummary({ item }: { item: AuditHistoryItem }) {
   const { t } = useTranslation();
   return (
     <div className="space-y-1 text-xs">
+      {item.type === "task.archived" &&
+        Number.isSafeInteger(item.reviewedUnknownCommandCount) &&
+        (item.reviewedUnknownCommandCount ?? 0) > 0 && (
+          <p className="text-amber-500">
+            {t("tandem.history.archivedUnknownReviewed", {
+              count: item.reviewedUnknownCommandCount,
+            })}
+          </p>
+        )}
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
         <span>
           {t("tandem.history.sourceLabel")}:{" "}

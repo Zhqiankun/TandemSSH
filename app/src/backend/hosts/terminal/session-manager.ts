@@ -1,3 +1,4 @@
+import { encodeTerminalInput, type TerminalEncoding } from "./encoding.js";
 import { type Client, type ClientChannel } from "ssh2";
 import { terminalOutputDelivery } from "./output-delivery.js";
 import { RecordingWriter } from "./recording-writer.js";
@@ -45,6 +46,7 @@ export interface TerminalSession {
 
   sshConn: Client | null;
   sshStream: ClientChannel | null;
+  inputEncoding?: TerminalEncoding;
   jumpClient: Client | null;
 
   cols: number;
@@ -211,11 +213,23 @@ class TerminalSessionManager {
               !current.sshStream.destroyed
             );
           },
+          validateWrite: (data) => {
+            const current = this.sessions.get(id);
+            try {
+              encodeTerminalInput(data, current?.inputEncoding ?? "utf-8");
+            } catch {
+              throw new ControlError("TERMINAL_INPUT_NOT_REPRESENTABLE");
+            }
+          },
           write: (data) => {
             const current = this.sessions.get(id);
             if (!current?.sshStream)
               throw new ControlError("TRANSPORT_UNAVAILABLE");
             const input = Buffer.from(data);
+            const wireInput = encodeTerminalInput(
+              input,
+              current.inputEncoding ?? "utf-8",
+            );
             const before = current.control.snapshot();
             this.bufferInput(id, input.toString("utf8"));
             const after = current.control.snapshot();
@@ -226,7 +240,7 @@ class TerminalSessionManager {
                 after.closed)
             )
               throw new ControlError("STALE_CONTROL");
-            current.sshStream.write(input);
+            current.sshStream.write(wireInput);
           },
         },
         (event) => this.broadcast(id, event),
@@ -353,12 +367,14 @@ class TerminalSessionManager {
     conn: Client,
     stream: ClientChannel,
     jumpClient?: Client | null,
+    encoding: TerminalEncoding = "utf-8",
   ): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
     session.sshConn = conn;
     session.sshStream = stream;
+    session.inputEncoding = encoding;
     session.jumpClient = jumpClient ?? null;
     session.isConnected = true;
     session.control.connectionChanged();

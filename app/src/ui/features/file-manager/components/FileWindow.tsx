@@ -42,7 +42,7 @@ export function FileWindow({
   initialY = 100,
 }: FileWindowProps) {
   const { t } = useTranslation();
-  const { closeWindow, maximizeWindow, focusWindow, windows } =
+  const { closeWindow, maximizeWindow, focusWindow, updateWindow, windows } =
     useWindowManager();
   const host = useRef(sshHost);
   host.current = sshHost;
@@ -68,7 +68,14 @@ export function FileWindow({
   const recovery = useFileDraft(sshSessionId, doc.base, doc.draft);
   const [closeReview, setCloseReview] = useState(false),
     [reloadReview, setReloadReview] = useState(false);
-  const [charset, setCharset] = useState<FileCharset>("utf8");
+  const [charsetChoice, setCharsetChoice] = useState<{
+    version: string | undefined;
+    value: FileCharset;
+  }>();
+  const charset =
+    charsetChoice && charsetChoice.version === doc.base?.document.version
+      ? charsetChoice.value
+      : (doc.base?.document.format?.charset ?? "utf8");
   const [externalEditorPath, setExternalEditorPath] = useState("");
   const [mediaDimensions, setMediaDimensions] = useState<{
     width: number;
@@ -113,6 +120,11 @@ export function FileWindow({
     modifiedTimestamp: info?.mtime ?? file.modifiedTimestamp,
   };
   const currentWindow = windows.find((w) => w.id === windowId);
+  useEffect(() => {
+    if (currentWindow && currentWindow.title !== currentFile.name) {
+      updateWindow(windowId, { title: currentFile.name });
+    }
+  }, [currentWindow, currentFile.name, windowId, updateWindow]);
   const download = async () => {
     try {
       await ensure();
@@ -311,7 +323,12 @@ export function FileWindow({
                   aria-label={t("fileDocument.reopenEncoding")}
                   value={charset}
                   disabled={doc.saving || doc.loading}
-                  onChange={(e) => setCharset(e.target.value as FileCharset)}
+                  onChange={(e) =>
+                    setCharsetChoice({
+                      version: doc.base?.document.version,
+                      value: e.target.value as FileCharset,
+                    })
+                  }
                 >
                   {["utf8", "utf16le", "utf16be", "gbk", "gb18030"].map((c) => (
                     <option key={c} value={c}>

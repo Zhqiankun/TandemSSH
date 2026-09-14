@@ -170,3 +170,129 @@ describe("HostRepository Proxmox sync inserts", () => {
     expect(created.credentialId).toBe(7);
   });
 });
+
+describe("HostRepository.duplicateOwnedForUser", () => {
+  let adapter: TestSqliteDatabase | undefined;
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await adapter?.close();
+    adapter = undefined;
+  });
+  it("preserves key authentication in encrypted storage without returning secret fields", async () => {
+    adapter = new TestSqliteDatabase();
+    const context = await adapter.connect();
+    await adapter.exec(
+      "INSERT INTO users (id, username, password_hash) VALUES ('copy-owner','owner','hash'),('copy-other','other','hash')",
+    );
+    const key = Buffer.alloc(32, 7);
+    vi.spyOn(DataCrypto, "validateUserAccess").mockReturnValue(key);
+    const repo = new HostRepository(context);
+    const source = await repo.createEncryptedForUser("copy-owner", {
+      userId: "copy-owner",
+      name: "原服务器",
+      ip: "127.0.0.1",
+      port: 22,
+      username: "fixture",
+      authType: "key",
+      key: "fixture-private-key",
+      keyPassword: "fixture-key-password",
+      notes: "中文备注",
+      folder: "项目 / 测试",
+      statsConfig: JSON.stringify({
+        metricsEnabled: true,
+        metricsInterval: 17,
+      }),
+      tunnelConnections: JSON.stringify([{ name: "saved", autoStart: true }]),
+      hostKeyFingerprint: "old-trust",
+      autostartKey: "old-autostart",
+    });
+    expect(
+      await repo.duplicateOwnedForUser("copy-other", source.id, "不得复制"),
+    ).toBeNull();
+    const response = await repo.duplicateOwnedForUser(
+      "copy-owner",
+      source.id,
+      "服务器副本",
+    );
+    expect(Object.keys(response!)).toEqual(["id"]);
+    expect(response!.id).not.toBe(source.id);
+    const stored = (await repo.findByIdForUser("copy-owner", response!.id))!;
+    expect(stored.key).not.toBe("fixture-private-key");
+    const clone = DataCrypto.decryptRecord(
+      "ssh_data",
+      stored,
+      "copy-owner",
+      key,
+    );
+    expect(clone).toMatchObject({
+      name: "服务器副本",
+      authType: "key",
+      key: "fixture-private-key",
+      keyPassword: "fixture-key-password",
+      notes: "中文备注",
+      folder: "项目 / 测试",
+      hostKeyFingerprint: null,
+      autostartKey: null,
+      enableTunnel: false,
+    });
+    expect(clone.syncId).not.toBe(source.syncId);
+    expect(JSON.parse(clone.statsConfig!)).toMatchObject({
+      metricsEnabled: false,
+      statusCheckEnabled: false,
+      metricsInterval: 17,
+    });
+    expect(JSON.parse(clone.tunnelConnections!)[0]).toMatchObject({
+      name: "saved",
+      autoStart: false,
+    });
+    const original = DataCrypto.decryptRecord(
+      "ssh_data",
+      (await repo.findByIdForUser("copy-owner", source.id))!,
+      "copy-owner",
+      key,
+    );
+    expect(original.hostKeyFingerprint).toBe("old-trust");
+    expect(original.key).toBe("fixture-private-key");
+    await adapter.exec(
+      "INSERT INTO ssh_credentials (id,user_id,name,auth_type,username) VALUES (81,'copy-owner','shared-ref','key','fixture')",
+    );
+    for (const authType of ["password", "credential"]) {
+      const originalAuth = await repo.createEncryptedForUser("copy-owner", {
+        userId: "copy-owner",
+        name: "auth",
+        ip: "127.0.0.1",
+        port: 22,
+        username: "fixture",
+        authType,
+        password: authType === "password" ? "fixture-password" : null,
+        credentialId: authType === "credential" ? 81 : null,
+      });
+      const copied = await repo.duplicateOwnedForUser(
+        "copy-owner",
+        originalAuth.id,
+        "认证副本",
+      );
+      const data = DataCrypto.decryptRecord(
+        "ssh_data",
+        (await repo.findByIdForUser("copy-owner", copied!.id))!,
+        "copy-owner",
+        key,
+      );
+      expect(data.authType).toBe(authType);
+      expect(data.password).toBe(originalAuth.password);
+      expect(data.credentialId).toBe(originalAuth.credentialId);
+    }
+    const countBefore = (await repo.listByUserId("copy-owner")).length;
+    for (const name of ["", "x".repeat(256), "a\0b"])
+      await expect(
+        repo.duplicateOwnedForUser("copy-owner", source.id, name),
+      ).rejects.toThrow("INVALID_HOST_DUPLICATE");
+    vi.mocked(DataCrypto.validateUserAccess).mockImplementationOnce(() => {
+      throw Error("DATA_EXPIRED");
+    });
+    await expect(
+      repo.duplicateOwnedForUser("copy-owner", source.id, "locked"),
+    ).rejects.toThrow("DATA_EXPIRED");
+    expect((await repo.listByUserId("copy-owner")).length).toBe(countBefore);
+  });
+});

@@ -150,7 +150,7 @@ function TunnelCard({
           <div className="flex items-start gap-2 p-2 bg-destructive/5 border border-destructive/20 text-destructive text-[10px]">
             <AlertCircle className="size-3 mt-0.5 shrink-0" />
             <span>
-              {/host denied|host_trust_|tunnel_trust_/i.test(status.reason)
+              {status.reason === "S2S_TUNNEL_LIMIT" ? t("tunnels.s2sTunnelLimit") : status.reason === "S2S_START_LIMIT" ? t("tunnels.s2sStartLimit") : /host denied|host_trust_|tunnel_trust_/i.test(status.reason)
                 ? t("tandem.tunnelTrustRejected")
                 : /eaddrinuse|address already in use/i.test(status.reason)
                   ? t("tunnels.listenPortOccupied")

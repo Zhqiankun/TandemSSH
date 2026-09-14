@@ -1,3 +1,5 @@
+import { admitC2SRelay, C2S_TRANSPORT_CONNECTION_LIMIT } from "./c2s-admission.js";
+import { C2S_MAX_MESSAGE_BYTES } from "./c2s-relay-utils.js";
 import express from "express";
 import { serviceListenOptions } from "../../runtime/policy.js";
 import { createServer } from "http";
@@ -40,7 +42,10 @@ registerTunnelRoutes(app);
 
 const PORT = 30003;
 const server = createServer(app);
+server.maxConnections = C2S_TRANSPORT_CONNECTION_LIMIT;
 const c2sRelayWss = new WebSocketServer({
+  maxPayload: C2S_MAX_MESSAGE_BYTES,
+  perMessageDeflate: false,
   server,
   path: "/ssh/tunnel/c2s/stream",
 });
@@ -59,6 +64,8 @@ c2sRelayWss.on("connection", (ws, req) => {
       operation: "c2s_relay_ws_error",
     });
   });
+
+  if (!admitC2SRelay(c2sRelayWss, ws)) return;
 
   ws.once("message", async (raw) => {
     try {

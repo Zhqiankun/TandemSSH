@@ -62,12 +62,32 @@ function useSplitDrag(
 ) {
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+
+  // Each drag owns its listeners, including cancellation outside this view.
+  function trackDragEnd(removeMoveListeners: () => void) {
+    const finish = () => {
+      if (dragCleanupRef.current !== finish) return;
+      dragCleanupRef.current = null;
+      window.removeEventListener("blur", finish);
+      window.removeEventListener("touchcancel", finish);
+      removeMoveListeners();
+      endDrag();
+    };
+    dragCleanupRef.current = finish;
+    window.addEventListener("blur", finish);
+    window.addEventListener("touchcancel", finish);
+    return finish;
+  }
 
   function reset() {
     onReset?.();
   }
 
   function startDrag() {
+    dragCleanupRef.current?.();
     splitDragState.active = true;
     setIsDragging(true);
   }
@@ -96,11 +116,10 @@ function useSplitDrag(
       n[rowIdx + 1] = a + b - na;
       onRowSizesChange(n);
     }
-    function onUp() {
-      endDrag();
+    const onUp = trackDragEnd(() => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-    }
+    });
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
@@ -126,11 +145,10 @@ function useSplitDrag(
       n[rowIdx + 1] = a + b - na;
       onRowSizesChange(n);
     }
-    function onUp() {
-      endDrag();
+    const onUp = trackDragEnd(() => {
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onUp);
-    }
+    });
     window.addEventListener("touchmove", onMove, { passive: false });
     window.addEventListener("touchend", onUp);
   }
@@ -155,11 +173,10 @@ function useSplitDrag(
       next[rowIdx][colIdx + 1] = a + b - na;
       onRowColSizesChange(next);
     }
-    function onUp() {
-      endDrag();
+    const onUp = trackDragEnd(() => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-    }
+    });
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
@@ -190,11 +207,10 @@ function useSplitDrag(
       next[rowIdx][colIdx + 1] = a + b - na;
       onRowColSizesChange(next);
     }
-    function onUp() {
-      endDrag();
+    const onUp = trackDragEnd(() => {
       window.removeEventListener("touchmove", onMove);
       window.removeEventListener("touchend", onUp);
-    }
+    });
     window.addEventListener("touchmove", onMove, { passive: false });
     window.addEventListener("touchend", onUp);
   }

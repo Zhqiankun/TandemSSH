@@ -6,25 +6,15 @@ export async function collectSystemMetrics(client: Client): Promise<{
   kernel: string | null;
   os: string | null;
 }> {
-  let hostname: string | null = null;
-  let kernel: string | null = null;
-  let os: string | null = null;
-
-  try {
-    const hostnameOut = await execMetricCommand(client, "system.1");
-    const kernelOut = await execMetricCommand(client, "system.2");
-    const osOut = await execMetricCommand(client, "system.3");
-
-    hostname = hostnameOut.stdout.trim() || null;
-    kernel = kernelOut.stdout.trim() || null;
-    os = osOut.stdout.trim() || null;
-  } catch {
-    // expected
-  }
-
-  return {
-    hostname,
-    kernel,
-    os,
-  };
+  const [hostname, kernel, os] = await Promise.all(
+    (["system.1", "system.2", "system.3"] as const).map(async (command) => {
+      try {
+        const result = await execMetricCommand(client, command);
+        return result.code === 0 ? result.stdout.trim() || null : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return { hostname, kernel, os };
 }

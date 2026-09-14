@@ -456,7 +456,12 @@ export function registerFileActionRoutes(
       return res.status(403).json({ error: "Session access denied" });
     }
 
-    if (!path) {
+    if (
+      typeof path !== "string" ||
+      !path ||
+      path.length > 4096 ||
+      path.includes("\0")
+    ) {
       return res.status(400).json({ error: "File path is required" });
     }
 
@@ -470,8 +475,11 @@ export function registerFileActionRoutes(
     scheduleSessionCleanup(sessionId);
 
     const octalPerms = permissions.padStart(5, "0");
-    const escapedPath = path.replace(/'/g, "'\"'\"'");
-    const command = `chmod ${octalPerms} -- '${escapedPath}' && echo "SUCCESS"`;
+    const escapedPath = (path.replace(/\/+$/, "") || "/").replace(
+      /'/g,
+      "'\"'\"'",
+    );
+    const command = `if [ -L '${escapedPath}' ]; then printf '%s\\n' 'FILE_SYMLINK_TARGET_REQUIRED' >&2; exit 65; fi; chmod ${octalPerms} -- '${escapedPath}' && echo "SUCCESS"`;
 
     fileLogger.info("Changing file permissions", {
       operation: "change_permissions",
@@ -480,7 +488,15 @@ export function registerFileActionRoutes(
       permissions: octalPerms,
     });
 
+    let ended = false;
+    let activeStream: import("ssh2").ClientChannel | undefined;
     const commandTimeout = setTimeout(() => {
+      ended = true;
+      try {
+        activeStream?.close();
+      } catch {
+        /* Channel may already be closed. */
+      }
       if (!res.headersSent) {
         fileLogger.error("changePermissions command timeout", {
           operation: "change_permissions",
@@ -494,100 +510,133 @@ export function registerFileActionRoutes(
       }
     }, 10000);
 
-    execChannel(sshConn, command, (err, stream) => {
-      if (err) {
-        clearTimeout(commandTimeout);
-        fileLogger.error("SSH changePermissions exec error:", err, {
-          operation: "change_permissions",
-          sessionId,
-          path,
-          permissions: octalPerms,
-        });
-        if (!res.headersSent) {
-          return res
-            .status(500)
-            .json({ error: "Failed to change permissions" });
+    execChannel(
+      sshConn,
+      command,
+      (err, stream) => {
+        if (ended || res.headersSent || res.destroyed) {
+          clearTimeout(commandTimeout);
+          try {
+            stream?.close();
+          } catch {
+            /* Late channel cleanup. */
+          }
+          return;
         }
-        return;
-      }
-
-      let outputData = "";
-      let errorOutput = "";
-
-      stream.on("data", (chunk: Buffer) => {
-        outputData += chunk.toString();
-      });
-
-      stream.stderr.on("data", (data: Buffer) => {
-        errorOutput += data.toString();
-      });
-
-      stream.on("close", (code) => {
-        clearTimeout(commandTimeout);
-
-        if (outputData.includes("SUCCESS")) {
-          fileLogger.success("File permissions changed successfully", {
+        if (err) {
+          ended = true;
+          clearTimeout(commandTimeout);
+          fileLogger.error("SSH changePermissions exec error:", err, {
             operation: "change_permissions",
             sessionId,
             path,
             permissions: octalPerms,
           });
-
           if (!res.headersSent) {
-            res.json({
-              success: true,
-              message: "Permissions changed successfully",
-            });
+            return res
+              .status(500)
+              .json({ error: "Failed to change permissions" });
           }
           return;
         }
 
-        if (code !== 0) {
-          fileLogger.error("chmod command failed", {
+        activeStream = stream;
+        let outputData = "";
+        let errorOutput = "";
+
+        stream.on("data", (chunk: Buffer) => {
+          if (!ended) outputData += chunk.toString();
+        });
+
+        stream.stderr.on("data", (data: Buffer) => {
+          if (!ended) errorOutput += data.toString();
+        });
+
+        stream.on("close", (code) => {
+          if (ended) return;
+          ended = true;
+          clearTimeout(commandTimeout);
+
+          if (
+            code === 65 &&
+            errorOutput.trim() === "FILE_SYMLINK_TARGET_REQUIRED"
+          ) {
+            if (!res.headersSent)
+              res.status(409).json({ error: "FILE_SYMLINK_TARGET_REQUIRED" });
+            return;
+          }
+          if (code === 0 && outputData.trim() === "SUCCESS") {
+            fileLogger.success("File permissions changed successfully", {
+              operation: "change_permissions",
+              sessionId,
+              path,
+              permissions: octalPerms,
+            });
+
+            if (!res.headersSent) {
+              res.json({
+                success: true,
+                message: "Permissions changed successfully",
+              });
+            }
+            return;
+          }
+
+          if (code !== 0) {
+            fileLogger.error("chmod command failed", {
+              operation: "change_permissions",
+              sessionId,
+              path,
+              permissions: octalPerms,
+              exitCode: code,
+              error: errorOutput,
+            });
+            if (!res.headersSent) {
+              return res.status(500).json({
+                error: errorOutput || "Failed to change permissions",
+              });
+            }
+            return;
+          }
+
+          if (!res.headersSent) {
+            res
+              .status(500)
+              .json({
+                error: "Permission change result could not be verified",
+              });
+          }
+        });
+
+        stream.on("error", (streamErr) => {
+          if (ended) return;
+          ended = true;
+          clearTimeout(commandTimeout);
+          fileLogger.error("SSH changePermissions stream error:", streamErr, {
             operation: "change_permissions",
             sessionId,
             path,
             permissions: octalPerms,
-            exitCode: code,
-            error: errorOutput,
           });
           if (!res.headersSent) {
-            return res.status(500).json({
-              error: errorOutput || "Failed to change permissions",
-            });
+            res
+              .status(500)
+              .json({ error: "Stream error while changing permissions" });
           }
-          return;
-        }
-
-        fileLogger.success("File permissions changed successfully", {
-          operation: "change_permissions",
-          sessionId,
-          path,
-          permissions: octalPerms,
         });
-
-        if (!res.headersSent) {
-          res.json({
-            success: true,
-            message: "Permissions changed successfully",
-          });
+      },
+      () => {
+        if (
+          ended ||
+          res.headersSent ||
+          res.destroyed ||
+          sshSessions[sessionId] !== sshConn ||
+          !sshConn.isConnected ||
+          !verifySessionOwnership(sshConn, userId)
+        ) {
+          throw Error("PERMISSION_REQUEST_STALE");
         }
-      });
-
-      stream.on("error", (streamErr) => {
-        clearTimeout(commandTimeout);
-        fileLogger.error("SSH changePermissions stream error:", streamErr, {
-          operation: "change_permissions",
-          sessionId,
-          path,
-          permissions: octalPerms,
-        });
-        if (!res.headersSent) {
-          res
-            .status(500)
-            .json({ error: "Stream error while changing permissions" });
-        }
-      });
-    });
+      },
+    );
   });
 }

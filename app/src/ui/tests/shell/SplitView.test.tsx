@@ -1,3 +1,4 @@
+import { splitDragState, registerFitCallback } from "@/lib/splitDragging";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import type { Tab } from "@/types/ui-types";
@@ -146,4 +147,103 @@ describe("SplitView - controlled rowSizes/rowColSizes", () => {
       container.querySelectorAll('[style*="width: 20%"]').length,
     ).toBeGreaterThan(0);
   });
+});
+
+// Drag cancellation must release the shared terminal fit suppression flag.
+describe("split drag lifecycle", () => {
+  function setup(mode: "2-way" | "2-way-horizontal" = "2-way") {
+    const changed = vi.fn();
+    const view = render(
+      <SplitView
+        tabs={[]}
+        paneTabIds={[]}
+        splitMode={mode}
+        {...defaultSizes(mode)}
+        onRowSizesChange={changed}
+        onRowColSizesChange={changed}
+      />,
+    );
+    const root = view.container.firstElementChild as HTMLElement;
+    vi.spyOn(root, "getBoundingClientRect").mockReturnValue({
+      width: 1000,
+      height: 600,
+    } as DOMRect);
+    const divider = view.container.querySelector(
+      mode === "2-way" ? ".cursor-col-resize" : ".cursor-row-resize",
+    )!;
+    return { ...view, changed, divider };
+  }
+  it.each(["2-way", "2-way-horizontal"] as const)(
+    "releases %s mouse drag on unmount and ignores late movement",
+    (mode) => {
+      const view = setup(mode);
+      fireEvent.mouseDown(view.divider, { clientX: 100, clientY: 100 });
+      expect(splitDragState.active).toBe(true);
+      view.unmount();
+      expect(splitDragState.active).toBe(false);
+      fireEvent.mouseMove(window, { clientX: 150, clientY: 150 });
+      expect(view.changed).not.toHaveBeenCalled();
+    },
+  );
+  it("ends a mouse drag on window blur and notifies fit exactly once", () => {
+    const view = setup(),
+      fit = vi.fn(),
+      unregister = registerFitCallback(fit);
+    try {
+      fireEvent.mouseDown(view.divider, { clientX: 100 });
+      fireEvent.blur(window);
+      expect(splitDragState.active).toBe(false);
+      expect(fit).toHaveBeenCalledOnce();
+      fireEvent.mouseUp(window);
+      fireEvent.mouseMove(window, { clientX: 150 });
+      expect(fit).toHaveBeenCalledOnce();
+      expect(view.changed).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+  it.each(["2-way", "2-way-horizontal"] as const)(
+    "ends cancelled %s touch drag without stale movement",
+    (mode) => {
+      const view = setup(mode);
+      fireEvent.touchStart(view.divider, {
+        touches: [{ clientX: 100, clientY: 100 }],
+      });
+      expect(splitDragState.active).toBe(true);
+      fireEvent.touchCancel(window);
+      expect(splitDragState.active).toBe(false);
+      fireEvent.touchMove(window, {
+        touches: [{ clientX: 200, clientY: 200 }],
+      });
+      expect(view.changed).not.toHaveBeenCalled();
+    },
+  );
+});
+
+it("preserves ordinary divider movement and stops after mouseup", () => {
+  const changed = vi.fn();
+  const view = render(
+    <SplitView
+      tabs={[]}
+      paneTabIds={[]}
+      splitMode="2-way"
+      {...defaultSizes("2-way")}
+      onRowSizesChange={vi.fn()}
+      onRowColSizesChange={changed}
+    />,
+  );
+  vi.spyOn(
+    view.container.firstElementChild as HTMLElement,
+    "getBoundingClientRect",
+  ).mockReturnValue({ width: 1000, height: 600 } as DOMRect);
+  fireEvent.mouseDown(view.container.querySelector(".cursor-col-resize")!, {
+    clientX: 100,
+  });
+  fireEvent.mouseMove(window, { clientX: 200 });
+  expect(changed).toHaveBeenLastCalledWith([[60, 40]]);
+  fireEvent.mouseUp(window);
+  expect(splitDragState.active).toBe(false);
+  changed.mockClear();
+  fireEvent.mouseMove(window, { clientX: 300 });
+  expect(changed).not.toHaveBeenCalled();
 });

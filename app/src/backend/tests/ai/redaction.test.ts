@@ -74,3 +74,57 @@ describe("redactString", () => {
     expect(redactString(text)).toBe(text);
   });
 });
+it.each(Array.from({ length: 6 }, (_, i) => i + 1))(
+  "redacts terminal-wrapped API key names split at %s",
+  (index) => {
+    const key = "api_key";
+    const wrapped = key.slice(0, index) + "\r\r\n" + key.slice(index);
+    const output = redactString(
+      "prompt$ " + wrapped + "=fixture-desktop-secret; pwd",
+    );
+    expect(output).not.toContain("fixture-desktop-secret");
+    expect(output).toContain("; pwd");
+  },
+);
+it.each(["\r\n", "\r\r\n"])(
+  "redacts an unquoted value spanning a terminal wrap %j",
+  (wrap) => {
+    expect(
+      redactString("api_key=fixture-" + wrap + "desktop-secret; pwd"),
+    ).toBe("api_key=[redacted]; pwd");
+  },
+);
+it("preserves normal line breaks in non-secret output", () => {
+  const text = "first\r\nsecond\r\r\nthird\n";
+  expect(redactString(text)).toBe(text);
+});
+it.each(["api_key=", "--api-key "])(
+  "redacts quoted and wrapped values after %s",
+  (prefix) => {
+    for (const quote of ['"', "'"]) {
+      for (const wrap of ["\r\n", "\r\r\n"]) {
+        expect(
+          redactString(
+            prefix +
+              quote +
+              "first part" +
+              wrap +
+              "second part" +
+              quote +
+              "; pwd",
+          ),
+        ).toBe(prefix + "[redacted]; pwd");
+      }
+    }
+  },
+);
+it("redacts a wrapped CLI flag and its value", () => {
+  expect(redactString("run --api-\r\r\nkey first\r\r\nsecond --verbose")).toBe(
+    "run --api-\r\r\nkey [redacted] --verbose",
+  );
+});
+it("does not expose a quoted value after an escaped double quote", () => {
+  expect(redactString('password="first \\" second"; pwd')).toBe(
+    "password=[redacted]; pwd",
+  );
+});

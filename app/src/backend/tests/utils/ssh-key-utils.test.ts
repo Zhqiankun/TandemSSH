@@ -158,3 +158,18 @@ describe("validateKeyPair", () => {
     expect(result.error).toMatch(/private key/i);
   });
 });
+
+it("rejects an encrypted key with an absent or wrong passphrase before connection preparation succeeds", async () => {
+  const { generateKeyPairSync } = await import("node:crypto");
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const passphrase = "fixture-secret-passphrase";
+  const pem = privateKey
+    .export({ type: "pkcs1", format: "pem", cipher: "aes-256-cbc", passphrase })
+    .toString();
+  for (const supplied of [undefined, "fixture-wrong-passphrase"]) {
+    expect(() => preparePrivateKeyForSSH2(pem, supplied)).toThrow(
+      "Invalid SSH private key or passphrase.",
+    );
+  }
+  expect(preparePrivateKeyForSSH2(pem, passphrase).toString()).toBe(pem.trim());
+});

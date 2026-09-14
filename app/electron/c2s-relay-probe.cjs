@@ -14,7 +14,7 @@ function probeC2SRelay({
       error: signal.reason?.message || "C2S_CANCELLED",
     });
   return new Promise((resolve) => {
-    const ws = new WebSocket(url, options);
+    const ws = new WebSocket(url, require("./c2s-websocket-options.cjs").c2sWebSocketOptions(options));
     let settled = false;
     const finish = (result, terminate = false) => {
       if (settled) return;
@@ -37,8 +37,8 @@ function probeC2SRelay({
     ws.on("error", (error) =>
       finish({ success: false, error: error.message }, true),
     );
-    ws.on("close", () =>
-      finish({ success: false, error: "Tunnel test connection closed" }),
+    ws.on("close", (code) =>
+      finish({ success: false, error: code === 1009 ? "C2S_MESSAGE_TOO_LARGE" : "Tunnel test connection closed" }),
     );
     ws.on("open", () => {
       if (settled || signal.aborted) return;

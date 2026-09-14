@@ -10,11 +10,14 @@ import type {
   RemoteFileStat,
   RemoteFileSnapshot,
 } from "./ports.js";
-function mapped(error: unknown): DocumentError {
+function mapped(error: unknown, atomicReplace = false): DocumentError {
   const e = error as { code?: number; message?: string };
   if (e?.code === 2) return new DocumentError("FILE_NOT_FOUND");
   if (e?.code === 3) return new DocumentError("FILE_PERMISSION_DENIED");
-  if (e?.code === 8 || /does not support|not supported/i.test(e?.message ?? ""))
+  if (
+    atomicReplace &&
+    (e?.code === 8 || /does not support|not supported/i.test(e?.message ?? ""))
+  )
     return new DocumentError("FILE_ATOMIC_REPLACE_UNSUPPORTED", {
       commitMayHaveOccurred: false,
     });
@@ -53,6 +56,7 @@ export class SftpFileIO implements RemoteFileIO {
   private call<T>(
     work: (done: (error: unknown, value: T) => void) => void,
     late?: (value: T) => void,
+    atomicReplace = false,
   ): Promise<T> {
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -69,7 +73,7 @@ export class SftpFileIO implements RemoteFileIO {
         }
         settled = true;
         clearTimeout(timer);
-        if (error) reject(mapped(error));
+        if (error) reject(mapped(error, atomicReplace));
         else resolve(value);
       };
       try {
@@ -515,11 +519,15 @@ export class SftpFileIO implements RemoteFileIO {
     guard: () => void,
   ): Promise<{ atomic: boolean }> {
     guard();
-    await this.call<void>((done) => {
-      const callback = (e: unknown) => done(e, undefined);
-      if (allowOverwrite) this.sftp.ext_openssh_rename(from, to, callback);
-      else this.sftp.rename(from, to, callback);
-    });
+    await this.call<void>(
+      (done) => {
+        const callback = (e: unknown) => done(e, undefined);
+        if (allowOverwrite) this.sftp.ext_openssh_rename(from, to, callback);
+        else this.sftp.rename(from, to, callback);
+      },
+      undefined,
+      allowOverwrite,
+    );
     // Only the accepted POSIX rename extension establishes this contract.
     // Standard SFTP rename is used for no-overwrite creation without claiming atomicity.
     return { atomic: allowOverwrite };

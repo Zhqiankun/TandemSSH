@@ -1,3 +1,4 @@
+import { C2S_REMOTE_STREAM_LIMIT } from "./c2s-admission.js";
 import { Client, type ClientChannel } from "ssh2";
 import type { WebSocket } from "ws";
 import type { TunnelConfig } from "../../../types/index.js";
@@ -12,7 +13,7 @@ import {
   getManagedTunnelAlgorithms,
   unbindForwardIn,
 } from "./ssh-primitives.js";
-import { sendC2SMessage, writeC2SRemoteChunk } from "./c2s-relay-utils.js";
+import { sendC2SMessage, sendC2SBinary, writeC2SStreamChunk } from "./c2s-relay-utils.js";
 import { getTunnelMode } from "./utils.js";
 
 export type C2SOpenMessage = {
@@ -118,11 +119,20 @@ async function resolveC2STunnelSource(
   };
 }
 
+async function assertC2SAccess(config: TunnelConfig, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  if (!config.requestingUserId || !config.sourceHostId)
+    throw new Error("Access denied to this host");
+  const access = await permissionManager.canAccessHost(config.requestingUserId, config.sourceHostId, "connect");
+  signal.throwIfAborted();
+  if (!access.hasAccess) throw new Error("Access denied to this host");
+}
+
 async function connectC2SSourceClient(
   tunnelConfig: TunnelConfig,
   signal: AbortSignal,
 ): Promise<Client> {
-  signal.throwIfAborted();
+  await assertC2SAccess(tunnelConfig, signal);
   const connOptions: Record<string, unknown> = {
     host:
       tunnelConfig.sourceIP?.replace(/^\[|\]$/g, "") || tunnelConfig.sourceIP,
@@ -137,6 +147,8 @@ async function connectC2SSourceClient(
     algorithms: getManagedTunnelAlgorithms(),
   };
 
+  let connected: Client | undefined;
+  try {
   applyAuthOptions(connOptions, {
     password: tunnelConfig.sourcePassword,
     sshKey: tunnelConfig.sourceSSHKey,
@@ -169,13 +181,21 @@ async function connectC2SSourceClient(
     }
   }
 
-  return connectClient(
+  await assertC2SAccess(tunnelConfig, signal);
+  connected = await connectClient(
     connOptions,
     tunnelConfig.name,
     "source",
     tunnelConfig,
     signal,
   );
+  await assertC2SAccess(tunnelConfig, signal);
+  return connected;
+  } catch (error) {
+    try { connected?.end(); } catch { /* Preserve the authorization failure. */ }
+    try { (connOptions.sock as { destroy(): void } | undefined)?.destroy(); } catch { /* Already closed. */ }
+    throw error;
+  }
 }
 
 async function handleC2SRemoteRelayOpen(
@@ -228,7 +248,7 @@ async function handleC2SRemoteRelayOpen(
   };
 
   sourceClient.on("tcp connection", (info, accept, reject) => {
-    if (signal.aborted || info.destPort !== actualPort) {
+    if (signal.aborted || info.destPort !== actualPort || streams.size >= C2S_REMOTE_STREAM_LIMIT) {
       reject();
       return;
     }
@@ -278,7 +298,7 @@ async function handleC2SRemoteRelayOpen(
       if (message.type === "data" && message.data) {
         const stream = streams.get(message.streamId);
         if (stream) {
-          writeC2SRemoteChunk(
+          writeC2SStreamChunk(
             stream,
             Buffer.from(message.data, "base64"),
             ws,
@@ -383,7 +403,7 @@ async function openRelay(
       ? Number(message.targetPort)
       : Number(tunnelConfig.endpointPort);
 
-  if (!targetHost || !Number.isInteger(targetPort) || targetPort < 1) {
+  if (!targetHost || !Number.isInteger(targetPort) || targetPort < 1 || targetPort > 65535) {
     throw new Error("Invalid client tunnel target");
   }
 
@@ -410,9 +430,7 @@ async function openRelay(
   };
 
   outbound.on("data", (chunk) => {
-    if (ws.readyState === 1) {
-      ws.send(chunk);
-    }
+    sendC2SBinary(ws, chunk, outbound);
   });
   outbound.on("close", () => {
     if (ws.readyState === 1) ws.close();
@@ -429,7 +447,7 @@ async function openRelay(
       : Array.isArray(data)
         ? Buffer.concat(data)
         : Buffer.from(data);
-    outbound.write(chunk);
+    writeC2SStreamChunk(outbound, chunk, ws, close);
   });
 
   signal.throwIfAborted();
@@ -462,6 +480,15 @@ async function testRelay(
   );
   signal.throwIfAborted();
   const mode = getTunnelMode(tunnelConfig);
+  if (mode === "remote") {
+    const port = Number(tunnelConfig.sourcePort);
+    if (!Number.isInteger(port) || port < 1 || port > 65535)
+      throw new Error("Invalid remote port");
+  } else if (mode === "local") {
+    const port = Number(tunnelConfig.endpointPort);
+    if (!Number.isInteger(port) || port < 1 || port > 65535)
+      throw new Error("Invalid remote target port");
+  }
   const sourceClient = await connectC2SSourceClient(tunnelConfig, signal);
 
   try {
@@ -482,7 +509,7 @@ async function testRelay(
     } else if (mode === "local") {
       const targetHost = tunnelConfig.targetHost || "127.0.0.1";
       const targetPort = Number(tunnelConfig.endpointPort);
-      if (!Number.isInteger(targetPort) || targetPort < 1) {
+      if (!Number.isInteger(targetPort) || targetPort < 1 || targetPort > 65535) {
         throw new Error("Invalid remote target port");
       }
 

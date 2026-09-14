@@ -1,3 +1,14 @@
+export interface AuditStorageInfo {
+  directory: string;
+  files: number;
+  bytes: number;
+  retentionDays: number;
+  maxBytes: number;
+}
+export interface AuditCleanupResult {
+  removedFiles: number;
+  removedBytes: number;
+}
 export interface AuditHistoryQuery {
   cursor?: string;
   taskId?: string;
@@ -22,6 +33,7 @@ export interface AuditHistoryItem {
   outputTruncated?: boolean;
   exitCode?: number;
   status?: string;
+  reviewedUnknownCommandCount?: number;
   error?: string;
   operationId?: string;
   actionType?: string;

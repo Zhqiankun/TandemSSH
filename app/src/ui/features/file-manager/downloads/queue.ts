@@ -592,21 +592,24 @@ export class DownloadQueue {
   }
   private async cleanup(j: Job) {
     if (j.preserve && (!j.cancel || this.jobs.get(j.view.id) !== j)) return;
+    // Local cleanup must not wait for a disconnected or slow remote server.
+    // The caller has already stopped appending to this target.
+    if (j.view.local) {
+      try {
+        const result = value(
+          await this.native()!.action(j.view.local.id, "cancel"),
+        );
+        j.view.local = result;
+        if (result.state === "completed" || result.state === "unknown")
+          j.view.state = result.state;
+      } catch {
+        j.view.error = "DOWNLOAD_CLEANUP_PENDING";
+      }
+    }
     if (j.source)
       await this.api
         .action(j.view.sessionId, j.source.id, "cancel")
         .catch(() => {});
-    if (!j.view.local) return;
-    try {
-      const result = value(
-        await this.native()!.action(j.view.local.id, "cancel"),
-      );
-      j.view.local = result;
-      if (result.state === "completed" || result.state === "unknown")
-        j.view.state = result.state;
-    } catch {
-      j.view.error = "DOWNLOAD_CLEANUP_PENDING";
-    }
   }
   private drain() {
     while (this.active < this.limit) {

@@ -591,3 +591,365 @@ it("keeps imported rule and startup fields inert through preview and real databa
     "touch unexpected",
   );
 });
+it.each(["utf-8", "gb18030", "big5", "shift_jis"] as const)(
+  "restores host %s without user preference consent or starting connections",
+  async (encoding) => {
+    const f = await fixture();
+    f.request.payload.hosts[0].terminalEncoding = encoding;
+    f.request.payload.hosts[0].terminalAppearance = {
+      inheritTerminalAppearance: true,
+      fontSize: 21,
+    };
+    const result = await f.repo.apply("owner", f.request);
+    const rows = await adapter.query<{
+      terminal_config: string;
+      auth_type: string;
+      enable_tunnel: number;
+      stats_config: string;
+    }>(
+      sql`SELECT terminal_config,auth_type,enable_tunnel,stats_config FROM ssh_data WHERE user_id='owner'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(JSON.parse(rows[0].terminal_config)).toMatchObject({
+      encoding,
+      inheritTerminalAppearance: true,
+      fontSize: 21,
+    });
+    expect(rows[0]).toMatchObject({
+      auth_type: "unconfigured",
+      enable_tunnel: 0,
+    });
+    expect(JSON.parse(rows[0].stats_config)).toMatchObject({
+      metricsEnabled: false,
+      statusCheckEnabled: false,
+    });
+    expect(result.preferencesRestored).toBe(false);
+    expect((await f.repo.snapshot("owner")).terminalDefaults).toBeUndefined();
+    expect(await f.repo.apply("owner", f.request)).toEqual(result);
+    expect(
+      await adapter.query(sql`SELECT id FROM ssh_data WHERE user_id='other'`),
+    ).toEqual([]);
+  },
+);
+
+it.each([false, true])(
+  "restores navigation only with preference consent (%s), preserving AI opt-in",
+  async (restorePreferences) => {
+    const f = await fixture();
+    await adapter.exec(
+      "INSERT INTO user_preferences(user_id,hidden_rail_tabs,ai_assistant_enabled) VALUES ('owner','[\"ai\"]',0)",
+    );
+    f.request.fingerprint = (await f.repo.snapshot("owner")).fingerprint;
+    f.request.payload.appearance = { hiddenRailTabs: '["serial"]' };
+    const result = await f.repo.apply("owner", {
+      ...f.request,
+      restorePreferences,
+    });
+    const rows = await adapter.query<{
+      hidden_rail_tabs: string;
+      ai_assistant_enabled: number;
+    }>(
+      sql.raw(
+        "SELECT hidden_rail_tabs,ai_assistant_enabled FROM user_preferences WHERE user_id='owner'",
+      ),
+    );
+    expect(rows[0].hidden_rail_tabs).toBe(
+      restorePreferences ? '["serial"]' : '["ai"]',
+    );
+    expect(rows[0].ai_assistant_enabled).toBe(0);
+    expect(result.desktopConfiguration?.appearance?.hiddenRailTabs).toBe(
+      restorePreferences ? '["serial"]' : undefined,
+    );
+    expect((await f.repo.snapshot("owner")).appearance?.hiddenRailTabs).toBe(
+      rows[0].hidden_rail_tabs,
+    );
+  },
+);
+it("invalidates a pending restore when navigation visibility changes", async () => {
+  const f = await fixture();
+  await adapter.exec(
+    "INSERT INTO user_preferences(user_id,hidden_rail_tabs) VALUES ('owner','[\"ai\"]')",
+  );
+  f.request.fingerprint = (await f.repo.snapshot("owner")).fingerprint;
+  await adapter.exec(
+    "UPDATE user_preferences SET hidden_rail_tabs='[\"serial\"]' WHERE user_id='owner'",
+  );
+  await expect(
+    f.repo.apply("owner", { ...f.request, restorePreferences: true }),
+  ).rejects.toThrow("BACKUP_CONFIGURATION_CHANGED");
+});
+it("keeps target navigation when an older backup has no visibility field", async () => {
+  const f = await fixture();
+  await adapter.exec(
+    "INSERT INTO user_preferences(user_id,hidden_rail_tabs) VALUES ('owner','[\"ai\"]')",
+  );
+  f.request.fingerprint = (await f.repo.snapshot("owner")).fingerprint;
+  f.request.payload.appearance = { theme: "nord" };
+  await f.repo.apply("owner", { ...f.request, restorePreferences: true });
+  expect((await f.repo.snapshot("owner")).appearance?.hiddenRailTabs).toBe(
+    '["ai"]',
+  );
+});
+
+it("exposes global defaults only in admin snapshots and rejects non-admin restoration", async () => {
+  const f = await fixture();
+  await adapter.exec(
+    "INSERT INTO settings(key,value) VALUES ('host_defaults','{\"fontSize\":18}')",
+  );
+  expect((await f.repo.snapshot("owner")).hostDefaults).toBeUndefined();
+  f.request.payload.hostDefaults = { fontSize: 24 };
+  await expect(
+    f.repo.apply("owner", { ...f.request, restoreHostDefaults: true }),
+  ).rejects.toThrow("BACKUP_ADMIN_REQUIRED");
+  expect(await adapter.query(sql.raw("SELECT id FROM ssh_data"))).toHaveLength(
+    0,
+  );
+  await adapter.exec("UPDATE users SET is_admin=1 WHERE id='owner'");
+  expect((await f.repo.snapshot("owner")).hostDefaults).toEqual({
+    fontSize: 18,
+  });
+});
+it.each([false, true])(
+  "restores global defaults only with independent consent (%s)",
+  async (restoreHostDefaults) => {
+    const f = await fixture();
+    await adapter.exec("UPDATE users SET is_admin=1 WHERE id='owner'");
+    await adapter.exec(
+      'INSERT INTO settings(key,value) VALUES (\'host_defaults\',\'{"fontSize":12,"socks5Password":"old-fixture","credentialId":9}\')',
+    );
+    f.request.fingerprint = (await f.repo.snapshot("owner")).fingerprint;
+    f.request.payload.hostDefaults = {
+      fontSize: 22,
+      socks5Host: "proxy.example",
+      useSocks5: true,
+      enableCommandHistory: true,
+    };
+    const result = await f.repo.apply("owner", {
+      ...f.request,
+      restorePreferences: true,
+      restoreHostDefaults,
+    });
+    const snapshot = await f.repo.snapshot("owner");
+    if (restoreHostDefaults) {
+      expect(snapshot.hostDefaults).toEqual({
+        fontSize: 22,
+        socks5Host: "proxy.example",
+        useSocks5: false,
+        enableCommandHistory: true,
+        credentialId: null,
+      });
+    } else {
+      expect(snapshot.hostDefaults).toEqual({
+        fontSize: 12,
+        socks5Password: "old-fixture",
+        credentialId: 9,
+      });
+    }
+    expect(result.hostDefaultsRestored).toBe(restoreHostDefaults);
+  },
+);
+it("rejects admin revocation between preview and confirmation", async () => {
+  const f = await fixture();
+  await adapter.exec("UPDATE users SET is_admin=1 WHERE id='owner'");
+  f.request.fingerprint = (await f.repo.snapshot("owner")).fingerprint;
+  f.request.payload.hostDefaults = { fontSize: 22 };
+  await adapter.exec("UPDATE users SET is_admin=0 WHERE id='owner'");
+  await expect(
+    f.repo.apply("owner", { ...f.request, restoreHostDefaults: true }),
+  ).rejects.toThrow("BACKUP_ADMIN_REQUIRED");
+  expect(await adapter.query(sql.raw("SELECT id FROM ssh_data"))).toHaveLength(
+    0,
+  );
+});
+it("rejects changes to global defaults after preview", async () => {
+  const f = await fixture();
+  await adapter.exec("UPDATE users SET is_admin=1 WHERE id='owner'");
+  f.request.fingerprint = (await f.repo.snapshot("owner")).fingerprint;
+  await adapter.exec(
+    "INSERT INTO settings(key,value) VALUES ('host_defaults','{\"fontSize\":18}')",
+  );
+  await expect(
+    f.repo.apply("owner", { ...f.request, restoreHostDefaults: true }),
+  ).rejects.toThrow("BACKUP_CONFIGURATION_CHANGED");
+});
+it("preserves global defaults for older backups", async () => {
+  const f = await fixture();
+  await adapter.exec("UPDATE users SET is_admin=1 WHERE id='owner'");
+  await adapter.exec(
+    "INSERT INTO settings(key,value) VALUES ('host_defaults','{\"fontSize\":18}')",
+  );
+  f.request.fingerprint = (await f.repo.snapshot("owner")).fingerprint;
+  const result = await f.repo.apply("owner", {
+    ...f.request,
+    restoreHostDefaults: true,
+  });
+  expect(result.hostDefaultsRestored).toBe(false);
+  expect((await f.repo.snapshot("owner")).hostDefaults).toEqual({
+    fontSize: 18,
+  });
+});
+
+it("rolls back global defaults and imported hosts when receipt storage fails", async () => {
+  const f = await fixture();
+  await adapter.exec("UPDATE users SET is_admin=1 WHERE id='owner'");
+  await adapter.exec(
+    "INSERT INTO settings(key,value) VALUES ('host_defaults','{\"fontSize\":18}')",
+  );
+  f.request.fingerprint = (await f.repo.snapshot("owner")).fingerprint;
+  f.request.payload.hostDefaults = { fontSize: 22 };
+  await adapter.exec(
+    "CREATE TRIGGER fail_backup_receipt BEFORE INSERT ON settings WHEN NEW.key LIKE 'tandem-config-import:%' BEGIN SELECT RAISE(ABORT, 'receipt failure'); END;",
+  );
+  await expect(
+    f.repo.apply("owner", { ...f.request, restoreHostDefaults: true }),
+  ).rejects.toThrow("receipt failure");
+  expect((await f.repo.snapshot("owner")).hostDefaults).toEqual({
+    fontSize: 18,
+  });
+  expect(await adapter.query(sql.raw("SELECT id FROM ssh_data"))).toHaveLength(
+    0,
+  );
+});
+
+it.each([false, true])(
+  "returns local tunnel configuration only when explicitly selected (%s)",
+  async (restoreLocalTunnels) => {
+    const f = await fixture();
+    f.request.payload.localTunnels = [
+      {
+        scope: "c2s",
+        mode: "local",
+        sourceHostRef: f.request.payload.hosts[0].ref,
+        bindHost: "127.0.0.1",
+        sourcePort: 8080,
+        endpointPort: 80,
+        maxRetries: 0,
+        retryInterval: 5000,
+        displayName: "本地转发",
+      },
+    ];
+    const request = { ...f.request, restoreLocalTunnels };
+    const result = await f.repo.apply("owner", request);
+    expect(await f.repo.apply("owner", request)).toEqual(result);
+    if (restoreLocalTunnels) {
+      expect(result.localTunnels?.[0]).toMatchObject({
+        sourceHostId: result.hostIds[0],
+        autoStart: false,
+        displayName: "本地转发",
+        sourceHostName: "Imported",
+      });
+      expect(result.localTunnels?.[0]).not.toHaveProperty("sourceIdentity");
+      expect(result.localTunnels?.[0]).not.toHaveProperty("relayOrigin");
+    } else expect(result.localTunnels).toBeUndefined();
+  },
+);
+
+it("persists local recovery across repository recreation and isolates users", async () => {
+  const f = await fixture();
+  f.request.payload.localTunnels = [
+    {
+      scope: "c2s",
+      mode: "dynamic",
+      sourceHostRef: f.request.payload.hosts[0].ref,
+      bindHost: "127.0.0.1",
+      sourcePort: 1080,
+      endpointPort: 0,
+      maxRetries: 0,
+      retryInterval: 5000,
+    },
+  ];
+  const result = await f.repo.apply("owner", {
+    ...f.request,
+    restoreLocalTunnels: true,
+  });
+  const reopened = new ConfigurationBackupRepository(await adapter.connect());
+  const pending = await reopened.pendingLocal("owner");
+  expect(pending).toHaveLength(1);
+  expect(pending[0].result.localTunnels).toEqual(result.localTunnels);
+  expect(pending[0].result.desktopConfiguration).toBeUndefined();
+  expect(await reopened.pendingLocal("other")).toEqual([]);
+  await expect(
+    reopened.completeLocal("other", result.receiptId),
+  ).rejects.toThrow("BACKUP_PREVIEW_NOT_FOUND");
+  await reopened.completeLocal("owner", result.receiptId);
+  await reopened.completeLocal("owner", result.receiptId);
+  expect(await reopened.pendingLocal("owner")).toEqual([]);
+});
+it("does not prune unfinished local restores when normal receipts rotate", async () => {
+  const f = await fixture();
+  f.request.payload.localTunnels = [
+    {
+      scope: "c2s",
+      mode: "dynamic",
+      sourceHostRef: f.request.payload.hosts[0].ref,
+      bindHost: "127.0.0.1",
+      sourcePort: 1080,
+      endpointPort: 0,
+      maxRetries: 0,
+      retryInterval: 5000,
+    },
+  ];
+  await f.repo.apply("owner", { ...f.request, restoreLocalTunnels: true });
+  for (let i = 0; i < 35; i++)
+    await f.repo.apply("owner", {
+      ...f.request,
+      id: randomUUID(),
+      digest: "rotation-" + i,
+      fingerprint: (await f.repo.snapshot("owner")).fingerprint,
+      payload: {
+        ...f.request.payload,
+        hosts: [],
+        workflows: [],
+        localTunnels: undefined,
+      },
+    });
+  expect((await f.repo.pendingLocal("owner"))[0].result.receiptId).toBe(
+    f.request.id,
+  );
+});
+
+it("rejects another local import before writing hosts when recovery capacity is full", async () => {
+  const f = await fixture();
+  for (let i = 0; i < 128; i++) {
+    const key = "tandem-config-import:owner:" + randomUUID();
+    const value = JSON.stringify({ at: i, result: { localTunnels: [{}] } });
+    await adapter.exec(
+      "INSERT INTO settings(key,value) VALUES ('" + key + "','" + value + "')",
+    );
+  }
+  f.request.payload.localTunnels = [
+    {
+      scope: "c2s",
+      mode: "dynamic",
+      sourceHostRef: f.request.payload.hosts[0].ref,
+      bindHost: "127.0.0.1",
+      sourcePort: 1080,
+      endpointPort: 0,
+      maxRetries: 0,
+      retryInterval: 5000,
+    },
+  ];
+  await expect(
+    f.repo.apply("owner", { ...f.request, restoreLocalTunnels: true }),
+  ).rejects.toThrow("BACKUP_PENDING_LOCAL_LIMIT");
+  expect(await adapter.query(sql.raw("SELECT id FROM ssh_data"))).toHaveLength(
+    0,
+  );
+});
+
+it.each([false, true])(
+  "returns desktop layout only with explicit preference consent (%s)",
+  async (restorePreferences) => {
+    const f = await fixture();
+    f.request.payload.desktopLayout = {
+      dashboardMainWidthPct: 55,
+      dashboardView: "homepage",
+    };
+    const request = { ...f.request, restorePreferences };
+    const result = await f.repo.apply("owner", request);
+    expect(result.desktopConfiguration?.layout).toEqual(
+      restorePreferences ? f.request.payload.desktopLayout : undefined,
+    );
+    expect(await f.repo.apply("owner", request)).toEqual(result);
+  },
+);

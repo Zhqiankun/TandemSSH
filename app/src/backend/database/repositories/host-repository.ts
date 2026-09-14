@@ -26,6 +26,68 @@ export class HostRepository {
     private readonly onWrite?: () => void | Promise<void>,
   ) {}
 
+  /** Duplicate only an owned record; authentication stays inside the encrypted repository. */
+  async duplicateOwnedForUser(
+    userId: string,
+    hostId: number,
+    name: string,
+  ): Promise<{ id: number } | null> {
+    if (
+      !Number.isSafeInteger(hostId) ||
+      hostId <= 0 ||
+      typeof name !== "string" ||
+      !name.trim() ||
+      name.length > 255 ||
+      name.includes("\0")
+    )
+      throw Error("INVALID_HOST_DUPLICATE");
+    const source = await this.findByIdForUser(userId, hostId);
+    if (!source) return null;
+    const key = DataCrypto.validateUserAccess(userId);
+    const decoded = DataCrypto.decryptRecord("ssh_data", source, userId, key);
+    const copy: Record<string, unknown> = {
+      ...decoded,
+      userId,
+      name: name.trim(),
+    };
+    for (const field of ["id", "syncId", "createdAt", "updatedAt"])
+      delete copy[field];
+    copy.hostKeyFingerprint = null;
+    copy.hostKeyType = null;
+    copy.hostKeyAlgorithm = "sha256";
+    copy.hostKeyFirstSeen = null;
+    copy.hostKeyLastVerified = null;
+    copy.hostKeyChangedCount = 0;
+    copy.autostartPassword = null;
+    copy.autostartKey = null;
+    copy.autostartKeyPassword = null;
+    copy.enableTunnel = false;
+    copy.enableDocker = false;
+    copy.enableProxmox = false;
+    copy.enableTmuxMonitor = false;
+    const stats = JSON.parse(decoded.statsConfig || "{}");
+    const tunnels = JSON.parse(decoded.tunnelConnections || "[]");
+    if (
+      !stats ||
+      typeof stats !== "object" ||
+      Array.isArray(stats) ||
+      !Array.isArray(tunnels) ||
+      tunnels.some((t) => !t || typeof t !== "object" || Array.isArray(t))
+    )
+      throw Error("INVALID_HOST_DUPLICATE");
+    copy.statsConfig = JSON.stringify({
+      ...stats,
+      metricsEnabled: false,
+      statusCheckEnabled: false,
+      disableTcpPing: true,
+    });
+    copy.tunnelConnections = JSON.stringify(
+      tunnels.map((t) => ({ ...t, autoStart: false })),
+    );
+    const duplicate = await this.createEncryptedForUser(userId, copy);
+    return { id: duplicate.id };
+  }
+
   async create(host: NewHostRecord): Promise<HostRecord> {
     const rows = await insertReturning(this.context, hosts, {
       syncId: randomUUID(),

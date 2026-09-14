@@ -42,8 +42,10 @@ async function withTerminal(
     executor: PtyCommandExecutor;
     root: string;
     child: string;
+    rawOutput: () => string;
   }) => Promise<void>,
   sessionId = "real-pty",
+  columns = 160,
 ) {
   const workspace = fs.realpathSync(
     fileURLToPath(new URL("../../../../../", import.meta.url)),
@@ -68,7 +70,7 @@ async function withTerminal(
   const terminal = pty.spawn(shell, ["--noprofile", "--norc", "-i"], {
     name: "xterm-256color",
     useConptyDll: process.platform === "win32",
-    cols: 160,
+    cols: columns,
     rows: 32,
     cwd: folder,
     env: {
@@ -88,7 +90,9 @@ async function withTerminal(
   });
   let startup = "";
   let trace = "";
+  let rawOutput = "";
   const data = terminal.onData((text) => {
+    rawOutput = (rawOutput + text).slice(-128000);
     if (process.env.TANDEM_PTY_TRACE === "1") {
       trace = (trace + text).slice(-128000);
       for (const frame of trace.matchAll(
@@ -167,6 +171,7 @@ async function withTerminal(
       ),
       root: windowsToPosix(folder),
       child: windowsToPosix(childFolder),
+      rawOutput: () => rawOutput,
     });
   } catch (error) {
     if (process.env.TANDEM_PTY_TRACE === "1")
@@ -1014,3 +1019,42 @@ describe.runIf(!!shell)("legacy command tasks on a real PTY", () => {
     });
   }, 15000);
 });
+
+it.runIf(!!shell && fs.existsSync(shell)).each([40, 80])(
+  "preserves genuine marker-like output while separating frame echo at %s columns",
+  async (columns) => {
+    await withTerminal(
+      async ({ control, executor, root, rawOutput }) => {
+        const lease = control.grant(
+          {
+            kind: "automation",
+            ownerType: "agent-task",
+            ownerId: "display-test",
+          },
+          control.snapshot(),
+        );
+        const expected = "__tandem_visible_result";
+        const command = await executor.prepare({
+          type: "terminal.command",
+          program: "printf",
+          args: ["%s", expected],
+          cwd: root,
+        });
+        try {
+          command.beforeSend?.();
+          control.commitWrite(lease, command.bytes);
+          const result = await command.completion;
+          expect(result.exitCode).toBe(0);
+          expect(result.output.trim()).toBe(expected);
+          expect(result.output).not.toContain("if command printf");
+          expect(rawOutput()).toContain("__tandem_");
+        } finally {
+          command.dispose();
+        }
+      },
+      "narrow-display-" + columns,
+      columns,
+    );
+  },
+  20_000,
+);

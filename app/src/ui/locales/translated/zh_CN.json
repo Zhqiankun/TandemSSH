@@ -1502,32 +1502,32 @@
     "pinnedSection": "已置顶",
     "hostsExported": "主机已成功导出",
     "export": {
-      "menuItem": "出口...",
+      "menuItem": "导出…",
       "title": "导出主机",
       "scope": "范围",
       "scopeAll": "全部",
       "scopeSelected": "已选",
       "searchHosts": "搜索主机...",
-      "include": "包括",
-      "groupConnection": "联系",
-      "groupCredentials": "证书",
-      "groupNotes": "笔记",
-      "groupTags": "标签和别针",
+      "include": "导出内容",
+      "groupConnection": "连接信息",
+      "groupCredentials": "包含凭据（密码、私钥）",
+      "groupNotes": "备注",
+      "groupTags": "标签与置顶",
       "groupTunnels": "隧道",
-      "groupJumpHosts": "跳转主机",
-      "groupQuickActions": "快速行动",
-      "groupFeatureFlags": "功能标志",
+      "groupJumpHosts": "跳板机",
+      "groupQuickActions": "快捷命令",
+      "groupFeatureFlags": "功能开关",
       "groupAdvanced": "高级配置",
       "preview": "预览",
-      "moreHosts": "... {{count}} 更多主机",
-      "summary": "{{selected}} 的 {{total}} 个主机",
-      "credentialsIncluded": "资质包括",
-      "credentialsExcluded": "已排除凭证",
+      "moreHosts": "另有 {{count}} 台主机未在预览中显示",
+      "summary": "已选择 {{selected}} / {{total}} 台主机",
+      "credentialsIncluded": "已包含凭据",
+      "credentialsExcluded": "不包含凭据",
       "noneSelected": "未选择主机",
       "cancel": "取消",
-      "confirm": "出口",
+      "confirm": "导出",
       "fetchFailed": "导出主机失败",
-      "bulkButton": "出口"
+      "bulkButton": "导出"
     },
     "sampleDownloaded": "示例文件已下载",
     "failedToDeleteCredential2": "删除凭据失败",
@@ -1818,7 +1818,25 @@
     "useUserDefaults": "使用用户默认设置",
     "useUserTerminalDefaultsDesc": "此主机使用个人设置中的终端默认配置。",
     "rdpDefaults": "RDP 默认设置",
-    "useUserRdpDefaultsDesc": "使用个人设置中的性能、重定向和剪贴板配置。"
+    "useUserRdpDefaultsDesc": "使用个人设置中的性能、重定向和剪贴板配置。",
+    "duplicateName": "{{name}}（副本）",
+    "duplicateInactive": "认证配置已保留。副本的自动采样和自启动已关闭，首次连接需确认服务器身份。",
+    "terminalEncodingLabel": "终端字符编码",
+    "terminalEncodingHint": "必须与远程终端编码一致。修改后重新连接生效；默认 UTF-8。",
+    "importSettingGroups": {
+      "authentication": "认证／凭据引用",
+      "proxy": "代理",
+      "jump": "跳板／父连接",
+      "terminal": "终端／快捷命令",
+      "tunnels": "隧道",
+      "monitoring": "监控",
+      "docker": "Docker",
+      "proxmox": "Proxmox",
+      "portKnocking": "端口敲门"
+    },
+    "importSettings": "文件包含的配置（不代表已启用）：{{settings}}",
+    "importNoAdvancedSettings": "未提供上述高级配置",
+    "importSSHConfigOverwrite": "导入 SSH 配置（覆盖）"
   },
   "commandPalette": {
     "searchPlaceholder": "搜索主机、命令或设置...",
@@ -2030,15 +2048,15 @@
     "tmuxCopyHint": "调整选择并按 Enter 复制到剪贴板",
     "tmuxDetach": "从 tmux 会话分离",
     "tmuxDetached": "已从 tmux 会话分离",
-    "searchPlaceholder": "寻找",
-    "searchCaseSensitive": "火柴盒",
+    "searchPlaceholder": "搜索终端输出…",
+    "searchCaseSensitive": "区分大小写",
     "searchWholeWord": "整词匹配",
     "searchRegex": "使用正则表达式",
-    "searchNoResults": "没有结果",
-    "searchResultCount": "{{index}} 的 {{count}}",
-    "searchNext": "下一场比赛（输入）",
-    "searchPrevious": "上一场比赛（Shift+Enter）",
-    "searchClose": "关闭（退出）",
+    "searchNoResults": "无匹配结果",
+    "searchResultCount": "{{index}} / {{count}}",
+    "searchNext": "下一个匹配项（Enter）",
+    "searchPrevious": "上一个匹配项（Shift+Enter）",
+    "searchClose": "关闭搜索（Esc）",
     "maxReconnectAttemptsReached": "已达到最大重连尝试次数",
     "closeTab": "关闭",
     "connectionTimeout": "连接超时",
@@ -2092,7 +2110,8 @@
     "split": {
       "splitTab": "拆分标签页",
       "addToSplit": "添加到拆分",
-      "removeFromSplit": "从拆分中移除"
+      "removeFromSplit": "从拆分中移除",
+      "defaultTitle": "分屏 {{number}}"
     },
     "retry": "重试",
     "outputGapHistory": "这里只保留最近的终端输出，较早内容已截断。",
@@ -2100,7 +2119,18 @@
     "outputGapDismiss": "已知晓",
     "recordingStopped": "完整终端录制已停止，记录可能不完整。手工终端仍可使用；请核对后再授权自动执行。如需重新录制，请新建会话。",
     "recordingIncomplete": "录制不完整",
-    "recordingIncompleteDetails": "录制提前停止，已保存文件可能不完整或无法读取。"
+    "recordingIncompleteDetails": "录制提前停止，已保存文件可能不完整或无法读取。",
+    "privateKeyInvalid": "无法加载 SSH 私钥，请检查私钥格式和口令。不会自动重试。",
+    "sshAuthenticationRejected": "SSH 认证失败，请检查用户名、密码或密钥后手动重试。",
+    "pastePreviewTitle": "多行粘贴预览",
+    "pastePreviewHint": "目标：{{target}}。换行可能立即执行命令，请检查以下完整内容后再粘贴。",
+    "pasteConnectionChanged": "连接已变化，未发送内容。请取消后重新粘贴。",
+    "confirmPaste": "确认粘贴",
+    "pasteReadFailed": "无法读取剪贴板，请重试。",
+    "encodingInputRejected": "内容包含当前终端编码无法表示的字符，未发送。请调整内容或修改编码后重新连接。",
+    "snippetConnectionChanged": "连接已变化或本次确认已使用，未发送命令。请重新触发命令片段。",
+    "shortcutActionFailed": "快捷键操作失败。请检查连接或剪贴板权限，确认终端状态后再重试。",
+    "tmuxEncodingRequired": "应用内 tmux 连接需要 UTF-8 编码。请将终端编码改为 UTF-8，或关闭自动 tmux。"
   },
   "fileManager": {
     "noHostSelected": "未选择主机",
@@ -2428,7 +2458,15 @@
     "renameTargetExists": "同名文件或目录已存在，请使用其他名称；未覆盖目标。",
     "renameResultUnknown": "重命名结果尚未确认，请刷新目录核对后再操作。",
     "moveTargetExists": "目标已存在，未覆盖已有内容。请选择其他目标。",
-    "moveResultUnknown": "移动结果尚未确认，请刷新源目录和目标目录核对后再操作。"
+    "moveResultUnknown": "移动结果尚未确认，请刷新源目录和目标目录核对后再操作。",
+    "symlinkPermissionsReadOnly": "这里显示的是符号链接自身的属性，不能在此修改权限位。如需修改目标权限，请打开目标所在目录后编辑其属性。所有者/组修改仅作用于链接自身。",
+    "editorTabs": "打开的编辑文件",
+    "backToFileList": "文件列表",
+    "showHiddenFiles": "显示隐藏文件",
+    "moveBatchStopped": "移动已停止：已确认 {{completed}}/{{total}} 项。未确认项目的结果可能未知，请核对远端状态",
+    "dropFileTooLarge": "文件“{{name}}”超过大小限制，最大允许 {{size}} MB。",
+    "dropTypeNotAllowed": "不支持此文件类型：{{type}}。",
+    "dropUnknownType": "未知类型"
   },
   "transfer": {
     "copyToHost": "复制到主机…",
@@ -2628,15 +2666,32 @@
     "remoteBindDenied": "远程服务器拒绝绑定监听地址或端口，请检查端口占用和 SSH 转发权限。",
     "c2sReviewRequired": "请重新选择本机主机列表中的 SSH 主机，核对旧配置后再启动。",
     "c2sErrors": {
+      "C2S_CONFIG_CHANGED": "本地隧道配置已改变，请重新加载并核对后重试。",
+      "C2S_CONFIG_INVALID": "本地隧道配置无法读取，原文件未覆盖。请检查配置文件。",
+      "C2S_CONFIG_TOO_LARGE": "本地隧道配置超过大小限制，未保存。",
+      "C2S_CONFIG_WRITE_FAILED": "本地隧道配置写入失败，请重试并核对结果。",
+      "C2S_IMPORT_INVALID": "导入的本地隧道配置无效，未写入。",
+      "C2S_IMPORT_CONFIRMATION_CHANGED": "本次导入内容与先前确认不一致，请重新预览。",
+      "C2S_IMPORT_LIMIT": "本地隧道配置或导入收据已达到数量上限，未写入。",
       "C2S_REVIEW_REQUIRED": "请重新选择本机主机列表中的 SSH 主机，核对旧配置后再启动。",
       "C2S_AUTH_REQUIRED": "请先登录本机工作区后再启动客户端隧道。",
       "C2S_SESSION_CHANGED": "登录状态已改变，旧隧道请求已停止，请重新启动。",
       "C2S_SOURCE_CHANGED": "主机配置已改变，请重新选择主机并核对目标。",
       "C2S_TRUSTED_WINDOW_REQUIRED": "请从主窗口操作客户端隧道。",
-      "C2S_CANCELLED": "隧道操作已取消。"
+      "C2S_CANCELLED": "隧道操作已取消。",
+      "C2S_CONNECTION_LIMIT": "中继连接数量已达上限，请关闭不用的连接后重试。",
+      "C2S_TUNNEL_LIMIT": "活动或正在启动的隧道已达32个，请先停止不用的隧道。",
+      "C2S_REQUEST_LIMIT": "此隧道的在途请求已达上限，请等待完成或取消后重试。"
     },
     "c2sLocalRelayHint": "客户端隧道通过本机工作区连接所选 SSH 主机，无需远程同步服务器。旧配置请重新选择并核对主机。",
-    "stopBeforeEditing": "停止隧道后可修改参数或加载预设。"
+    "stopBeforeEditing": "停止隧道后可修改参数或加载预设。",
+    "invalidForwardPort": "转发目标或端口无效，请填写有效地址及 1–65535 的整数端口。",
+    "hostAccessDenied": "没有建立隧道所需的主机权限，请确认权限后重试。",
+    "clientRemoteReconnectHint": "远程转发断开后不会定时自动重连，请检查连接后重新点击启动。",
+    "clientListenerReconnectHint": "此隧道不按定时器重试。监听仍开启时，新的客户端连接会重新建立转发通道；排查故障时可先停止隧道。",
+    "c2sMessageTooLarge": "中继消息超过大小限制，连接已关闭。请检查传输端后重试。",
+    "s2sTunnelLimit": "S2S活动或待启动隧道已达32个，请先停止不用的隧道。",
+    "s2sStartLimit": "此S2S隧道已有过多启动请求，请等待或取消后重试。"
   },
   "cardGrid": {
     "dragToMove": "拖动以移动",
@@ -3921,10 +3976,11 @@
         "collapseAll": "折叠所有文件夹",
         "settings": "命令片段设置",
         "variablesHint": "变量： $HOST、 $USER、 $PORT、 $NAME、${INPUT_1:Label}",
-        "variablesDialogTitle": "运行“{{name}}",
+        "variablesDialogTitle": "执行“{{name}}”",
         "variablesDialogDescription": "运行此命令片段之前，请填写所需的值。",
         "variablesPreviewLabel": "预览",
-        "variablesConfirmButton": "跑步"
+        "variablesConfirmButton": "执行",
+        "inputLabel": "参数 {{number}}"
       },
       "automations": {
         "title": "自动化",
@@ -4691,6 +4747,12 @@
     "discordAvatar": "头像地址（可选）"
   },
   "ai": {
+    "memoryKeyFailed": "临时 Key 未保存。请检查长度、释放不用的临时 Key，并在当前登录中重新输入。",
+    "memoryKeyOnly": "Key 仅在本次运行使用",
+    "memoryKeyHint": "Key 不写入数据库；退出登录或重启后需重新输入。提供方地址和模型配置仍会保存。",
+    "replaceKey": "替换 API Key",
+    "keepKeyBlank": "留空保留当前 Key",
+    "memoryKeyActive": "临时 Key",
     "loadOlderConversations": "加载更早会话",
     "chatHistory": "历史会话",
     "newConversation": "新会话",
@@ -5163,7 +5225,12 @@
         "DOWNLOAD_RESULT_UNVERIFIED": "已完成的本地文件与保存的校验收据不一致，已停止恢复。",
         "DOWNLOAD_SOURCE_CHANGED": "远端来源与保存的目录清单不一致，已停止恢复。",
         "DOWNLOAD_TARGET_CHANGED": "本地下载目录或文件身份已变化，已停止恢复。",
-        "MODEL_RESPONSE_TIMEOUT": "模型响应等待超时，已停止本次请求。请检查模型服务后重试；人工终端仍可使用。"
+        "MODEL_RESPONSE_TIMEOUT": "模型响应等待超时，已停止本次请求。请检查模型服务后重试；人工终端仍可使用。",
+        "TASK_PAUSED_BY_USER": "任务已由你暂停；已发送动作可能仍在运行，请核对后重新授权。",
+        "MODEL_AUTH_FAILED": "模型服务拒绝认证或访问（401/403）。请检查 Key 和模型权限；仍可人工操作 SSH。",
+        "MODEL_RATE_LIMITED": "模型服务限流或额度不足（429），自动任务已暂停。请稍后重试或检查服务额度后重新授权。",
+        "TERMINAL_INPUT_NOT_REPRESENTABLE": "内容包含当前终端编码无法表示的字符，未发送。请调整内容或修改编码后重新连接。",
+        "COMMAND_OUTPUT_INCOMPLETE": "命令退出状态已确认，但输出不完整。自动操作已暂停，请人工核对。"
       },
       "allowedPrograms": "本次允许的程序（每行一个）",
       "operationProgress": "已完成 {{done}} / {{total}} 条命令",
@@ -5179,7 +5246,12 @@
           "confirm": "确认目录清单",
           "entry": "执行目录条目"
         }
-      }
+      },
+      "pause": "暂停任务",
+      "pauseHint": "停止后续 AI 请求与动作并交还控制权；不发送 Ctrl+C。核对结果后重新授权继续。",
+      "interrupt": "发送 Ctrl+C",
+      "interruptHint": "先接管当前会话，再发送一次 Ctrl+C；远端程序是否停止需核对。",
+      "cancelledUnknownHint": "任务已取消，不会继续派发。已发送动作的实际结果仍需人工核对。"
     },
     "mcp": {
       "settings": "MCP 接入",
@@ -5273,7 +5345,10 @@
         "MODEL_STREAM_INVALID": "聊天响应格式异常，已停止接收。已显示的内容可能不完整，请核对后重试。",
         "MODEL_STREAM_INTERRUPTED": "聊天回复中断，未确认完成。已显示的内容已保留，请核对后重试。",
         "MODEL_TOOL_LIMIT": "模型请求的工具数量或参数超过上限，已停止后续操作。",
-        "MODEL_TOOL_RESULT_LIMIT": "工具结果超过保留上限，已停止后续操作。请缩小查询范围。"
+        "MODEL_TOOL_RESULT_LIMIT": "工具结果超过保留上限，已停止后续操作。请缩小查询范围。",
+        "MODEL_AUTH_FAILED": "模型服务拒绝认证或访问（401/403）。请检查 Key 和模型权限；仍可人工操作 SSH。",
+        "MODEL_RATE_LIMITED": "模型服务限流或额度不足（429），自动任务已暂停。请稍后重试或检查服务额度后重新授权。",
+        "COMMAND_OUTPUT_INCOMPLETE": "命令退出状态已确认，但输出不完整。自动操作已暂停，请人工核对。"
       },
       "budget": "模型调用预算（含规划）"
     },
@@ -5923,7 +5998,8 @@
       "batchProgress": "完成 {{completed}} / {{total}} 项 · 跳过 {{skipped}} · 失败 {{failed}} · 待核实 {{unknown}}",
       "batchNotice": "{{name}}：完成 {{completed}} 项，跳过 {{skipped}} 项，失败 {{failed}} 项，待核实 {{unknown}} 项。",
       "downloadDirectory": "下载目录",
-      "downloadSelection": "下载所选 {{count}} 项"
+      "downloadSelection": "下载所选 {{count}} 项",
+      "recheckAfterFailure": "本次启动未完成，请重新检查目标并确认处理方式后再开始。"
     },
     "uploadTree": {
       "title": "目录上传预览",
@@ -6103,11 +6179,21 @@
         "mcp.pairing.revoked": "MCP 配对已撤销",
         "mcp.pairing.create-requested": "MCP 配对请求",
         "host.trust.intent": "主机身份确认请求",
-        "host.trust.decision": "主机身份确认结果"
+        "host.trust.decision": "主机身份确认结果",
+        "task.paused": "人工暂停任务",
+        "session.interrupt_requested": "人工请求终端中断"
       },
       "archive": "归档并释放资源",
       "archiveHint": "保留本机脱敏操作日志和任务摘要，释放任务内存、临时聊天状态与本地授权；不会删除已传输的文件。",
       "archiveBlocked": "仍有未知结果、审计缺口或待清理文件，需要核对后才能归档。",
+      "storageTitle": "操作日志存储与清理",
+      "storagePath": "当前用户日志位置",
+      "storageUsage": "{{files}} 个文件 · {{mib}} MiB；默认保留 {{days}} 天，最多 {{max}} MiB。",
+      "cleanupRetention": "按留存规则清理",
+      "cleanupConfirm": "将删除当前用户已过期或超出容量限制的操作日志文件。其他文件保持不变，清理后无法恢复，请按需先导出。",
+      "confirmCleanup": "确认清理",
+      "cleanupResult": "已清理 {{files}} 个日志文件，释放 {{kib}} KiB。",
+      "storageError": "无法确认日志存储或清理结果，请刷新后核对。",
       "exportTitle": "导出脱敏记录",
       "exportHint": "导出当前任务筛选范围内的全部保留记录，不限当前页。导出时再次脱敏，不包含完整终端录制。",
       "exportTask": "导出该任务记录",
@@ -6152,7 +6238,10 @@
       "transferDirection": "传输方向",
       "directoryPhase": "目录阶段",
       "entryResult": "条目结果",
-      "transferDirections": { "upload": "上传", "download": "下载" },
+      "transferDirections": {
+        "upload": "上传",
+        "download": "下载"
+      },
       "directoryPhases": {
         "preview": "预览",
         "confirmed": "清单已确认",
@@ -6172,7 +6261,10 @@
         "allow": "允许",
         "confirm": "要求确认",
         "deny": "拒绝"
-      }
+      },
+      "archiveUnknownConfirm": "仍有 {{count}} 项命令结果未知。请先在服务器核对执行结果。确认已完成核对并归档？归档保留未知状态和人工确认记录，不会重新执行命令。",
+      "archivedUnknownReviewed": "已人工核对 {{count}} 项未知命令；原执行结果仍为未知。",
+      "retainedOutput": "查看已保留输出"
     },
     "tunnelTrustRejected": "服务器身份验证未通过。请在主机信任面板核对地址和指纹，再手动连接隧道。",
     "localBrowser": {
@@ -6667,7 +6759,17 @@
     "steps_one": "{{count}} 个步骤",
     "steps_other": "{{count}} 个步骤",
     "inspectContent": "查看备份的完整内容",
-    "restorePreferences": "同时恢复外观、界面偏好、终端默认值与配色库（需要手动重新加载）",
+    "restoreHostDefaults": "同时恢复主机创建默认值（仅管理员；覆盖全局默认值，代理停用，凭据需重新配置）",
+    "hostDefaultsRestored": "已恢复主机创建默认值。代理保持停用；请在管理员设置中重新配置凭据并核对后启用。",
+    "restoreLocalTunnels": "同时追加本地 C2S 隧道配置（仅桌面；保持禁用，重新选择主机并审阅后启动）",
+    "localTunnelsRestored": "已追加本地 C2S 配置并保持禁用。重新加载后，请重新选择 SSH 主机并审阅后启动。",
+    "retryAppendLocalTunnels": "保留当前本地配置，重试追加",
+    "pendingLocalTitle": "待完成的本地隧道恢复",
+    "pendingLocalHint": "数据库导入已完成。请查看待恢复配置；继续时保留当前本地配置并追加，所有新增隧道保持禁用，不会再次导入主机。",
+    "pendingLocalCount": "{{count}} 条隧道配置",
+    "inspectPendingLocal": "查看待恢复配置",
+    "continuePendingLocal": "保留当前配置并继续",
+    "restorePreferences": "同时恢复外观、仪表盘布局、侧栏显示、界面偏好、终端默认值与配色库（需要手动重新加载）",
     "confirmExport": "确认并下载",
     "confirmImport": "确认并导入",
     "completed": "已新增 {{hosts}} 台主机、{{workflows}} 个流程。",
@@ -6710,6 +6812,11 @@
     },
     "errors": {
       "BACKUP_FAILED": "操作失败，请重试或重新生成预览。",
+      "BACKUP_ADMIN_REQUIRED": "需要管理员权限才能恢复主机创建默认值。",
+      "BACKUP_LOCAL_TUNNELS_CHANGED": "数据库导入已完成，但本地隧道配置随后改变。重试追加将保留当前配置，不会重复导入主机。",
+      "BACKUP_LOCAL_TUNNELS_FAILED": "数据库导入已完成，本地隧道配置尚未确认写入。请重试本地恢复，不要重新导入整个备份。",
+      "BACKUP_LOCAL_RECOVERY_UNAVAILABLE": "暂时无法查询或确认本地恢复记录，请稍后重新打开此页面。",
+      "BACKUP_PENDING_LOCAL_LIMIT": "待完成的本地恢复已达到上限，请先处理已有记录。",
       "BACKUP_INVALID": "文件不是受支持的配置备份格式。",
       "BACKUP_TOO_LARGE": "备份超过 8 MB 限制。",
       "BACKUP_DUPLICATE_REFERENCE": "备份中存在重复引用，请检查文件。",
@@ -6744,8 +6851,8 @@
     "keybindingsCount": "{{count}} 个自定义快捷键",
     "keybindingsRestored": "已新增 {{count}} 个快捷键，全部保持禁用。请在快捷键设置中编辑确认后启用。",
     "keybindingNeedsReview": "从备份恢复，待编辑确认；目前已禁用",
-    "localRestorePending": "数据库中的配置已恢复，但本地界面设置未能写入。重试不会重复导入。",
-    "retryLocalRestore": "重试应用界面设置",
+    "localRestorePending": "数据库中的配置已恢复，但本地设置或隧道配置仍待写入。重试不会重复导入。",
+    "retryLocalRestore": "重试本地恢复",
     "editShortcut": "编辑快捷键 {{combo}}",
     "networkSummary": "{{jumps}} 个跳板引用 · {{tunnels}} 条隧道 · {{presets}} 个 C2S 预设",
     "terminalSummary": "终端默认值：{{defaults}} · {{themes}} 个自定义配色"
@@ -6773,5 +6880,27 @@
       "monitoring": "服务器监控",
       "jump": "跳板连接"
     }
+  },
+  "historyDialog": {
+    "title": "命令历史",
+    "hint": "查看和管理此主机保存的输入。追加不会自动按回车。",
+    "search": "搜索历史记录",
+    "refresh": "刷新",
+    "entries": "已保存命令",
+    "preview": "完整命令预览",
+    "empty": "没有匹配的历史记录",
+    "loadFailed": "无法加载历史记录，请刷新重试。",
+    "changeFailed": "无法确认操作结果，请刷新核对。",
+    "copied": "已复制",
+    "copyFailed": "复制失败，请重试。",
+    "controls": "此记录含控制字符，请复制并检查后再使用。",
+    "sessionChanged": "原会话不可用或已变化，请从当前会话重新打开历史后追加。",
+    "clearConfirm": "清空此主机的全部命令历史？此操作无法撤销。",
+    "confirmClear": "确认清空",
+    "clear": "清空历史",
+    "delete": "删除所选",
+    "copy": "复制",
+    "append": "追加到终端",
+    "updating": "正在更新历史…"
   }
 }

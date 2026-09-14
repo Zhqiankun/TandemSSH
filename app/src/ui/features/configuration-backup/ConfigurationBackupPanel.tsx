@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   captureDesktopConfiguration,
   applyDesktopConfiguration,
@@ -9,6 +9,7 @@ import { Button } from "@/components/button";
 import { configurationBackupApi as api } from "@/api/configuration-backup-api";
 import type {
   BackupPreview,
+  PendingLocalBackup,
   BackupImportResult,
 } from "@/types/configuration-backup";
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -24,12 +25,32 @@ function errorCode(error: unknown): string {
 export function ConfigurationBackupPanel() {
   const { t } = useTranslation(),
     picker = useRef<HTMLInputElement>(null),
-    localSnapshot = useRef<string | null>(null);
+    localSnapshot = useRef<string | null>(null),
+    localTunnelRevision = useRef<string | null>(null);
   const [preview, setPreview] = useState<BackupPreview | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const [restoreKeybindings, setRestoreKeybindings] = useState(false),
     [localRestorePending, setLocalRestorePending] = useState(false);
+  const [pendingLocal, setPendingLocal] = useState<PendingLocalBackup[]>([]);
+  useEffect(() => {
+    if (!window.electronAPI?.importC2STunnelConfig) return;
+    let active = true;
+    void api
+      .pendingLocal()
+      .then((rows) => {
+        if (active) setPendingLocal(rows);
+      })
+      .catch(() => {
+        if (active) setError("BACKUP_LOCAL_RECOVERY_UNAVAILABLE");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const [restoreLocalTunnels, setRestoreLocalTunnels] = useState(false);
+  const [localTunnelsRestored, setLocalTunnelsRestored] = useState(false);
+  const [restoreHostDefaults, setRestoreHostDefaults] = useState(false);
   const [restorePreferences, setRestorePreferences] = useState(false),
     [result, setResult] = useState<BackupImportResult | null>(null);
   const run = async (work: () => Promise<void>) => {
@@ -47,7 +68,12 @@ export function ConfigurationBackupPanel() {
     run(async () => {
       setPreview(null);
       setResult(null);
-      setPreview(await api.previewExport(captureDesktopConfiguration()));
+      const desktop = captureDesktopConfiguration();
+      if (window.electronAPI?.snapshotC2STunnelConfig)
+        desktop.localTunnels = (
+          await window.electronAPI.snapshotC2STunnelConfig()
+        ).config;
+      setPreview(await api.previewExport(desktop));
     });
   const importPreview = (file?: File) => {
     if (!file) return;
@@ -57,14 +83,43 @@ export function ConfigurationBackupPanel() {
       if (file.size > MAX_FILE_BYTES) throw Error("BACKUP_TOO_LARGE");
       setRestorePreferences(false);
       setRestoreKeybindings(false);
+      setRestoreHostDefaults(false);
+      setRestoreLocalTunnels(false);
+      setLocalTunnelsRestored(false);
+      localTunnelRevision.current = window.electronAPI?.snapshotC2STunnelConfig
+        ? (await window.electronAPI.snapshotC2STunnelConfig()).revision
+        : null;
       localSnapshot.current = JSON.stringify(captureDesktopConfiguration());
       setPreview(await api.previewImport(await file.text()));
     });
   };
-  const restoreLocal = (value: BackupImportResult) => {
-    if (!value.desktopConfiguration) return;
+  const restoreLocal = async (value: BackupImportResult) => {
     try {
-      applyDesktopConfiguration(value.desktopConfiguration);
+      if (value.desktopConfiguration)
+        applyDesktopConfiguration(value.desktopConfiguration);
+      if (value.localTunnels?.length) {
+        if (
+          !window.electronAPI?.importC2STunnelConfig ||
+          !localTunnelRevision.current
+        )
+          throw Error("BACKUP_LOCAL_TUNNELS_FAILED");
+        const applied = await window.electronAPI.importC2STunnelConfig({
+          id: value.receiptId,
+          revision: localTunnelRevision.current,
+          config: value.localTunnels,
+        });
+        if (!applied.success)
+          throw Error(
+            applied.error === "C2S_CONFIG_CHANGED"
+              ? "BACKUP_LOCAL_TUNNELS_CHANGED"
+              : "BACKUP_LOCAL_TUNNELS_FAILED",
+          );
+        await api.completeLocal(value.receiptId);
+        setPendingLocal((rows) =>
+          rows.filter((row) => row.result.receiptId !== value.receiptId),
+        );
+        setLocalTunnelsRestored(true);
+      }
       setLocalRestorePending(false);
     } catch (error) {
       setLocalRestorePending(true);
@@ -92,21 +147,79 @@ export function ConfigurationBackupPanel() {
             JSON.stringify(captureDesktopConfiguration())
         )
           throw Error("BACKUP_LOCAL_CONFIGURATION_CHANGED");
+        if (
+          restoreLocalTunnels &&
+          (!localTunnelRevision.current ||
+            !window.electronAPI?.snapshotC2STunnelConfig ||
+            (await window.electronAPI.snapshotC2STunnelConfig()).revision !==
+              localTunnelRevision.current)
+        )
+          throw Error("BACKUP_LOCAL_CONFIGURATION_CHANGED");
         const restored = await api.apply(
           preview.id,
           restorePreferences,
           restoreKeybindings,
+          restoreHostDefaults,
+          restoreLocalTunnels,
         );
         setResult(restored);
         setPreview(null);
         window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
         if (restored.keybindingsImported)
           window.dispatchEvent(new Event("customKeybindingsChanged"));
-        restoreLocal(restored);
+        await restoreLocal(restored);
       }
     });
   return (
     <section className="space-y-3 py-3" aria-label={t("configBackup.title")}>
+      {pendingLocal.length > 0 && (
+        <div className="space-y-2 border border-border p-3">
+          <p className="text-sm font-semibold">
+            {t("configBackup.pendingLocalTitle")}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t("configBackup.pendingLocalHint")}
+          </p>
+          {pendingLocal.map((row) => (
+            <div
+              key={row.result.receiptId}
+              className="space-y-2 border-t border-border pt-2"
+            >
+              <p className="text-xs">
+                {new Date(row.at).toLocaleString()} ·{" "}
+                {t("configBackup.pendingLocalCount", {
+                  count: row.result.localTunnels?.length ?? 0,
+                })}
+              </p>
+              <details className="text-xs">
+                <summary>{t("configBackup.inspectPendingLocal")}</summary>
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap">
+                  {JSON.stringify(row.result.localTunnels, null, 2)}
+                </pre>
+              </details>
+              <Button
+                size="sm"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    if (!window.electronAPI?.snapshotC2STunnelConfig)
+                      throw Error("BACKUP_LOCAL_RECOVERY_UNAVAILABLE");
+                    localTunnelRevision.current = (
+                      await window.electronAPI.snapshotC2STunnelConfig()
+                    ).revision;
+                    setResult(row.result);
+                    setPreview(null);
+                    setLocalTunnelsRestored(false);
+                    await restoreLocal(row.result);
+                  })
+                }
+              >
+                {t("configBackup.continuePendingLocal")}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="flex items-center gap-2 text-sm font-semibold">
         <ShieldCheck className="size-4 text-accent-brand" />
         {t("configBackup.title")}
@@ -209,6 +322,9 @@ export function ConfigurationBackupPanel() {
             {preview.hosts.map((host, index) => (
               <li key={index}>
                 {host.name || host.ip} · {host.username}@{host.ip}:{host.port}
+                {" · "}
+                {t("hosts.terminalEncodingLabel")}:{" "}
+                {(host.terminalEncoding ?? "utf-8").toUpperCase()}
               </li>
             ))}
             {preview.workflows.map((workflow, index) => (
@@ -265,6 +381,32 @@ export function ConfigurationBackupPanel() {
               {t("configBackup.restoreKeybindings")}
             </label>
           )}
+          {preview.direction === "import" && preview.hasHostDefaults && (
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={restoreHostDefaults}
+                disabled={busy}
+                onChange={(event) =>
+                  setRestoreHostDefaults(event.target.checked)
+                }
+              />
+              {t("configBackup.restoreHostDefaults")}
+            </label>
+          )}
+          {preview.direction === "import" && !!preview.localTunnelCount && (
+            <label className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={restoreLocalTunnels}
+                disabled={busy || !window.electronAPI?.importC2STunnelConfig}
+                onChange={(event) =>
+                  setRestoreLocalTunnels(event.target.checked)
+                }
+              />
+              {t("configBackup.restoreLocalTunnels")}
+            </label>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" disabled={busy} onClick={() => void confirm()}>
               {t(
@@ -298,6 +440,9 @@ export function ConfigurationBackupPanel() {
           <p className="text-muted-foreground">
             {t("configBackup.afterImport")}
           </p>
+          {result.hostDefaultsRestored && (
+            <p>{t("configBackup.hostDefaultsRestored")}</p>
+          )}
           {!!result.keybindingsImported && (
             <p>
               {t("configBackup.keybindingsRestored", {
@@ -305,26 +450,45 @@ export function ConfigurationBackupPanel() {
               })}
             </p>
           )}
+          {localTunnelsRestored && (
+            <p>{t("configBackup.localTunnelsRestored")}</p>
+          )}
           {localRestorePending && (
             <div>
               <p role="alert">{t("configBackup.localRestorePending")}</p>
               <Button
                 disabled={busy}
-                onClick={() => void run(async () => restoreLocal(result))}
+                onClick={() =>
+                  void run(async () => {
+                    if (
+                      error === "BACKUP_LOCAL_TUNNELS_CHANGED" &&
+                      window.electronAPI?.snapshotC2STunnelConfig
+                    )
+                      localTunnelRevision.current = (
+                        await window.electronAPI.snapshotC2STunnelConfig()
+                      ).revision;
+                    await restoreLocal(result);
+                  })
+                }
               >
-                {t("configBackup.retryLocalRestore")}
+                {t(
+                  error === "BACKUP_LOCAL_TUNNELS_CHANGED"
+                    ? "configBackup.retryAppendLocalTunnels"
+                    : "configBackup.retryLocalRestore",
+                )}
               </Button>
             </div>
           )}
-          {result.preferencesRestored && !localRestorePending && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => window.location.reload()}
-            >
-              {t("configBackup.reloadPreferences")}
-            </Button>
-          )}
+          {(result.preferencesRestored || localTunnelsRestored) &&
+            !localRestorePending && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.location.reload()}
+              >
+                {t("configBackup.reloadPreferences")}
+              </Button>
+            )}
         </div>
       )}
     </section>

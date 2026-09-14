@@ -38,9 +38,16 @@ export function registerHostCommandHistoryRoutes(
       const hostIdParam = Array.isArray(req.params.hostId)
         ? req.params.hostId[0]
         : req.params.hostId;
-      const hostId = parseInt(hostIdParam, 10);
+      const hostId =
+        typeof hostIdParam === "string" && /^[1-9][0-9]*$/.test(hostIdParam)
+          ? Number(hostIdParam)
+          : NaN;
 
-      if (!isNonEmptyString(userId) || !hostId) {
+      if (
+        !isNonEmptyString(userId) ||
+        !Number.isSafeInteger(hostId) ||
+        hostId <= 0
+      ) {
         sshLogger.warn("Invalid userId or hostId for command history fetch", {
           operation: "command_history_fetch",
           hostId,
@@ -100,9 +107,14 @@ export function registerHostCommandHistoryRoutes(
     authenticateJWT,
     async (req: Request, res: Response) => {
       const userId = (req as AuthenticatedRequest).userId;
-      const { hostId, command } = req.body;
+      const { hostId, command } = req.body ?? {};
 
-      if (!isNonEmptyString(userId) || !hostId || !command) {
+      if (
+        !isNonEmptyString(userId) ||
+        !Number.isSafeInteger(hostId) ||
+        hostId <= 0 ||
+        !isNonEmptyString(command)
+      ) {
         sshLogger.warn("Invalid data for command history deletion", {
           operation: "command_history_delete",
           hostId,

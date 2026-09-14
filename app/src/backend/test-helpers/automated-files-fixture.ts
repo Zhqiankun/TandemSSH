@@ -16,6 +16,7 @@ export function automatedFilesFixture(
   options: {
     audit?: (type: string, data: unknown) => Promise<void>;
     policy?: CommandPolicySnapshot;
+    terminalOutput?: string;
   } = {},
 ) {
   const sessionId = randomUUID(),
@@ -169,6 +170,9 @@ export function automatedFilesFixture(
             groups: () => [],
             control,
             files: store.executor(userId, sessionId),
+            ...(options.terminalOutput ? {
+              readOutput: () => ({ text: options.terminalOutput!, generation: control.snapshot().generation, cursor: 1, truncated: false }),
+            } : {}),
             executor: {
               prepareContext: () => ({
                 bytes: Buffer.from("context"),

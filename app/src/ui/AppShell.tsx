@@ -1,3 +1,4 @@
+import { shouldIgnoreShellShortcut } from "@/shell/shortcut-focus";
 import { TaskHistoryDialog } from "@/features/collaboration/TaskHistory";
 import { LocalFileGrantMonitor } from "@/features/collaboration/TaskLocalFiles";
 import { UpdateCenter } from "@/updates/UpdateCenter";
@@ -587,6 +588,10 @@ export function AppShell({
   // hard to discover.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (shouldIgnoreShellShortcut(e)) {
+        lastShiftTime.current = 0;
+        return;
+      }
       if (e.code === "ShiftLeft" && !e.repeat) {
         const now = Date.now();
         if (now - lastShiftTime.current < 300 && commandPaletteShortcutEnabled)
@@ -619,6 +624,7 @@ export function AppShell({
   }, [railView]);
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (shouldIgnoreShellShortcut(e)) return;
       if (!e.ctrlKey || !e.shiftKey || e.altKey || e.code !== "KeyE") return;
       e.preventDefault();
       const previous = previousRailViewRef.current;
@@ -637,6 +643,7 @@ export function AppShell({
   // without going through synthetic DOM events (which are unreliable).
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (shouldIgnoreShellShortcut(e)) return;
       if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
         if (e.code === "KeyF") {
           e.preventDefault();
@@ -751,7 +758,9 @@ export function AppShell({
         // Alt+1..9 — jump directly to the tab at that position
         const digitMatch = /^Digit([1-9])$/.exec(e.code);
         if (digitMatch) {
-          const currentTabs = tabsRef.current;
+          const currentTabs = tabsRef.current.filter(
+            (tab) => !tab.parentSplitTabId,
+          );
           const index = Number(digitMatch[1]) - 1;
           if (index < currentTabs.length) {
             e.preventDefault();
@@ -765,7 +774,9 @@ export function AppShell({
       if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
         if (e.code === "BracketRight" || e.code === "BracketLeft") {
           e.preventDefault();
-          const currentTabs = tabsRef.current;
+          const currentTabs = tabsRef.current.filter(
+            (tab) => !tab.parentSplitTabId,
+          );
           if (currentTabs.length < 2) return;
           const currentId = activeTabIdRef.current;
           const idx = currentTabs.findIndex((t) => t.id === currentId);
@@ -2010,7 +2021,7 @@ export function AppShell({
       id,
       instanceId,
       type: "split-screen",
-      label: `Split #${splitNumber}`,
+      label: t("terminal.split.defaultTitle", { number: splitNumber }),
       openedAt: Date.now(),
       splitConfig: createSplitConfig(mode, paneIds, sizes),
     };

@@ -108,11 +108,13 @@ export const collaborationApi = {
       )
     ).data;
   },
-  async archive(id: string) {
+  async archive(id: string, reviewedUnknownOperationIds?: string[]) {
     return (
       await authApi.post<{ id: string; archived: boolean }>(
         "/tandem/tasks/" + encodeURIComponent(id) + "/archive",
-        {},
+        reviewedUnknownOperationIds?.length
+          ? { reviewedUnknownOperationIds }
+          : {},
       )
     ).data;
   },
@@ -125,12 +127,32 @@ export const collaborationApi = {
       )
     ).data;
   },
+  async pause(id: string) {
+    return (
+      await authApi.post<TaskView>(
+        "/tandem/tasks/" + encodeURIComponent(id) + "/pause",
+        {},
+        { params: { operationLimit: 50 } },
+      )
+    ).data;
+  },
   async cancel(id: string) {
     return (
       await authApi.post<TaskView>(
         "/tandem/tasks/" + id + "/cancel",
         {},
         { params: { operationLimit: 50 } },
+      )
+    ).data;
+  },
+  async interrupt(
+    sessionId: string,
+    expected: Pick<ControlSnapshot, "generation" | "controlEpoch">,
+  ) {
+    return (
+      await authApi.post<{ requested: boolean; control: ControlSnapshot }>(
+        "/tandem/sessions/" + encodeURIComponent(sessionId) + "/interrupt",
+        expected,
       )
     ).data;
   },

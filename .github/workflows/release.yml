@@ -90,7 +90,7 @@ jobs:
           if ($LASTEXITCODE -eq 0 -and $latestTag -match '^v\d+\.\d+\.\d+$' -and [version]$version -le [version]$latestTag.Substring(1)) { throw 'Refusing to replace a newer or identical stable release' }
           $isDraft = gh release view $env:RELEASE_TAG --json isDraft --jq .isDraft 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $env:RELEASE_TAG --draft --verify-tag --title "TandemSSH $env:RELEASE_TAG" --generate-notes
+            gh release create $env:RELEASE_TAG --draft --verify-tag --title "TandemSSH $env:RELEASE_TAG" --notes-file ../docs/75-preview-release-notes.md
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } elseif ($isDraft -ne 'true') { throw 'Published releases are immutable; use a new version' }
           gh release upload $env:RELEASE_TAG "release/TandemSSH-$version-x64.exe" "release/TandemSSH-$version-x64.exe.blockmap" "release/TandemSSH-$version-x64.zip" release/SHA256SUMS.txt --clobber

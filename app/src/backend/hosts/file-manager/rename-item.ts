@@ -89,6 +89,16 @@ export async function moveFileItem(
       }
       throw error;
     }
+    // A destination appearing after a failed request may be our own committed
+    // rename. Without the source, never report a harmless pre-existing conflict.
+    try {
+      await request(
+        (done) => sftp.lstat(oldPath, done),
+        "RENAME_RESULT_UNKNOWN",
+      );
+    } catch {
+      throw Error("RENAME_RESULT_UNKNOWN");
+    }
     throw Error("FILE_TARGET_EXISTS");
   }
   return target;

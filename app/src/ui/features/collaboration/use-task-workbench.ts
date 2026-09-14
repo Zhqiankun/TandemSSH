@@ -92,7 +92,10 @@ export function useTaskWorkbench(sessionId: string) {
       if (current()) setBusy(false);
     }
   };
-  const archive = async (id: string) => {
+  const archive = async (
+    id: string,
+    reviewedUnknownOperationIds?: string[],
+  ) => {
     const scope = errorScope.current;
     const sessionVersion = sessionScope.current;
     const current = () =>
@@ -100,7 +103,7 @@ export function useTaskWorkbench(sessionId: string) {
     setBusy(true);
     setError(undefined);
     try {
-      await collaborationApi.archive(id);
+      await collaborationApi.archive(id, reviewedUnknownOperationIds);
       if (current())
         setSnapshot((previous) =>
           previous
@@ -118,7 +121,7 @@ export function useTaskWorkbench(sessionId: string) {
     }
   };
   // Takeover stays available while an authorization or command request is pending.
-  const takeover = async () => {
+  const controlAction = async (action: () => Promise<unknown>) => {
     if (takingOver.current) return;
     const scope = errorScope.current;
     const sessionVersion = sessionScope.current;
@@ -127,7 +130,7 @@ export function useTaskWorkbench(sessionId: string) {
     takingOver.current = true;
     setTakeoverPending(true);
     try {
-      await collaborationApi.takeover(sessionId);
+      await action();
       if (current()) await refresh();
     } catch (error) {
       if (current() && scope === errorScope.current)
@@ -146,7 +149,18 @@ export function useTaskWorkbench(sessionId: string) {
     busy,
     run,
     archive,
-    takeover,
+    takeover: () => controlAction(() => collaborationApi.takeover(sessionId)),
+    pause: (taskId: string) =>
+      controlAction(() => collaborationApi.pause(taskId)),
+    interrupt: () =>
+      controlAction(() => {
+        const control = snapshot?.session?.control;
+        if (!control) throw Error("STALE_CONTROL");
+        return collaborationApi.interrupt(sessionId, {
+          generation: control.generation,
+          controlEpoch: control.controlEpoch,
+        });
+      }),
     takeoverPending,
   };
 }

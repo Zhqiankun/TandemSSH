@@ -1430,32 +1430,32 @@
     "pinnedSection": "已釘選",
     "hostsExported": "主機已成功匯出",
     "export": {
-      "menuItem": "出口...",
+      "menuItem": "匯出…",
       "title": "匯出主機",
       "scope": "範圍",
       "scopeAll": "全部",
       "scopeSelected": "已選",
       "searchHosts": "搜尋主機...",
-      "include": "包括",
-      "groupConnection": "聯繫",
-      "groupCredentials": "證書",
-      "groupNotes": "筆記",
-      "groupTags": "標籤和別針",
+      "include": "匯出內容",
+      "groupConnection": "連線資訊",
+      "groupCredentials": "包含憑證（密碼、私鑰）",
+      "groupNotes": "備註",
+      "groupTags": "標籤與置頂",
       "groupTunnels": "隧道",
-      "groupJumpHosts": "跳轉主機",
-      "groupQuickActions": "快速行動",
-      "groupFeatureFlags": "功能標誌",
+      "groupJumpHosts": "跳板機",
+      "groupQuickActions": "快捷命令",
+      "groupFeatureFlags": "功能開關",
       "groupAdvanced": "進階配置",
       "preview": "預覽",
-      "moreHosts": "... {{count}} 更多主機",
-      "summary": "{{selected}} 的 {{total}} 個主機",
-      "credentialsIncluded": "資質包括",
-      "credentialsExcluded": "已排除憑證",
+      "moreHosts": "另有 {{count}} 台主機未在預覽中顯示",
+      "summary": "已選擇 {{selected}} / {{total}} 台主機",
+      "credentialsIncluded": "已包含憑證",
+      "credentialsExcluded": "不包含憑證",
       "noneSelected": "未選擇主機",
       "cancel": "取消",
-      "confirm": "出口",
+      "confirm": "匯出",
       "fetchFailed": "匯出主機失敗",
-      "bulkButton": "出口"
+      "bulkButton": "匯出"
     },
     "sampleDownloaded": "範例檔案已下載",
     "failedToDeleteCredential2": "憑證刪除失敗",
@@ -1742,7 +1742,25 @@
     },
     "arrangeUnlockedSwitchedToManual": "已切換至人工分揀，因此您的訂單不會變更。",
     "dragToRearrange": "拖曳即可重新排列",
-    "arrangeUnlocked": "解鎖拖曳即可重新排列"
+    "arrangeUnlocked": "解鎖拖曳即可重新排列",
+    "duplicateName": "{{name}}（副本）",
+    "duplicateInactive": "驗證設定已保留。副本的自動採樣與自動啟動已關閉，首次連線需確認伺服器身分。",
+    "terminalEncodingLabel": "終端字元編碼",
+    "terminalEncodingHint": "必須與遠端終端編碼一致。修改後重新連線生效；預設 UTF-8。",
+    "importSettingGroups": {
+      "authentication": "驗證／憑證引用",
+      "proxy": "代理",
+      "jump": "跳板／父連線",
+      "terminal": "終端／快捷命令",
+      "tunnels": "隧道",
+      "monitoring": "監控",
+      "docker": "Docker",
+      "proxmox": "Proxmox",
+      "portKnocking": "連接埠敲門"
+    },
+    "importSettings": "檔案包含的設定（不代表已啟用）：{{settings}}",
+    "importNoAdvancedSettings": "未提供上述進階設定",
+    "importSSHConfigOverwrite": "匯入 SSH 設定（覆寫）"
   },
   "commandPalette": {
     "searchPlaceholder": "搜尋主機、命令或設定…",
@@ -1947,15 +1965,15 @@
     "tmuxCopyHint": "調整選取範圍並按下 Enter 以複製到剪貼簿",
     "tmuxDetach": "從 tmux 工作階段中斷連線",
     "tmuxDetached": "已從 tmux 工作階段中斷連線",
-    "searchPlaceholder": "尋找",
-    "searchCaseSensitive": "火柴盒",
-    "searchWholeWord": "整詞匹配",
+    "searchPlaceholder": "搜尋終端輸出…",
+    "searchCaseSensitive": "區分大小寫",
+    "searchWholeWord": "全字匹配",
     "searchRegex": "使用正規表示式",
-    "searchNoResults": "沒有結果",
-    "searchResultCount": "{{index}} 的 {{count}}",
-    "searchNext": "下一場比賽（輸入）",
-    "searchPrevious": "最後一場比賽（Shift+Enter）",
-    "searchClose": "關閉（退出）",
+    "searchNoResults": "無符合結果",
+    "searchResultCount": "{{index}} / {{count}}",
+    "searchNext": "下一個符合項目（Enter）",
+    "searchPrevious": "上一個符合項目（Shift+Enter）",
+    "searchClose": "關閉搜尋（Esc）",
     "maxReconnectAttemptsReached": "已達最大重新連線嘗試次數",
     "closeTab": "關閉",
     "connectionTimeout": "連線逾時",
@@ -2009,8 +2027,20 @@
     "split": {
       "splitTab": "分割分頁",
       "addToSplit": "加入分割",
-      "removeFromSplit": "從分割中移除"
-    }
+      "removeFromSplit": "從分割中移除",
+      "defaultTitle": "分割畫面 {{number}}"
+    },
+    "privateKeyInvalid": "無法載入 SSH 私鑰，請檢查私鑰格式與密碼。不會自動重試。",
+    "sshAuthenticationRejected": "SSH 驗證失敗，請檢查使用者名稱、密碼或金鑰後手動重試。",
+    "pastePreviewTitle": "多行貼上預覽",
+    "pastePreviewHint": "目標：{{target}}。換行可能立即執行命令，請檢查以下完整內容後再貼上。",
+    "pasteConnectionChanged": "連線已變更，未傳送內容。請取消後重新貼上。",
+    "confirmPaste": "確認貼上",
+    "pasteReadFailed": "無法讀取剪貼簿，請重試。",
+    "encodingInputRejected": "內容包含目前終端編碼無法表示的字元，未傳送。請調整內容或修改編碼後重新連線。",
+    "snippetConnectionChanged": "連線已變更或本次確認已使用，未傳送命令。請重新觸發命令片段。",
+    "shortcutActionFailed": "快捷鍵操作失敗。請檢查連線或剪貼簿權限，確認終端狀態後再重試。",
+    "tmuxEncodingRequired": "應用程式內 tmux 連線需要 UTF-8 編碼。請將終端編碼改為 UTF-8，或關閉自動 tmux。"
   },
   "fileManager": {
     "noHostSelected": "未選取主機",
@@ -2286,7 +2316,15 @@
     "cannotLoadPdf": "無法載入 PDF",
     "pdfLoadError": "載入此 PDF 檔案時發生錯誤。",
     "loadingPdf": "正在載入 PDF...",
-    "loadingPage": "正在載入頁面..."
+    "loadingPage": "正在載入頁面...",
+    "symlinkPermissionsReadOnly": "這裡顯示的是符號連結本身的屬性，不能在此修改權限位元。如需修改目標權限，請開啟目標所在目錄後編輯其屬性。擁有者/群組修改僅作用於連結本身。",
+    "editorTabs": "開啟的編輯檔案",
+    "backToFileList": "檔案清單",
+    "showHiddenFiles": "顯示隱藏檔案",
+    "moveBatchStopped": "移動已停止：已確認 {{completed}}/{{total}} 項。未確認項目的結果可能未知，請核對遠端狀態",
+    "dropFileTooLarge": "檔案「{{name}}」超過大小限制，最多允許 {{size}} MB。",
+    "dropTypeNotAllowed": "不支援此檔案類型：{{type}}。",
+    "dropUnknownType": "未知類型"
   },
   "transfer": {
     "copyToHost": "複製到主機…",
@@ -2480,7 +2518,19 @@
     "host": "主機",
     "mode": "模式",
     "noHostSelected": "未選取主機",
-    "working": "處理中..."
+    "working": "處理中...",
+    "invalidForwardPort": "轉送目標或連接埠無效，請填寫有效位址及 1–65535 的整數連接埠。",
+    "hostAccessDenied": "沒有建立隧道所需的主機權限，請確認權限後重試。",
+    "clientRemoteReconnectHint": "遠端轉送中斷後不會定時自動重連，請檢查連線後重新點擊啟動。",
+    "clientListenerReconnectHint": "此隧道不按計時器重試。監聽仍開啟時，新的用戶端連線會重新建立轉送通道；排查故障時可先停止隧道。",
+    "c2sMessageTooLarge": "中繼訊息超過大小限制，連線已關閉。請檢查傳輸端後重試。",
+    "c2sErrors": {
+      "C2S_CONNECTION_LIMIT": "中繼連線數量已達上限，請關閉不用的連線後重試。",
+      "C2S_TUNNEL_LIMIT": "活動或正在啟動的隧道已達32個，請先停止不用的隧道。",
+      "C2S_REQUEST_LIMIT": "此隧道的進行中請求已達上限，請等待完成或取消後重試。"
+    },
+    "s2sTunnelLimit": "S2S活動或待啟動隧道已達32個，請先停止不用的隧道。",
+    "s2sStartLimit": "此S2S隧道已有過多啟動請求，請等待或取消後重試。"
   },
   "cardGrid": {
     "dragToMove": "拖曳以移動",
@@ -3758,10 +3808,11 @@
         "collapseAll": "折疊所有資料夾",
         "settings": "程式碼片段設定",
         "variablesHint": "變數： $HOST、 $USER、 $PORT、 $NAME、${INPUT_1:Label}",
-        "variablesDialogTitle": "運行“{{name}}",
+        "variablesDialogTitle": "執行「{{name}}」",
         "variablesDialogDescription": "在運行此程式碼片段之前，請填寫所需的值。",
         "variablesPreviewLabel": "預覽",
-        "variablesConfirmButton": "跑步"
+        "variablesConfirmButton": "執行",
+        "inputLabel": "參數 {{number}}"
       },
       "automations": {
         "title": "自動化",
@@ -4524,6 +4575,12 @@
     "ruleSaveFailed": "無法儲存規則"
   },
   "ai": {
+    "memoryKeyFailed": "暫時 Key 未儲存。請檢查長度、釋放不用的暫時 Key，並在目前登入中重新輸入。",
+    "memoryKeyOnly": "Key 僅在本次執行使用",
+    "memoryKeyHint": "Key 不寫入資料庫；登出或重啟後需重新輸入。提供方位址與模型設定仍會儲存。",
+    "replaceKey": "替換 API Key",
+    "keepKeyBlank": "留空保留目前 Key",
+    "memoryKeyActive": "暫時 Key",
     "loadOlderConversations": "載入更早對話",
     "chatHistory": "歷史對話",
     "newConversation": "新對話",
@@ -4675,5 +4732,62 @@
     },
     "seconds": "秒",
     "secondsShort": "{{count}}s"
+  },
+  "tandem": {
+    "collaboration": {
+      "errors": {
+        "TASK_PAUSED_BY_USER": "任務已由你暫停；已傳送動作可能仍在執行，請核對後重新授權。",
+        "MODEL_AUTH_FAILED": "模型服務拒絕認證或存取（401/403）。請檢查 Key 與模型權限；仍可人工操作 SSH。",
+        "MODEL_RATE_LIMITED": "模型服務限流或額度不足（429），自動任務已暫停。請稍後重試或檢查服務額度後重新授權。",
+        "TERMINAL_INPUT_NOT_REPRESENTABLE": "內容包含目前終端編碼無法表示的字元，未傳送。請調整內容或修改編碼後重新連線。",
+        "COMMAND_OUTPUT_INCOMPLETE": "命令退出狀態已確認，但輸出不完整。自動操作已暫停，請人工核對。"
+      },
+      "pause": "暫停任務",
+      "pauseHint": "停止後續 AI 請求與動作並交還控制權；不傳送 Ctrl+C。核對結果後重新授權繼續。",
+      "interrupt": "傳送 Ctrl+C",
+      "interruptHint": "先接管目前工作階段，再傳送一次 Ctrl+C；遠端程式是否停止需核對。",
+      "cancelledUnknownHint": "任務已取消，不會繼續派發。已傳送動作的實際結果仍需人工核對。"
+    },
+    "history": {
+      "events": {
+        "task.paused": "人工暫停任務",
+        "session.interrupt_requested": "人工要求終端中斷"
+      },
+      "archiveUnknownConfirm": "仍有 {{count}} 項命令結果未知。請先在伺服器核對執行結果。確認已完成核對並封存？封存保留未知狀態與人工確認紀錄，不會重新執行命令。",
+      "archivedUnknownReviewed": "已人工核對 {{count}} 項未知命令；原執行結果仍為未知。",
+      "retainedOutput": "檢視已保留輸出"
+    },
+    "agent": {
+      "errors": {
+        "MODEL_AUTH_FAILED": "模型服務拒絕認證或存取（401/403）。請檢查 Key 與模型權限；仍可人工操作 SSH。",
+        "MODEL_RATE_LIMITED": "模型服務限流或額度不足（429），自動任務已暫停。請稍後重試或檢查服務額度後重新授權。",
+        "COMMAND_OUTPUT_INCOMPLETE": "命令退出狀態已確認，但輸出不完整。自動操作已暫停，請人工核對。"
+      }
+    },
+    "downloadTree": {
+      "recheckAfterFailure": "本次啟動未完成，請重新檢查目標並確認處理方式後再開始。"
+    }
+  },
+  "historyDialog": {
+    "title": "命令歷史",
+    "hint": "查看和管理此主機儲存的輸入。附加不會自動按 Enter。",
+    "search": "搜尋歷史記錄",
+    "refresh": "重新整理",
+    "entries": "已儲存命令",
+    "preview": "完整命令預覽",
+    "empty": "沒有符合的歷史記錄",
+    "loadFailed": "無法載入歷史記錄，請重新整理後重試。",
+    "changeFailed": "無法確認操作結果，請重新整理核對。",
+    "copied": "已複製",
+    "copyFailed": "複製失敗，請重試。",
+    "controls": "此記錄含控制字元，請複製並檢查後再使用。",
+    "sessionChanged": "原工作階段無法使用或已變更，請從目前工作階段重新開啟歷史後附加。",
+    "clearConfirm": "清空此主機的全部命令歷史？此操作無法復原。",
+    "confirmClear": "確認清空",
+    "clear": "清空歷史",
+    "delete": "刪除所選",
+    "copy": "複製",
+    "append": "附加至終端",
+    "updating": "正在更新歷史…"
   }
 }

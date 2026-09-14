@@ -3,6 +3,7 @@ import { and, eq, gte, lt } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import {
   hosts,
+  users,
   c2sTunnelPresets,
   settings,
   uiPreferences,
@@ -13,6 +14,7 @@ import {
   validateNetworkReferences,
 } from "../../configuration-backup/network.js";
 import { appendTerminalThemes } from "../../configuration-backup/terminal.js";
+import { restoreHostDefaults } from "../../../types/backup-host-defaults.js";
 import { restoreKeybindings } from "../../configuration-backup/keyboard.js";
 import type { DesktopConfiguration } from "../../../types/desktop-preferences.js";
 import type { DatabaseContext } from "./database-context.js";
@@ -37,6 +39,60 @@ export class ConfigurationBackupRepository {
   private assertDesktopStorage() {
     if (this.context.dialect !== "sqlite")
       throw Error("BACKUP_SQLITE_REQUIRED");
+  }
+  private receipts(
+    db: Pick<DatabaseContext["drizzle"], "select">,
+    userId: string,
+  ) {
+    const prefix = receiptPrefix(userId);
+    return db
+      .select()
+      .from(settings)
+      .where(
+        and(gte(settings.key, prefix), lt(settings.key, prefix + "\uffff")),
+      )
+      .all();
+  }
+  async pendingLocal(userId: string) {
+    this.assertDesktopStorage();
+    DataCrypto.validateUserAccess(userId);
+    return this.receipts(this.context.drizzle, userId)
+      .map(
+        (row) =>
+          JSON.parse(row.value) as {
+            at: number;
+            localCompleted?: boolean;
+            result: BackupImportResult;
+          },
+      )
+      .filter((row) => row.result.localTunnels?.length && !row.localCompleted)
+      .sort((a, b) => a.at - b.at)
+      .map((row) => ({
+        at: row.at,
+        result: {
+          receiptId: row.result.receiptId,
+          hostIds: row.result.hostIds,
+          workflowIds: row.result.workflowIds,
+          preferencesRestored: false,
+          localTunnels: row.result.localTunnels,
+        },
+      }));
+  }
+  async completeLocal(userId: string, id: string) {
+    this.assertDesktopStorage();
+    DataCrypto.validateUserAccess(userId);
+    this.context.drizzle.transaction((tx) => {
+      const key = receiptPrefix(userId) + id;
+      const row = tx.select().from(settings).where(eq(settings.key, key)).get();
+      if (!row) throw Error("BACKUP_PREVIEW_NOT_FOUND");
+      const receipt = JSON.parse(row.value);
+      if (!receipt.result?.localTunnels?.length) throw Error("BACKUP_INVALID");
+      tx.update(settings)
+        .set({ value: JSON.stringify({ ...receipt, localCompleted: true }) })
+        .where(eq(settings.key, key))
+        .run();
+    });
+    await this.onWrite?.();
   }
   private state(
     db: Pick<DatabaseContext["drizzle"], "select">,
@@ -64,12 +120,26 @@ export class ConfigurationBackupRepository {
       .from(userPreferences)
       .where(eq(userPreferences.userId, userId))
       .get();
+    const isAdmin =
+      db
+        .select({ isAdmin: users.isAdmin })
+        .from(users)
+        .where(eq(users.id, userId))
+        .get()?.isAdmin === true;
+    const rawHostDefaults = isAdmin
+      ? db
+          .select()
+          .from(settings)
+          .where(eq(settings.key, "host_defaults"))
+          .get()?.value
+      : undefined;
     const applicationConfiguration = application
       ? {
           theme: application.theme,
           fontSize: application.fontSize,
           accentColor: application.accentColor,
           language: application.language,
+          hiddenRailTabs: application.hiddenRailTabs,
           customKeybindings: application.customKeybindings,
           terminalDefaults: application.terminalDefaults,
           customThemes: application.customThemes,
@@ -99,11 +169,15 @@ export class ConfigurationBackupRepository {
           rawWorkflows,
           rawPreferences,
           applicationConfiguration,
+          rawHostDefaults,
+          isAdmin,
         }),
       )
       .digest("hex");
     return {
       rows,
+      rawHostDefaults,
+      isAdmin,
       rawWorkflows,
       rawPreferences,
       fingerprint,
@@ -120,16 +194,25 @@ export class ConfigurationBackupRepository {
       throw Error("WORKFLOW_STORE_INVALID");
     return {
       fingerprint: state.fingerprint,
+      hostDefaults:
+        state.rawHostDefaults === undefined
+          ? undefined
+          : JSON.parse(state.rawHostDefaults),
       tunnelPresets: state.tunnelPresets as unknown as Array<
         Record<string, unknown>
       >,
       appearance: state.application
         ? Object.fromEntries(
-            ["theme", "fontSize", "accentColor", "language"]
+            ["theme", "fontSize", "accentColor", "language", "hiddenRailTabs"]
               .map((key) => [
                 key,
                 state.application![
-                  key as "theme" | "fontSize" | "accentColor" | "language"
+                  key as
+                    | "theme"
+                    | "fontSize"
+                    | "accentColor"
+                    | "language"
+                    | "hiddenRailTabs"
                 ],
               ])
               .filter(([, value]) => value !== null),
@@ -164,16 +247,28 @@ export class ConfigurationBackupRepository {
       payload: ConfigurationBackup;
       restorePreferences: boolean;
       restoreKeybindings?: boolean;
+      restoreHostDefaults?: boolean;
+      restoreLocalTunnels?: boolean;
     },
   ): Promise<BackupImportResult> {
     this.assertDesktopStorage();
     validateNetworkReferences(
       request.payload.hosts,
       request.payload.tunnelPresets ?? [],
+      request.payload.localTunnels,
     );
     const dataKey = DataCrypto.validateUserAccess(userId),
       receiptKey = receiptPrefix(userId) + request.id;
     const applied = this.context.drizzle.transaction((tx) => {
+      if (
+        request.restoreHostDefaults &&
+        !tx
+          .select({ isAdmin: users.isAdmin })
+          .from(users)
+          .where(eq(users.id, userId))
+          .get()?.isAdmin
+      )
+        throw Error("BACKUP_ADMIN_REQUIRED");
       const receipt = tx
         .select()
         .from(settings)
@@ -195,6 +290,15 @@ export class ConfigurationBackupRepository {
             .get()?.value,
         };
       }
+      if (
+        request.restoreLocalTunnels &&
+        request.payload.localTunnels?.length &&
+        this.receipts(tx, userId).filter((row) => {
+          const r = JSON.parse(row.value);
+          return r.result?.localTunnels?.length && !r.localCompleted;
+        }).length >= 128
+      )
+        throw Error("BACKUP_PENDING_LOCAL_LIMIT");
       const before = this.state(tx, userId);
       if (before.fingerprint !== request.fingerprint)
         throw Error("BACKUP_CONFIGURATION_CHANGED");
@@ -252,6 +356,9 @@ export class ConfigurationBackupRepository {
             }),
             terminalConfig: JSON.stringify({
               ...host.terminalAppearance,
+              ...(host.terminalEncoding
+                ? { encoding: host.terminalEncoding }
+                : {}),
               backupSourceAuthentication: {
                 method: host.originalAuthType,
                 credentialRef: host.credentialRef,
@@ -340,6 +447,7 @@ export class ConfigurationBackupRepository {
       const preferencesRestored =
         request.restorePreferences &&
         !!(
+          request.payload.desktopLayout ||
           request.payload.preferences ||
           request.payload.appearance ||
           request.payload.terminalDefaults ||
@@ -365,6 +473,20 @@ export class ConfigurationBackupRepository {
           })
           .run();
       }
+      if (request.restorePreferences && request.payload.desktopLayout)
+        desktopConfiguration!.layout = request.payload.desktopLayout;
+      const hostDefaultsValue =
+        request.restoreHostDefaults && request.payload.hostDefaults
+          ? JSON.stringify(restoreHostDefaults(request.payload.hostDefaults))
+          : undefined;
+      if (hostDefaultsValue !== undefined)
+        tx.insert(settings)
+          .values({ key: "host_defaults", value: hostDefaultsValue })
+          .onConflictDoUpdate({
+            target: settings.key,
+            set: { value: hostDefaultsValue },
+          })
+          .run();
       const applicationUpdates: Partial<typeof userPreferences.$inferInsert> =
         {};
       if (request.restorePreferences && request.payload.appearance) {
@@ -411,13 +533,24 @@ export class ConfigurationBackupRepository {
           })
           .run();
       }
+      const localTunnels = request.restoreLocalTunnels
+        ? request.payload.localTunnels?.map((tunnel) => ({
+            ...restoreTunnel(tunnel, hostMap),
+            displayName: tunnel.displayName,
+            sourceHostName: request.payload.hosts.find(
+              (host) => host.ref === tunnel.sourceHostRef,
+            )!.name,
+          }))
+        : undefined;
       const result: BackupImportResult = {
+        localTunnels,
         receiptId: request.id,
         hostIds,
         workflowIds: imported.map((row) => row.id),
         preferencesRestored,
         keybindingsImported: importedKeys.length,
         terminalThemesImported: importedThemes.length,
+        hostDefaultsRestored: hostDefaultsValue !== undefined,
         tunnelPresetIds,
         desktopConfiguration,
       };
@@ -442,13 +575,21 @@ export class ConfigurationBackupRepository {
       receipts.sort(
         (a, b) => (JSON.parse(b.value).at ?? 0) - (JSON.parse(a.value).at ?? 0),
       );
-      for (const old of receipts.slice(32))
+      for (const old of receipts
+        .filter((row) => {
+          const r = JSON.parse(row.value);
+          return !r.result?.localTunnels?.length || r.localCompleted;
+        })
+        .slice(32))
         tx.delete(settings).where(eq(settings.key, old.key)).run();
       return {
         result,
         workflowValue: imported.length ? workflowValue : undefined,
+        hostDefaultsValue,
       };
     });
+    if (applied.hostDefaultsValue !== undefined)
+      updateCachedSetting("host_defaults", applied.hostDefaultsValue);
     if (applied.workflowValue !== undefined)
       updateCachedSetting(workflowKey(userId), applied.workflowValue);
     await this.onWrite?.();

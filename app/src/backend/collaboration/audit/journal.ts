@@ -74,11 +74,21 @@ export class AuditJournal implements OperationAuditPort {
     this.queue = work.catch(() => {});
     return work;
   }
-  private async write(line: string): Promise<void> {
-    await fs.mkdir(this.directory, { recursive: true });
-    const now = Date.now(),
-      size = Buffer.byteLength(line),
-      day = new Date(now).toISOString().slice(0, 10);
+  private async managedFiles() {
+    try {
+      const actual = await fs.realpath(this.directory);
+      const root = await fs.realpath(
+        path.dirname(path.dirname(this.directory)),
+      );
+      if (
+        actual !==
+        path.join(root, "tandem-audit", path.basename(this.directory))
+      )
+        throw Error("AUDIT_PATH_INVALID");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
     const entries = await fs.readdir(this.directory);
     const files = await Promise.all(
       entries
@@ -97,17 +107,55 @@ export class AuditJournal implements OperationAuditPort {
     const regular = files
       .filter((file) => file.regular)
       .sort((a, b) => a.time - b.time);
+    return regular;
+  }
+  private async prune(now: number, reserveBytes = 0) {
+    const regular = await this.managedFiles();
     let total = regular.reduce((sum, file) => sum + file.bytes, 0);
+    let removedFiles = 0,
+      removedBytes = 0;
     for (const file of regular) {
-      if (now - file.time < this.retentionMs && total + size <= this.maxBytes)
+      if (
+        now - file.time < this.retentionMs &&
+        total + reserveBytes <= this.maxBytes
+      )
         continue;
       // file is generated under the resolved journal directory, not a user path.
       if (path.dirname(path.resolve(file.file)) !== this.directory)
         throw new Error("AUDIT_PATH_INVALID");
       await fs.unlink(file.file);
       total -= file.bytes;
+      removedFiles++;
+      removedBytes += file.bytes;
       if (this.current?.file === file.file) this.current = undefined;
     }
+    return { removedFiles, removedBytes };
+  }
+  storageInfo() {
+    const work = this.queue.then(async () => {
+      const files = await this.managedFiles();
+      return {
+        directory: this.directory,
+        files: files.length,
+        bytes: files.reduce((n, f) => n + f.bytes, 0),
+        retentionDays: this.retentionMs / 86400000,
+        maxBytes: this.maxBytes,
+      };
+    });
+    this.queue = work.catch(() => {});
+    return work;
+  }
+  cleanupRetention() {
+    const work = this.queue.then(() => this.prune(Date.now()));
+    this.queue = work.catch(() => {});
+    return work;
+  }
+  private async write(line: string): Promise<void> {
+    await fs.mkdir(this.directory, { recursive: true });
+    const now = Date.now(),
+      size = Buffer.byteLength(line),
+      day = new Date(now).toISOString().slice(0, 10);
+    await this.prune(now, size);
     if (
       !this.current ||
       this.current.day !== day ||

@@ -1,3 +1,4 @@
+import { terminalEncoding } from "@/types/terminal-encoding";
 import { TERMINAL_THEMES } from "@/lib/terminal-themes";
 import type { Host } from "@/types/ui-types";
 import type { SSHHostData } from "@/types";
@@ -226,6 +227,7 @@ export function createHostEditorForm(
       "alt" | "ctrl" | "shift",
     fastScrollSensitivity: host?.terminalConfig?.fastScrollSensitivity ?? 5,
     minimumContrastRatio: terminalConfig.minimumContrastRatio ?? 1,
+    encoding: terminalEncoding(host?.terminalConfig?.encoding),
     backspaceMode: (host?.terminalConfig?.backspaceMode ?? "normal") as
       "normal" | "control-h",
     startupSnippetId: host?.terminalConfig?.startupSnippetId ?? null,
@@ -388,6 +390,7 @@ export function buildHostEditorPayload(
     fastScrollModifier: form.fastScrollModifier,
     fastScrollSensitivity: Number(form.fastScrollSensitivity),
     minimumContrastRatio: Number(form.minimumContrastRatio),
+    encoding: terminalEncoding(form.encoding),
     backspaceMode: form.backspaceMode,
     startupSnippetId: form.startupSnippetId ?? null,
     moshCommand: form.moshCommand || null,

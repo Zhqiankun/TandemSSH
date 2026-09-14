@@ -167,3 +167,23 @@ it("distinguishes skipped directory entries from successful copies in Chinese", 
   expect(screen.getByText("条目结果: 已跳过")).toBeInTheDocument();
   expect(screen.queryByText("条目结果: 成功")).not.toBeInTheDocument();
 });
+
+it("explains human archive acknowledgement in Chinese without claiming command success", async () => {
+  await i18n.changeLanguage("zh-CN");
+  render(
+    <HistoryRecordSummary
+      item={{
+        id: "archived",
+        at: 1,
+        type: "task.archived",
+        detail: "token",
+        status: "cancelled",
+        reviewedUnknownCommandCount: 2,
+      }}
+    />,
+  );
+  expect(
+    screen.getByText("已人工核对 2 项未知命令；原执行结果仍为未知。"),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("执行成功")).not.toBeInTheDocument();
+});

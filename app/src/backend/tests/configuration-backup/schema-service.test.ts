@@ -310,3 +310,143 @@ it("preserves valid three-digit accent colors supported by the desktop editor", 
   });
   expect(payload.appearance?.accentColor).toBe("#aabbcc");
 });
+it.each(["utf-8", "gb18030", "big5", "shift_jis"])(
+  "keeps %s identical in the preview summary and confirmed payload",
+  async (terminalEncoding) => {
+    const f = fixture();
+    const source = input();
+    const p = await f.service.previewImport(
+      "owner",
+      JSON.stringify({
+        ...source,
+        version: 3,
+        hosts: source.hosts.map((h) => ({ ...h, terminalEncoding })),
+      }),
+    );
+    expect(p.hosts[0].terminalEncoding).toBe(terminalEncoding);
+    expect(JSON.parse(p.content).hosts[0].terminalEncoding).toBe(
+      terminalEncoding,
+    );
+    expect(f.apply).not.toHaveBeenCalled();
+    await f.service.apply("owner", p.id, false);
+    expect(f.apply).toHaveBeenCalledWith(
+      "owner",
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          hosts: expect.arrayContaining([
+            expect.objectContaining({ terminalEncoding }),
+          ]),
+        }),
+      }),
+    );
+  },
+);
+
+it("round trips navigation visibility through export and import previews", async () => {
+  const f = fixture();
+  const exported = await f.service.previewExport("owner", {
+    appearance: { hiddenRailTabs: '["ai","serial","ai"]' },
+  });
+  expect(exported.hasPreferences).toBe(true);
+  expect(JSON.parse(exported.content).appearance.hiddenRailTabs).toBe(
+    '["ai","serial"]',
+  );
+  const imported = await f.service.previewImport("owner", exported.content);
+  expect(JSON.parse(imported.content).appearance.hiddenRailTabs).toBe(
+    '["ai","serial"]',
+  );
+});
+it("rejects malformed navigation in imported backup files", () => {
+  expect(() =>
+    parseConfigurationBackup({
+      ...input(),
+      appearance: { hiddenRailTabs: '{"ai":true}' },
+    }),
+  ).toThrow();
+});
+
+it("exports host defaults without passwords or source credential IDs", async () => {
+  const f = fixture();
+  const projected = projectConfigurationBackup(
+    [],
+    [],
+    undefined,
+    undefined,
+    undefined,
+    [],
+    {},
+    {
+      socks5Host: "proxy.example",
+      socks5Password: "fixture-private-password",
+      credentialId: 99,
+      fontSize: 18,
+      useSocks5: true,
+    },
+  );
+  expect(projected.payload.hostDefaults).toEqual({
+    socks5Host: "proxy.example",
+    fontSize: 18,
+    useSocks5: true,
+  });
+  expect(JSON.stringify(projected)).not.toContain("fixture-private-password");
+  const preview = await f.service.previewImport(
+    "owner",
+    JSON.stringify(projected.payload),
+  );
+  expect(preview.hasHostDefaults).toBe(true);
+  await f.service.apply("owner", preview.id, false, false, true);
+  expect(f.apply).toHaveBeenCalledWith(
+    "owner",
+    expect.objectContaining({ restoreHostDefaults: true }),
+  );
+  expect(() =>
+    f.service.apply("owner", preview.id, false, false, false),
+  ).toThrow("BACKUP_CONFIRMATION_CHANGED");
+});
+it.each([
+  { socks5Port: 0 },
+  { fontSize: 1000 },
+  { cursorStyle: "script" },
+  { useSocks5: "true" },
+])("rejects invalid host defaults: %j", (hostDefaults) => {
+  expect(() =>
+    parseConfigurationBackup({ ...input(), hostDefaults }),
+  ).toThrow();
+});
+
+it("exports the current desktop arrangement through the complete preview contract", async () => {
+  const f = fixture(),
+    layout = {
+      dashboardSlots: [
+        {
+          key: "stats_0",
+          id: "stats_bar" as const,
+          panel: "side" as const,
+          order: 0,
+          height: 150,
+        },
+      ],
+      dashboardMainWidthPct: 55,
+      dashboardView: "homepage" as const,
+    };
+  const preview = await f.service.previewExport("owner", { layout });
+  expect(JSON.parse(preview.content).desktopLayout).toEqual(layout);
+  expect(preview.hasPreferences).toBe(true);
+  expect(
+    parseConfigurationBackup(JSON.parse(preview.content)).payload.desktopLayout,
+  ).toEqual(layout);
+});
+it.each([
+  { dashboardMainWidthPct: 0 },
+  { dashboardMainWidthPct: Infinity },
+  { dashboardView: "execute" },
+  {
+    dashboardSlots: [
+      { key: "x", id: "unknown", panel: "main", order: 0, height: 100 },
+    ],
+  },
+])("rejects invalid desktop layouts: %j", (desktopLayout) => {
+  expect(() =>
+    parseConfigurationBackup({ ...input(), desktopLayout }),
+  ).toThrow();
+});

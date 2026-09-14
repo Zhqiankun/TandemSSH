@@ -1,3 +1,7 @@
+import {
+  TERMINAL_ENCODINGS,
+  type TerminalEncoding,
+} from "../../types/terminal-encoding.js";
 import { randomUUID } from "node:crypto";
 import {
   terminalAppearanceSchema,
@@ -92,4 +96,26 @@ export function appendTerminalThemes(
       return { id: randomUUID(), name, colors: theme.colors };
     }),
   ];
+}
+
+/** Host wire encoding is independent of display inheritance and user defaults. */
+export function projectTerminalEncoding(
+  raw: unknown,
+  warnings: BackupWarning[],
+  path: string,
+): TerminalEncoding | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  try {
+    const value = decode(raw);
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw Error("invalid");
+    const encoding = (value as { encoding?: unknown }).encoding;
+    if (encoding === undefined) return undefined;
+    if (!TERMINAL_ENCODINGS.includes(encoding as TerminalEncoding))
+      throw Error("invalid");
+    return encoding as TerminalEncoding;
+  } catch {
+    warnings.push({ code: "TERMINAL_FIELDS_EXCLUDED", path });
+    return undefined;
+  }
 }

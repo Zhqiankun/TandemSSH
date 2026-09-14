@@ -825,3 +825,70 @@ describe("recording failure and automated input", () => {
     }
   });
 });
+
+it("transcodes both automation and human input only at the shared SSH boundary", () => {
+  const id = sessionManager.createSession("owner", 1, "encoding", 80, 24),
+    ws = makeFakeWs(),
+    stream = { write: vi.fn(), end: vi.fn(), destroyed: false };
+  try {
+    sessionManager.setSSHState(
+      id,
+      { end: vi.fn() } as never,
+      stream as never,
+      null,
+      "big5",
+    );
+    sessionManager.attachWs(id, "owner", ws);
+    const session = sessionManager.getSession(id)!;
+    const lease = session.control.grant(
+      { kind: "automation", ownerType: "agent-task", ownerId: "encoding" },
+      session.control.snapshot(),
+    );
+    session.control.commitWrite(lease, Buffer.from("中文"));
+    sessionManager.sendHumanInput(id, ws, "中文");
+    expect(stream.write.mock.calls.map((c) => c[0])).toEqual([
+      Buffer.from([0xa4, 0xa4, 0xa4, 0xe5]),
+      Buffer.from([0xa4, 0xa4, 0xa4, 0xe5]),
+    ]);
+    expect(() =>
+      session.control.commitWrite(lease, Buffer.from("late")),
+    ).toThrow("STALE_CONTROL");
+  } finally {
+    sessionManager.destroySession(id);
+  }
+});
+
+it("rejects unrepresentable input before SSH writes while manual takeover still invalidates automation", () => {
+  const id = sessionManager.createSession("owner", 1, "encoding", 80, 24),
+    ws = makeFakeWs(),
+    stream = { write: vi.fn(), end: vi.fn(), destroyed: false };
+  try {
+    sessionManager.setSSHState(
+      id,
+      { end: vi.fn() } as never,
+      stream as never,
+      null,
+      "big5",
+    );
+    sessionManager.attachWs(id, "owner", ws);
+    const session = sessionManager.getSession(id)!;
+    const lease = session.control.grant(
+      { kind: "automation", ownerType: "agent-task", ownerId: "encoding" },
+      session.control.snapshot(),
+    );
+    expect(() => session.control.commitWrite(lease, Buffer.from("😀"))).toThrow(
+      "TERMINAL_INPUT_NOT_REPRESENTABLE",
+    );
+    expect(() => sessionManager.sendHumanInput(id, ws, "😀")).toThrow(
+      "TERMINAL_INPUT_NOT_REPRESENTABLE",
+    );
+    expect(stream.write).not.toHaveBeenCalled();
+    expect(() =>
+      session.control.commitWrite(lease, Buffer.from("late")),
+    ).toThrow("STALE_CONTROL");
+    sessionManager.sendHumanInput(id, ws, "ok");
+    expect(stream.write).toHaveBeenCalledOnce();
+  } finally {
+    sessionManager.destroySession(id);
+  }
+});

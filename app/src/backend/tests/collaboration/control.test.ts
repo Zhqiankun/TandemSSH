@@ -202,3 +202,18 @@ it("does not let old connection replies survive reconnect or close", () => {
   expect(control.terminalReply(bytes("\x1b[2;3R"))).toBe(false);
   expect(writes).toEqual([]);
 });
+
+it("keeps actual transport exceptions unknown even when preflight succeeds", () => {
+  const c = new SessionControl(
+    "x",
+    {
+      isReady: () => true,
+      validateWrite: () => {},
+      write: () => {
+        throw new ControlError("TERMINAL_INPUT_NOT_REPRESENTABLE");
+      },
+    },
+    () => {},
+  );
+  expect(() => c.humanInput(bytes("data"))).toThrow("RESULT_UNKNOWN");
+});

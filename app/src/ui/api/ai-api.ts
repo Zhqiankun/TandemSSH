@@ -11,6 +11,7 @@ export interface AiProvider {
   baseUrl: string | null;
   /** The first few characters only; the key itself never leaves the server. */
   apiKeyPrefix: string | null;
+  apiKeyStorage?: "memory" | "encrypted" | "none";
   defaultModel: string | null;
   enabled: boolean;
   createdAt: string;
@@ -74,8 +75,13 @@ function providerWriteError(error: unknown, operation: string): never {
   if (
     error instanceof AxiosError &&
     error.response?.status === 503 &&
-    (code === "AI_KEY_ENCRYPTION_UNAVAILABLE" ||
-      code === "AI_KEY_ENCRYPTION_FAILED")
+    [
+      "AI_KEY_ENCRYPTION_UNAVAILABLE",
+      "AI_KEY_ENCRYPTION_FAILED",
+      "AI_SESSION_KEY_TOO_LARGE",
+      "AI_SESSION_KEY_LIMIT",
+      "AI_SESSION_KEY_EXPIRED",
+    ].includes(code)
   ) {
     throw Object.assign(new Error(code), { code, status: 503 });
   }
@@ -87,6 +93,7 @@ export async function createAiProvider(input: {
   label: string;
   baseUrl?: string | null;
   apiKey?: string | null;
+  apiKeyStorage?: "memory" | "encrypted";
   defaultModel?: string | null;
 }): Promise<AiProvider> {
   try {
@@ -102,6 +109,7 @@ export async function updateAiProvider(
     label: string;
     baseUrl: string | null;
     apiKey: string | null;
+    apiKeyStorage: "memory" | "encrypted";
     defaultModel: string | null;
     enabled: boolean;
   }>,
@@ -129,6 +137,7 @@ export async function probeAiModels(input: {
   providerType: AiProviderType;
   baseUrl?: string | null;
   apiKey?: string | null;
+  apiKeyStorage?: "memory" | "encrypted";
   providerId?: number | null;
 }): Promise<{ models: string[]; source: "live" | "fallback" | "none" }> {
   try {

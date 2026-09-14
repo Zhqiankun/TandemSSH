@@ -46,6 +46,15 @@ const recordSchema = z
     data: z.unknown(),
   })
   .strict();
+const archiveReviewsSchema = z
+  .array(
+    z.object({ id: z.string().uuid(), status: z.literal("unknown") }).strict(),
+  )
+  .min(1)
+  .max(4096)
+  .refine(
+    (entries) => new Set(entries.map((e) => e.id)).size === entries.length,
+  );
 const object = (v: unknown): Record<string, unknown> =>
   v !== null && typeof v === "object" && !Array.isArray(v)
     ? (v as Record<string, unknown>)
@@ -165,6 +174,10 @@ export class AuditHistoryReader {
         action.type.startsWith("file.directory.")
           ? object(fileResult.directoryTransfer)
           : {};
+    const archiveReviews =
+      record.type === "task.archived"
+        ? archiveReviewsSchema.safeParse(data.reviewedUnknownOperations)
+        : undefined;
     const safeAction = object(redact(action));
     const command =
       action.type === "terminal.command" &&
@@ -226,6 +239,9 @@ export class AuditHistoryReader {
           : undefined,
       exitCode: integer(data.exitCode),
       status: text(data.status ?? data.state, 80),
+      reviewedUnknownCommandCount: archiveReviews?.success
+        ? archiveReviews.data.length
+        : undefined,
       error: text(data.error, 512),
       operationId: record.type.startsWith("operation.")
         ? text(data.id, 128)

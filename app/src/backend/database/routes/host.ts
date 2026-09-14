@@ -38,6 +38,7 @@ import {
   OWNER_PRIVATE_TERMINAL_CONFIG_FIELDS,
   sanitizeHostForRecipient,
   stripSensitiveFields,
+  stripHostExportSecrets,
   transformHostResponse,
 } from "./host-normalizers.js";
 import { validateParentHostId } from "./host-parent-validation.js";
@@ -48,6 +49,7 @@ import { registerHostCommandHistoryRoutes } from "./host-command-history-routes.
 import { registerHostAutostartRoutes } from "./host-autostart-routes.js";
 import { registerHostInternalRoutes } from "./host-internal-routes.js";
 import { registerHostNetworkRoutes } from "./host-network-routes.js";
+import { registerHostDuplicateRoutes } from "./host-duplicate-routes.js";
 import { registerHostBulkRoutes } from "./host-bulk-routes.js";
 import {
   applyHostEnrollmentDefaults,
@@ -2125,7 +2127,9 @@ router.get(
           usedCredentialIds.add(resolvedHost.credentialId as number);
         }
 
-        exportedHosts.push(exportData);
+        exportedHosts.push(
+          shareMode ? stripHostExportSecrets(exportData) : exportData,
+        );
       }
 
       if (!shareMode) {
@@ -2617,6 +2621,7 @@ registerHostFolderRoutes(router, {
 });
 
 registerHostBulkRoutes(router, authenticateJWT);
+registerHostDuplicateRoutes(router, authenticateJWT, requireDataAccess);
 
 registerHostAutostartRoutes(router, {
   authenticateJWT,

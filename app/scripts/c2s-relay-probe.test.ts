@@ -95,3 +95,9 @@ it("terminates a stalled real relay at the deadline", async () => {
   await closed;
   expect(f.server.clients.size).toBe(0);
 });
+
+it("preserves an explicit oversized-message close reason from the peer", async () => {
+  const f = await fixture();
+  f.server.on("connection", peer => peer.once("message", () => peer.close(1009)));
+  expect(await probeC2SRelay({ url: f.url, options: {}, tunnel: {}, signal: f.signal.signal })).toEqual({ success: false, error: "C2S_MESSAGE_TOO_LARGE" });
+});

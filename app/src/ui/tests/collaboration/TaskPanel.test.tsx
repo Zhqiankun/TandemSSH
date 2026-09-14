@@ -19,6 +19,9 @@ const api = vi.hoisted(() => ({
   authorize: vi.fn(),
   approve: vi.fn(),
   cancel: vi.fn(),
+  archive: vi.fn(),
+  pause: vi.fn(),
+  interrupt: vi.fn(),
   takeover: vi.fn(),
 }));
 vi.mock("@/api/collaboration-api", () => ({
@@ -35,6 +38,8 @@ import { TaskPanel } from "../../features/collaboration/TaskPanel";
 let runtime: TaskRuntime, control: SessionControl;
 const actor: TaskActor = { kind: "human", userId: "test-user" };
 let writes: string[];
+let failCompletionAudit = false;
+let incompleteCommandOutput = false;
 let heldCommand:
   | {
       promise: Promise<{ exitCode: number | null; output: string }>;
@@ -45,6 +50,8 @@ beforeEach(async () => {
   vi.clearAllMocks();
   await i18n.changeLanguage("zh-CN");
   writes = [];
+  failCompletionAudit = false;
+  incompleteCommandOutput = false;
   heldCommand = undefined;
   control = new SessionControl(
     "session",
@@ -86,6 +93,7 @@ beforeEach(async () => {
           Promise.resolve({
             exitCode: action.program === "false" ? 1 : 0,
             output: "执行输出 " + action.program,
+            truncated: incompleteCommandOutput,
             cwd: "/srv",
           }),
         dispose: () =>
@@ -96,7 +104,9 @@ beforeEach(async () => {
   runtime = new TaskRuntime({
     getSession: () => session,
     policy: async () => ({ revision: 1, sets: [] }),
-    audit: () => ({ append: async () => {}, record: async () => {} }),
+    audit: () => ({ append: async (event) => {
+      if (failCompletionAudit && event.type === "operation.completed") throw Error("AUDIT_UNAVAILABLE");
+    }, record: async () => {} }),
   });
   api.snapshot.mockImplementation(async () => ({
     tasks: runtime.list(actor),
@@ -109,6 +119,9 @@ beforeEach(async () => {
     },
     policy: { revision: 1, sets: [] },
   }));
+  api.archive.mockImplementation((id, ids) =>
+    runtime.archive(actor, id, async () => {}, ids),
+  );
   api.create.mockImplementation((input) => runtime.create(actor, input));
   api.authorize.mockImplementation((id, input) =>
     runtime.authorize(actor, id, input),
@@ -124,6 +137,10 @@ beforeEach(async () => {
     ),
   );
   api.cancel.mockImplementation((id) => runtime.cancel(actor, id));
+  api.pause.mockImplementation((id) => runtime.pauseTask(actor, id));
+  api.interrupt.mockImplementation((id, expected) =>
+    runtime.interruptSession(actor, id, expected),
+  );
   api.takeover.mockImplementation(async () =>
     runtime.takeover(actor, "session"),
   );
@@ -470,4 +487,163 @@ it("shows a Chinese failure and does not send step three after step two fails", 
     "pwd",
     "false",
   ]);
+});
+it.each(["policy", "generation"] as const)(
+  "clears prior human acknowledgments when the authorization %s changes",
+  async (boundary) => {
+    await createPlan(true);
+    const ready = () =>
+      screen.getByRole("checkbox", {
+        name: /我已确认终端位于命令提示符/,
+      }) as HTMLInputElement;
+    fireEvent.click(ready());
+    expect(ready().checked).toBe(true);
+    const previous = await api.snapshot();
+    const next = structuredClone(previous);
+    if (boundary === "policy") next.policy.revision++;
+    else {
+      next.session.control.generation++;
+      for (const task of next.tasks) task.control.generation++;
+    }
+    api.snapshot.mockResolvedValue(next);
+    await waitFor(() => expect(ready().checked).toBe(false), { timeout: 2500 });
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "授权并交还控制权",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(api.authorize).not.toHaveBeenCalled();
+    expect(writes).toEqual([]);
+  },
+);
+
+it("pauses from the Chinese control without cancelling the task or sending Ctrl+C", async () => {
+  let resolve!: (value: { exitCode: number | null; output: string }) => void;
+  heldCommand = {
+    promise: new Promise((r) => {
+      resolve = r;
+    }),
+    resolve: (value) => resolve(value),
+  };
+  await createPlan(true);
+  authorize();
+  await waitFor(() => expect(writes).toContain("pwd"));
+  const before = [...writes];
+  fireEvent.click(screen.getByRole("button", { name: "暂停任务" }));
+  await waitFor(() => expect(api.pause).toHaveBeenCalledTimes(1));
+  await waitFor(() =>
+    expect(runtime.list(actor)[0].state).toBe("paused-human"),
+  );
+  expect(api.cancel).not.toHaveBeenCalled();
+  expect(writes).toEqual(before);
+  expect(writes).not.toContain("\u0003");
+  expect(
+    await screen.findByRole("button", { name: "授权并交还控制权" }),
+  ).toBeTruthy();
+});
+
+it("sends Ctrl+C through its own current-session action", async () => {
+  await createPlan();
+  const expected = control.snapshot();
+  fireEvent.click(screen.getByRole("button", { name: "发送 Ctrl+C" }));
+  await waitFor(() =>
+    expect(api.interrupt).toHaveBeenCalledWith("session", {
+      generation: expected.generation,
+      controlEpoch: expected.controlEpoch,
+    }),
+  );
+  expect(writes).toEqual(["\u0003"]);
+  expect(api.cancel).not.toHaveBeenCalled();
+  expect(api.pause).not.toHaveBeenCalled();
+});
+it("does not suggest resuming a cancelled task with an unknown operation", async () => {
+  let resolve!: (value: { exitCode: number | null; output: string }) => void;
+  heldCommand = {
+    promise: new Promise((r) => {
+      resolve = r;
+    }),
+    resolve: (v) => resolve(v),
+  };
+  await createPlan(true);
+  authorize();
+  await waitFor(() => expect(writes).toContain("pwd"));
+  fireEvent.click(
+    screen.getByRole("button", { name: i18n.t("tandem.collaboration.cancel") }),
+  );
+  expect(
+    await screen.findByText(
+      "任务已取消，不会继续派发。已发送动作的实际结果仍需人工核对。",
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.queryByText(i18n.t("tandem.collaboration.unknownHint")),
+  ).toBeNull();
+});
+
+it("requires Chinese human confirmation before archiving unknown cancelled commands", async () => {
+  let resolve!: (value: { exitCode: number | null; output: string }) => void;
+  heldCommand = {
+    promise: new Promise((r) => {
+      resolve = r;
+    }),
+    resolve: (v) => resolve(v),
+  };
+  await createPlan(true);
+  authorize();
+  await waitFor(() => expect(writes).toContain("pwd"));
+  fireEvent.click(
+    screen.getByRole("button", { name: i18n.t("tandem.collaboration.cancel") }),
+  );
+  const button = await screen.findByRole("button", {
+    name: i18n.t("tandem.history.archive"),
+  });
+  const ids = runtime.list(actor)[0].archiveReviewIds,
+    before = [...writes];
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  try {
+    fireEvent.click(button);
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining("请先在服务器核对执行结果"),
+    );
+    expect(api.archive).not.toHaveBeenCalled();
+    expect(runtime.list(actor)).toHaveLength(1);
+    confirm.mockReturnValue(true);
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(api.archive).toHaveBeenCalledWith(expect.any(String), ids),
+    );
+    await waitFor(() => expect(runtime.list(actor)).toHaveLength(0));
+    expect(writes).toEqual(before);
+  } finally {
+    confirm.mockRestore();
+  }
+});
+
+it.each([false, true])("shows an audit gap and stops following steps with automatic=%s", async (automatic) => {
+  failCompletionAudit = true;
+  await createPlan(automatic);
+  authorize();
+  if (!automatic) fireEvent.click(await screen.findByRole("button", { name: "确认执行这一条" }));
+  const message = i18n.t("tandem.collaboration.errors.AUDIT_UNAVAILABLE");
+  await waitFor(() => expect(screen.getAllByRole("alert").some(node => node.textContent?.includes(message))).toBe(true));
+  expect(writes).toEqual(["context", "pwd"]);
+  expect(control.snapshot().controller.kind).toBe("human");
+  expect(runtime.list(actor)[0].operations[0]).toMatchObject({ status: "succeeded", auditGap: true });
+  expect(screen.queryByRole("button", { name: "确认执行这一条" })).toBeNull();
+  control.humanInput(Uint8Array.from(Buffer.from("manual")));
+  expect(writes).toEqual(["context", "pwd", "manual"]);
+});
+
+it.each([false, true])("shows incomplete command output and pauses with automatic=%s", async (automatic) => {
+  incompleteCommandOutput = true;
+  await createPlan(automatic);
+  authorize();
+  if (!automatic) fireEvent.click(await screen.findByRole("button", { name: "确认执行这一条" }));
+  const message = i18n.t("tandem.collaboration.errors.COMMAND_OUTPUT_INCOMPLETE");
+  await waitFor(() => expect(document.body.textContent).toContain(message));
+  expect(writes).toEqual(["context", "pwd"]);
+  expect(control.snapshot().controller.kind).toBe("human");
+  expect(runtime.list(actor)[0].operations[0]).toMatchObject({ status: "unknown", exitCode: 0, outputTruncated: true, error: "COMMAND_OUTPUT_INCOMPLETE" });
 });

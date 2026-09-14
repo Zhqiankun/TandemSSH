@@ -155,3 +155,40 @@ it("returns a structured 413 when the upload exceeds the format limit", async ()
   expect(await r.json()).toEqual({ code: "BACKUP_TOO_LARGE" });
   expect(f.apply).not.toHaveBeenCalled();
 });
+
+it("returns 403 when repository rejects administrator-only restore", async () => {
+  const f = await fixture();
+  const preview = await (await f.call("/import/preview", file())).json();
+  f.apply.mockRejectedValueOnce(Error("BACKUP_ADMIN_REQUIRED"));
+  const response = await f.call("/import/" + preview.id, {
+    confirmed: true,
+    restorePreferences: false,
+    restoreHostDefaults: true,
+  });
+  expect(response.status).toBe(403);
+  expect(await response.json()).toEqual({ code: "BACKUP_ADMIN_REQUIRED" });
+});
+
+it("keeps local recovery APIs behind the trusted UI guard", async () => {
+  const f = await fixture();
+  expect(
+    (await f.call("/local/pending", undefined, "owner", "fixture-key")).status,
+  ).toBe(403);
+  expect(
+    (
+      await f.call(
+        "/local/00000000-0000-4000-8000-000000000001/complete",
+        { confirmed: true },
+        "owner",
+        "fixture-key",
+      )
+    ).status,
+  ).toBe(403);
+  expect(
+    (
+      await f.call("/local/00000000-0000-4000-8000-000000000001/complete", {
+        confirmed: false,
+      })
+    ).status,
+  ).toBe(400);
+});

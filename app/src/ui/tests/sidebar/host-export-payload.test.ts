@@ -163,7 +163,7 @@ describe("buildExportPayload", () => {
       false,
     );
     expect(out.hosts[0].credentialAlias).toBe("prod-admin");
-    expect(out.hosts[0].authType).toBe("credential");
+    expect(out.hosts[0].authType).toBe("unconfigured");
   });
 
   it("never emits a secret value when the source has none", () => {
@@ -274,4 +274,64 @@ describe("maskSecrets", () => {
     expect(JSON.stringify(out)).not.toContain("proxy-secret-1");
     expect(JSON.stringify(out)).not.toContain("proxy-secret-2");
   });
+});
+
+it("strips host and credential secrets from a full source without mutating it", () => {
+  const raw: ExportPayload = {
+    hosts: [
+      {
+        name: "test",
+        ip: "1",
+        port: 22,
+        credentialAlias: "key-ref",
+        password: "HOST_SECRET",
+        key: "HOST_KEY",
+        terminalConfig: { sudoPassword: "SUDO_SECRET", fontSize: 14 },
+      },
+    ],
+    credentials: [
+      {
+        alias: "key-ref",
+        name: "reference",
+        username: "root",
+        privateKey: "CREDENTIAL_KEY",
+        password: "CREDENTIAL_PASSWORD",
+        keyPassword: "KEY_PASSWORD",
+      },
+    ],
+  };
+  const before = JSON.stringify(raw),
+    out = buildExportPayload(raw, null, ALL_GROUPS, false);
+  for (const secret of [
+    "HOST_SECRET",
+    "HOST_KEY",
+    "SUDO_SECRET",
+    "CREDENTIAL_KEY",
+    "CREDENTIAL_PASSWORD",
+    "KEY_PASSWORD",
+  ])
+    expect(JSON.stringify(out)).not.toContain(secret);
+  expect(out.credentials?.[0]).toMatchObject({
+    alias: "key-ref",
+    username: "root",
+  });
+  expect(out.hosts[0].terminalConfig).toMatchObject({
+    fontSize: 14,
+    sudoPassword: null,
+  });
+  expect(JSON.stringify(raw)).toBe(before);
+  const included = buildExportPayload(raw, null, ALL_GROUPS, true),
+    preview = maskSecrets(included);
+  expect(JSON.stringify(included)).toContain("CREDENTIAL_KEY");
+  expect(JSON.stringify(included)).toContain("SUDO_SECRET");
+  for (const secret of [
+    "HOST_SECRET",
+    "HOST_KEY",
+    "SUDO_SECRET",
+    "CREDENTIAL_KEY",
+    "CREDENTIAL_PASSWORD",
+    "KEY_PASSWORD",
+  ])
+    expect(JSON.stringify(preview)).not.toContain(secret);
+  expect(JSON.stringify(raw)).toBe(before);
 });

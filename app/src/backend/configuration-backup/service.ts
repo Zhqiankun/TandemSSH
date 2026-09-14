@@ -5,6 +5,7 @@ import type {
   BackupPreview,
   BackupImportResult,
   BackupWarning,
+  PendingLocalBackup,
 } from "../../types/configuration-backup.js";
 import {
   MAX_BACKUP_BYTES,
@@ -17,6 +18,7 @@ export interface BackupSnapshot {
   workflows: Array<{ definition: unknown }>;
   preferences?: unknown;
   appearance?: unknown;
+  hostDefaults?: unknown;
   keybindings?: unknown;
   terminalDefaults?: unknown;
   customThemes?: unknown;
@@ -31,6 +33,8 @@ interface PreviewRecord {
   apply?: {
     preferences: boolean;
     keybindings: boolean;
+    hostDefaults: boolean;
+    localTunnels: boolean;
     promise: Promise<BackupImportResult>;
   };
 }
@@ -39,6 +43,8 @@ export class ConfigurationBackupService {
   constructor(
     private readonly ports: {
       snapshot(userId: string): Promise<BackupSnapshot>;
+      pendingLocal?(userId: string): Promise<PendingLocalBackup[]>;
+      completeLocal?(userId: string, id: string): Promise<void>;
       apply(
         userId: string,
         request: {
@@ -48,11 +54,24 @@ export class ConfigurationBackupService {
           payload: ConfigurationBackup;
           restorePreferences: boolean;
           restoreKeybindings?: boolean;
+          restoreHostDefaults?: boolean;
+          restoreLocalTunnels?: boolean;
         },
       ): Promise<BackupImportResult>;
       audit(userId: string, type: string, data: unknown): Promise<void>;
     },
   ) {}
+  async pendingLocal(userId: string): Promise<PendingLocalBackup[]> {
+    return this.ports.pendingLocal?.(userId) ?? [];
+  }
+  async completeLocal(userId: string, id: string) {
+    if (!this.ports.completeLocal)
+      throw Error("BACKUP_LOCAL_RECOVERY_UNAVAILABLE");
+    await this.ports.completeLocal(userId, id);
+    await this.ports.audit(userId, "configuration-backup.local-completed", {
+      id,
+    });
+  }
   private add(
     owner: string,
     direction: BackupPreview["direction"],
@@ -77,19 +96,23 @@ export class ConfigurationBackupService {
       bytes,
       content,
       hosts: payload.hosts.map(
-        ({ name, ip, port, username, originalAuthType }) => ({
+        ({ name, ip, port, username, originalAuthType, terminalEncoding }) => ({
           name,
           ip,
           port,
           username,
           originalAuthType,
+          terminalEncoding,
         }),
       ),
       workflows: payload.workflows.map((row) => ({
         name: row.definition.name,
         steps: row.definition.steps.length,
       })),
+      localTunnelCount: payload.localTunnels?.length ?? 0,
+      hasHostDefaults: !!payload.hostDefaults,
       hasPreferences:
+        !!payload.desktopLayout ||
         !!payload.preferences ||
         !!payload.appearance ||
         !!payload.terminalDefaults ||
@@ -126,6 +149,9 @@ export class ConfigurationBackupService {
         snapshot.keybindings,
         snapshot.tunnelPresets,
         { defaults: snapshot.terminalDefaults, themes: snapshot.customThemes },
+        snapshot.hostDefaults,
+        desktop?.localTunnels,
+        desktop?.layout,
       );
     return this.add(
       userId,
@@ -177,12 +203,16 @@ export class ConfigurationBackupService {
     id: string,
     restorePreferences: boolean,
     restoreKeybindings = false,
+    restoreHostDefaults = false,
+    restoreLocalTunnels = false,
   ): Promise<BackupImportResult> {
     const record = this.record(userId, id, "import");
     if (record.apply) {
       if (
         record.apply.preferences !== restorePreferences ||
-        record.apply.keybindings !== restoreKeybindings
+        record.apply.keybindings !== restoreKeybindings ||
+        record.apply.hostDefaults !== restoreHostDefaults ||
+        record.apply.localTunnels !== restoreLocalTunnels
       )
         throw Error("BACKUP_CONFIRMATION_CHANGED");
       return record.apply.promise;
@@ -195,6 +225,8 @@ export class ConfigurationBackupService {
         workflows: record.payload.workflows.length,
         restorePreferences,
         restoreKeybindings,
+        restoreHostDefaults,
+        restoreLocalTunnels,
       });
       return this.ports.apply(userId, {
         id,
@@ -205,17 +237,23 @@ export class ConfigurationBackupService {
               payload: record.payload,
               restorePreferences,
               restoreKeybindings,
+              restoreHostDefaults,
+              restoreLocalTunnels,
             }),
           )
           .digest("hex"),
         payload: record.payload,
         restorePreferences,
         restoreKeybindings,
+        restoreHostDefaults,
+        restoreLocalTunnels,
       });
     })();
     record.apply = {
       preferences: restorePreferences,
       keybindings: restoreKeybindings,
+      hostDefaults: restoreHostDefaults,
+      localTunnels: restoreLocalTunnels,
       promise,
     };
     void promise

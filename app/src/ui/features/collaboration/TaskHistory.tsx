@@ -1,4 +1,5 @@
 import { HistoryRecordSummary } from "./HistoryRecordSummary";
+import { AuditStorage } from "./AuditStorage";
 import { HistoryExport } from "./HistoryExport";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -81,6 +82,7 @@ export function TaskHistoryDialog({ userId }: { userId: string | null }) {
 }
 function HistoryBrowser({ initialTaskId }: { initialTaskId?: string }) {
   const { t, i18n } = useTranslation(),
+    [reload, setReload] = useState(0),
     [draft, setDraft] = useState(initialTaskId ?? ""),
     [filter, setFilter] = useState(initialTaskId),
     [cursor, setCursor] = useState<string>(),
@@ -121,7 +123,7 @@ function HistoryBrowser({ initialTaskId }: { initialTaskId?: string }) {
       live = false;
       stop.abort();
     };
-  }, [filter, cursor]);
+  }, [filter, cursor, reload]);
   const chooseTask = (taskId?: string) => {
     setDraft(taskId ?? "");
     setFilter(taskId);
@@ -158,6 +160,14 @@ function HistoryBrowser({ initialTaskId }: { initialTaskId?: string }) {
           {t("tandem.history.all")}
         </Button>
       </form>
+      <AuditStorage
+        onClean={() => {
+          setCursor(undefined);
+          setBack([]);
+          setSelected(undefined);
+          setReload((value) => value + 1);
+        }}
+      />
       <HistoryExport key={JSON.stringify(filter ?? null)} taskId={filter} />
       {busy && <p role="status">{t("tandem.history.loading")}</p>}
       {error && (

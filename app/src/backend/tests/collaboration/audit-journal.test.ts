@@ -576,3 +576,121 @@ it("shows quoted command arguments only after redaction and marks shortened prev
   expect(legacy.commandPreview).toBeUndefined();
   expect(legacy.commandTruncated).toBeUndefined();
 });
+
+it("reopens an archived unknown-command acknowledgement without changing the original result", async () => {
+  const f = await fixture(),
+    taskId = randomUUID(),
+    operationId = randomUUID();
+  await f.journal.record("operation.completed", {
+    id: operationId,
+    context: { taskId },
+    status: "unknown",
+  });
+  await f.journal.record("task.archived", {
+    taskId,
+    state: "cancelled",
+    reviewedUnknownOperations: [{ id: operationId, status: "unknown" }],
+  });
+  const reopened = new AuditJournal(f.root, "user"),
+    page = await reopened.queryHistory({ taskId });
+  const archived = page.items.find((i) => i.type === "task.archived")!;
+  expect(archived.reviewedUnknownCommandCount).toBe(1);
+  expect(page.items.find((i) => i.type === "operation.completed")?.status).toBe(
+    "unknown",
+  );
+  const detail = await reopened.historyDetail(archived.detail);
+  expect(JSON.parse(detail.text).data.reviewedUnknownOperations).toEqual([
+    { id: operationId, status: "unknown" },
+  ]);
+});
+it.each([
+  undefined,
+  [],
+  [{ id: "bad", status: "unknown" }],
+  [{ id: randomUUID(), status: "succeeded" }],
+  "1",
+])(
+  "does not invent an archive acknowledgement from invalid metadata %j",
+  async (entries) => {
+    const f = await fixture();
+    await f.journal.record("task.archived", {
+      reviewedUnknownOperations: entries,
+    });
+    expect(
+      (await f.journal.queryHistory({})).items[0].reviewedUnknownCommandCount,
+    ).toBeUndefined();
+  },
+);
+it("does not show an archive request or duplicate IDs as a completed review", async () => {
+  const f = await fixture(),
+    entry = { id: randomUUID(), status: "unknown" };
+  await f.journal.record("task.archive-requested", {
+    reviewedUnknownOperations: [entry],
+  });
+  await f.journal.record("task.archived", {
+    reviewedUnknownOperations: [entry, entry],
+  });
+  expect(
+    (await f.journal.queryHistory({})).items.every(
+      (i) => i.reviewedUnknownCommandCount === undefined,
+    ),
+  ).toBe(true);
+});
+
+it("reports the current user directory and cleans expired files without a new write", async () => {
+  const f = await fixture();
+  await f.journal.record("current", { safe: true });
+  const expired = path.join(
+    f.directory,
+    "record-" + (Date.now() - 9 * 86400000) + "-" + randomUUID() + ".jsonl",
+  );
+  await fs.writeFile(expired, "expired\n");
+  const old = new Date(Date.now() - 9 * 86400000);
+  await fs.utimes(expired, old, old);
+  await fs.writeFile(path.join(f.directory, "notes.txt"), "keep");
+  const before = await f.journal.storageInfo();
+  expect(before.directory).toBe(f.directory);
+  expect(before.files).toBe(2);
+  expect(before.retentionDays).toBe(7);
+  expect(await f.journal.cleanupRetention()).toEqual({
+    removedFiles: 1,
+    removedBytes: 8,
+  });
+  expect((await f.journal.storageInfo()).files).toBe(1);
+  expect(await fs.readFile(path.join(f.directory, "notes.txt"), "utf8")).toBe(
+    "keep",
+  );
+  await f.journal.record("after-cleanup", { safe: true });
+  expect((await f.journal.queryHistory({})).items).toHaveLength(2);
+});
+it("applies size retention even without appending another event", async () => {
+  const f = await fixture(100);
+  await fs.mkdir(f.directory, { recursive: true });
+  for (let i = 0; i < 3; i++)
+    await fs.writeFile(
+      path.join(
+        f.directory,
+        "record-" + Date.now() + "-" + randomUUID() + ".jsonl",
+      ),
+      "x".repeat(60),
+    );
+  const result = await f.journal.cleanupRetention();
+  expect(result).toEqual({ removedFiles: 2, removedBytes: 120 });
+  expect((await f.journal.storageInfo()).bytes).toBe(60);
+});
+it("refuses maintenance through a redirected audit directory", async () => {
+  const f = await fixture();
+  const outside = path.join(f.root, "outside");
+  await fs.mkdir(outside);
+  const file = path.join(
+    outside,
+    "record-" + Date.now() + "-" + randomUUID() + ".jsonl",
+  );
+  await fs.writeFile(file, "keep");
+  await fs.mkdir(path.dirname(f.directory), { recursive: true });
+  await fs.symlink(outside, f.directory, "junction");
+  await expect(f.journal.cleanupRetention()).rejects.toThrow(
+    "AUDIT_PATH_INVALID",
+  );
+  expect(await fs.readFile(file, "utf8")).toBe("keep");
+});

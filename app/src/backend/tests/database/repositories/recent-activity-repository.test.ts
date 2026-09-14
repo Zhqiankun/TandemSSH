@@ -37,6 +37,25 @@ describe("RecentActivityRepository", () => {
     };
   }
 
+  it("interprets SQLite timestamps as UTC and orders mixed timestamp formats chronologically", async () => {
+    const { repository } = await createRepository();
+    const latest = await repository.create({
+      userId: "user-1",
+      type: "terminal",
+      hostId: 1,
+      hostName: "one",
+      timestamp: "2026-06-26 00:04:00",
+    });
+    const rows = await repository.listByUserId("user-1", 10);
+    expect(rows.map((r) => r.id)).toEqual([latest.id, 2, 1]);
+    expect(rows[0].timestamp).toBe("2026-06-26T00:04:00Z");
+    expect(rows[1].timestamp).toBe("2026-06-26T00:01:00.000Z");
+    await repository.trimUserActivity("user-1", 1);
+    expect(
+      (await repository.listByUserId("user-1", 10)).map((r) => r.id),
+    ).toEqual([latest.id]);
+  });
+
   it("lists, creates, and trims recent activity", async () => {
     let writeCount = 0;
     const { repository } = await createRepository(() => {

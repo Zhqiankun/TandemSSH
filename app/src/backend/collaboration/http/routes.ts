@@ -142,6 +142,19 @@ router.post(
   "/history/export",
   historyExportHandler((req) => journalFor(actor(req).userId)),
 );
+router.get(
+  "/history/storage",
+  route((req) => journalFor(actor(req).userId).storageInfo()),
+);
+router.post(
+  "/history/cleanup",
+  route((req) => {
+    z.object({ confirmed: z.literal(true) })
+      .strict()
+      .parse(req.body);
+    return journalFor(actor(req).userId).cleanupRetention();
+  }),
+);
 router.post(
   "/history/query",
   route((req) =>
@@ -306,16 +319,40 @@ router.post(
 router.post(
   "/tasks/:id/archive",
   route((req) => {
-    z.object({})
+    const input = z
+      .object({
+        reviewedUnknownOperationIds: z
+          .array(z.string().uuid())
+          .max(4096)
+          .optional(),
+      })
       .strict()
       .parse(req.body ?? {});
     const identity = actor(req),
       taskId = id.parse(req.params.id);
-    return taskRuntime.archive(identity, taskId, async () => {
-      aiTasks.assertArchiveReady(identity.userId, taskId);
-      await releaseTaskFiles(identity.userId, taskId);
-      await aiTasks.archiveTask(identity.userId, taskId);
-    });
+    return taskRuntime.archive(
+      identity,
+      taskId,
+      async () => {
+        aiTasks.assertArchiveReady(identity.userId, taskId);
+        await releaseTaskFiles(identity.userId, taskId);
+        await aiTasks.archiveTask(identity.userId, taskId);
+      },
+      input.reviewedUnknownOperationIds,
+    );
+  }),
+);
+router.post(
+  "/tasks/:id/pause",
+  route((req) => {
+    z.object({})
+      .strict()
+      .parse(req.body ?? {});
+    return taskRuntime.pauseTask(
+      actor(req),
+      id.parse(req.params.id),
+      pageOptions(req),
+    );
   }),
 );
 router.post(
@@ -323,6 +360,23 @@ router.post(
   route((req) =>
     taskRuntime.cancel(actor(req), id.parse(req.params.id), pageOptions(req)),
   ),
+);
+router.post(
+  "/sessions/:id/interrupt",
+  route((req) => {
+    const expected = z
+      .object({
+        generation: z.number().int().positive(),
+        controlEpoch: z.number().int().nonnegative(),
+      })
+      .strict()
+      .parse(req.body);
+    return taskRuntime.interruptSession(
+      actor(req),
+      id.parse(req.params.id),
+      expected,
+    );
+  }),
 );
 router.post(
   "/sessions/:id/takeover",

@@ -1,7 +1,10 @@
+const C2S_TUNNEL_LIMIT = 32;
+const C2S_REQUESTS_PER_TUNNEL = 8;
+const C2S_LOCAL_CONNECTION_LIMIT = 32;
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 class C2sSession {
-  constructor({ getWindow, appRoot, isDev, onChange }) {
+  constructor({ getWindow, appRoot, isDev, onChange, getActiveTunnelNames = () => [] }) {
     this.getWindow = getWindow;
     this.expected = pathToFileURL(path.join(appRoot, "dist/index.html")).href;
     this.isDev = isDev;
@@ -9,6 +12,7 @@ class C2sSession {
     this.token = null;
     this.epoch = 0;
     this.requests = new Map();
+    this.getActiveTunnelNames = getActiveTunnelNames;
   }
   trusted(event) {
     const window = this.getWindow(),
@@ -74,8 +78,13 @@ class C2sSession {
   }
   request(tunnel, name) {
     this.headers(tunnel);
-    const controller = new AbortController();
+    const occupied = new Set([...this.getActiveTunnelNames(), ...this.requests.keys()]);
+    if (!occupied.has(name) && occupied.size >= C2S_TUNNEL_LIMIT)
+      throw Error("C2S_TUNNEL_LIMIT");
     let group = this.requests.get(name);
+    if (group && group.size >= C2S_REQUESTS_PER_TUNNEL)
+      throw Error("C2S_REQUEST_LIMIT");
+    const controller = new AbortController();
     if (!group) this.requests.set(name, (group = new Set()));
     group.add(controller);
     return {
@@ -102,4 +111,4 @@ class C2sSession {
     return "ws://127.0.0.1:30003/ssh/tunnel/c2s/stream";
   }
 }
-module.exports = { C2sSession };
+module.exports = { C2sSession, C2S_TUNNEL_LIMIT, C2S_REQUESTS_PER_TUNNEL, C2S_LOCAL_CONNECTION_LIMIT };

@@ -237,14 +237,8 @@ it("authenticates with password and an encrypted private key and rejects the wro
   expect(await command(keyClient)).toBe("fixture-user\n");
   expect(server.signatures()).toBe(1);
   const acceptedBeforeWrongPassphrase = server.signatures();
-  await expect(
-    connect(server, {
-      privateKey: preparePrivateKeyForSSH2(
-        encrypted.toString(),
-        "wrong-passphrase",
-      ),
-      passphrase: "wrong-passphrase",
-    }),
-  ).rejects.toThrow();
+  expect(() =>
+    preparePrivateKeyForSSH2(encrypted.toString(), "wrong-passphrase"),
+  ).toThrow("Invalid SSH private key or passphrase.");
   expect(server.signatures()).toBe(acceptedBeforeWrongPassphrase);
 }, 10000);

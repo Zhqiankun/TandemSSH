@@ -184,3 +184,28 @@ describe("buildReorderRows", () => {
     );
   });
 });
+
+it("finds Chinese notes and folder paths inside collapsed folders without changing expansion state", () => {
+  const target = {
+    ...host("1", "db-node"),
+    notes: "夜间备份服务器",
+    folder: "生产 / 数据库",
+  };
+  const tree: HostFolder[] = [
+    {
+      name: "生产",
+      path: "生产",
+      children: [{ name: "数据库", path: "生产 / 数据库", children: [target] }],
+    },
+  ];
+  const open = new Set<string>();
+  for (const query of ["夜间备份", "生产 / 数据库"]) {
+    expect(
+      collectVisibleRows(tree, query, open).map((r) => r.item.name),
+    ).toEqual(["生产", "数据库", "db-node"]);
+    expect(open.size).toBe(0);
+  }
+  expect(collectVisibleRows(tree, "", open).map((r) => r.item.name)).toEqual([
+    "生产",
+  ]);
+});

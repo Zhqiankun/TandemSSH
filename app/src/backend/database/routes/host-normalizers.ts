@@ -506,3 +506,42 @@ export function transformHostResponse(
       : undefined,
   };
 }
+
+/** Export-format redaction keeps null placeholders and never adds UI availability flags. */
+export function stripHostExportSecrets(
+  host: Record<string, unknown>,
+): Record<string, unknown> {
+  const result = { ...host };
+  if (
+    (!result.connectionType || result.connectionType === "ssh") &&
+    result.authType !== "none"
+  )
+    result.authType = "unconfigured";
+  for (const field of [...SENSITIVE_FIELDS, "privateKey"])
+    if (field in result) result[field] = null;
+  for (const [container, field] of [
+    ["terminalConfig", "sudoPassword"],
+    ["guacamoleConfig", "gateway-password"],
+  ]) {
+    const config = result[container];
+    if (
+      config &&
+      typeof config === "object" &&
+      !Array.isArray(config) &&
+      field in config
+    ) {
+      result[container] = { ...config, [field]: null };
+    }
+  }
+  if (Array.isArray(result.socks5ProxyChain)) {
+    result.socks5ProxyChain = result.socks5ProxyChain.map((entry) =>
+      entry &&
+      typeof entry === "object" &&
+      !Array.isArray(entry) &&
+      "password" in entry
+        ? { ...entry, password: null }
+        : entry,
+    );
+  }
+  return result;
+}

@@ -37,6 +37,7 @@ import {
 } from "./file-manager-utils.ts";
 
 interface DragState {
+  scope?: string;
   type: "none" | "internal" | "external";
   files: FileItem[];
   draggedFiles?: FileItem[];
@@ -46,6 +47,8 @@ interface DragState {
 }
 
 interface FileManagerGridProps {
+  /** Stable identity of the session, directory and visible file scope. */
+  operationScope?: string;
   files: FileItem[];
   selectedFiles: FileItem[];
   onFileOpen: (file: FileItem) => void;
@@ -53,6 +56,7 @@ interface FileManagerGridProps {
   onSelectionChange: (files: FileItem[]) => void;
   onRefresh: () => void;
   onUpload?: (files: FileList) => void;
+  onExternalDrop?: (event: React.DragEvent) => void;
   onDownload?: (files: FileItem[]) => void;
   onContextMenu?: (event: React.MouseEvent, file?: FileItem) => void;
   viewMode?: "grid" | "list";
@@ -163,6 +167,7 @@ const getFileIcon = (file: FileItem, viewMode: "grid" | "list" = "grid") => {
 };
 
 export function FileManagerGrid({
+  operationScope,
   files,
   selectedFiles,
   onFileOpen,
@@ -170,6 +175,7 @@ export function FileManagerGrid({
   onSelectionChange,
   onRefresh,
   onUpload,
+  onExternalDrop,
   onDownload,
   onContextMenu,
   viewMode = "grid",
@@ -215,6 +221,9 @@ export function FileManagerGrid({
     files: [],
     counter: 0,
   });
+  useEffect(() => {
+    setDragState({ type: "none", files: [], counter: 0 });
+  }, [operationScope]);
 
   // Responsive column count for grid virtualization (matches Tailwind breakpoints roughly).
   useEffect(() => {
@@ -319,10 +328,15 @@ export function FileManagerGrid({
   };
 
   const handleFileDragStart = (e: React.DragEvent, file: FileItem) => {
-    const filesToDrag = selectedFiles.includes(file) ? selectedFiles : [file];
+    const filesToDrag = selectedFiles.some(
+      (selected) => selected.path === file.path,
+    )
+      ? selectedFiles
+      : [file];
 
     setDragState({
       type: "internal",
+      scope: operationScope,
       files: filesToDrag,
       draggedFiles: filesToDrag,
       counter: 0,
@@ -359,11 +373,26 @@ export function FileManagerGrid({
     }
   };
 
+  const forwardExternalDrop = useCallback((event: React.DragEvent) => {
+    setDragState({ type: "none", files: [], counter: 0 });
+    if (onExternalDrop) onExternalDrop(event);
+    else if (event.dataTransfer.files?.length) onUpload?.(event.dataTransfer.files);
+  }, [onExternalDrop, onUpload]);
+
   const handleFileDrop = (e: React.DragEvent, targetFile: FileItem) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (dragState.type !== "internal" || dragState.files.length === 0) {
+    if (dragState.type !== "internal" && e.dataTransfer.files?.length) {
+      forwardExternalDrop(e);
+      return;
+    }
+
+    if (
+      dragState.scope !== operationScope ||
+      dragState.type !== "internal" ||
+      dragState.files.length === 0
+    ) {
       setDragState((prev) => ({ ...prev, target: undefined }));
       return;
     }
@@ -711,15 +740,13 @@ export function FileManagerGrid({
 
       if (dragState.type === "internal") {
         setDragState({ type: "none", files: [], counter: 0 });
-      } else if (dragState.type === "external") {
-        if (onUpload && e.dataTransfer.files.length > 0) {
-          onUpload(e.dataTransfer.files);
-        }
+      } else if (e.dataTransfer.files?.length) {
+        forwardExternalDrop(e);
       }
 
       setDragState({ type: "none", files: [], counter: 0 });
     },
-    [onUpload, dragState],
+    [forwardExternalDrop, dragState],
   );
 
   const handleFileClick = (file: FileItem, event: React.MouseEvent) => {

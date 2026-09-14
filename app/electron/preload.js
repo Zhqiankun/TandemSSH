@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getSetting: (key) => ipcRenderer.invoke("get-setting", key),
   setSetting: (key, value) => ipcRenderer.invoke("set-setting", key, value),
   getC2STunnelConfig: () => ipcRenderer.invoke("get-c2s-tunnel-config"),
+  snapshotC2STunnelConfig: () => ipcRenderer.invoke("snapshot-c2s-tunnel-config"),
+  importC2STunnelConfig: (request) => ipcRenderer.invoke("import-c2s-tunnel-config", request),
   saveC2STunnelConfig: (config) =>
     ipcRenderer.invoke("save-c2s-tunnel-config", config),
   checkLocalPortAvailable: (host, port) =>

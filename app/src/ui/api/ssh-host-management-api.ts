@@ -77,6 +77,23 @@ export async function getSSHHosts(
   }
 }
 
+export async function duplicateSSHHost(
+  hostId: number,
+  name: string,
+): Promise<{ id: number }> {
+  try {
+    const response = await sshHostApi.post<{ id: number }>(
+      "/db/host/" + encodeURIComponent(hostId) + "/duplicate",
+      { name },
+    );
+    invalidateHostsAndStatusCaches();
+    void requestRemoteSync();
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error, "duplicate SSH host");
+  }
+}
+
 export async function createSSHHost(hostData: SSHHostData): Promise<SSHHost> {
   try {
     if (hostData.authType === "key" && hostData.key instanceof File) {

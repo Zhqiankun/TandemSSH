@@ -180,6 +180,9 @@ function FileManagerContent({
   sshSessionIdRef.current = sshSessionId;
   const [isReconnecting, setIsReconnecting] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showHiddenFiles, setShowHiddenFiles] = useState(
+    () => localStorage.getItem("fileManagerShowHiddenFiles") !== "false",
+  );
   const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
   const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
     const saved = localStorage.getItem("fileManagerViewMode");
@@ -1668,13 +1671,7 @@ function FileManagerContent({
   async function handleFileOpen(file: FileItem) {
     if (file.type === "directory") {
       markAdaptiveResourceUsed("network", "directory-list");
-      directoryRequestRef.current += 1;
-      const cached = sshSessionId
-        ? peekCachedFileList(sshSessionId, file.path)
-        : null;
-      if (cached) setFiles(cached.files);
-      setIsLoading(!!sshSessionId && !cached);
-      setCurrentPath(file.path);
+      navigateTo(file.path);
       return;
     }
 
@@ -2893,80 +2890,94 @@ function FileManagerContent({
     targetFolder: FileItem,
   ) {
     if (!sshSessionId || targetFolder.type !== "directory") return;
-
+    const operationSession = sshSessionId;
+    const operationPath = currentPath;
+    const assertCurrent = () =>
+      assertFileSession(
+        operationSession,
+        sshSessionIdRef.current,
+        fileManagerMounted.current,
+      );
+    const moves = draggedFiles
+      .map((file) => ({
+        file,
+        targetPath: targetFolder.path.endsWith("/")
+          ? targetFolder.path + file.name
+          : targetFolder.path + "/" + file.name,
+      }))
+      .filter(({ file, targetPath }) => file.path !== targetPath);
+    if (!moves.length) return;
+    const completedActions: SuccessfulFileAction[] = [];
     try {
+      assertCurrent();
       await ensureSSHConnection();
-
-      let successCount = 0;
-      const completedActions: SuccessfulFileAction[] = [];
-
-      for (const file of draggedFiles) {
-        try {
-          const targetPath = targetFolder.path.endsWith("/")
-            ? `${targetFolder.path}${file.name}`
-            : `${targetFolder.path}/${file.name}`;
-
-          if (file.path !== targetPath) {
-            await moveSSHItem(
-              sshSessionId,
-              file.path,
-              targetPath,
-              currentHost?.id,
-              currentHost?.userId?.toString(),
-            );
-            completedActions.push(
-              fileActionReceipt(
-                file.path,
-                targetFolder.path,
-                file.name,
-                file.type === "directory",
-              ),
-            );
-            successCount++;
-          }
-        } catch (error: unknown) {
-          console.error(`Failed to move file ${file.name}:`, error);
-          toast.error(
-            t("fileManager.moveFileFailed", { name: file.name }) +
-              ": " +
-              fileMoveError(error),
+      assertCurrent();
+      const batch = await runFileBatch(
+        moves,
+        async ({ file, targetPath }) => {
+          await moveSSHItem(
+            operationSession,
+            file.path,
+            targetPath,
+            currentHost?.id,
+            currentHost?.userId?.toString(),
           );
-        }
-      }
-
-      if (successCount > 0) {
-        const movedFiles = completedActions;
-
+          completedActions.push(
+            fileActionReceipt(
+              file.path,
+              targetFolder.path,
+              file.name,
+              file.type === "directory",
+            ),
+          );
+        },
+        assertCurrent,
+      );
+      if (completedActions.length && fileManagerMounted.current) {
         const undoAction: UndoAction = {
-          sessionId: sshSessionId!,
+          sessionId: operationSession,
           type: "cut",
           description: t("fileManager.dragMovedItems", {
-            count: successCount,
+            count: completedActions.length,
             target: targetFolder.name,
           }),
           data: {
             operation: "cut",
-            copiedFiles: movedFiles,
+            copiedFiles: completedActions,
             targetDirectory: targetFolder.path,
           },
           timestamp: Date.now(),
         };
         setUndoHistory((prev) => [...prev.slice(-9), undoAction]);
-
-        toast.success(
-          t("fileManager.successfullyMovedItems", {
-            count: successCount,
-            target: targetFolder.name,
-          }),
+      }
+      if (batch.ok === false) throw batch.error;
+      toast.success(
+        t("fileManager.successfullyMovedItems", {
+          count: completedActions.length,
+          target: targetFolder.name,
+        }),
+      );
+    } catch (error: unknown) {
+      if (fileManagerMounted.current)
+        toast.error(
+          t("fileManager.moveBatchStopped", {
+            completed: completedActions.length,
+            total: moves.length,
+          }) +
+            ": " +
+            fileMoveError(error),
         );
+    } finally {
+      invalidateCachedFileList(operationSession, operationPath);
+      invalidateCachedFileList(operationSession, targetFolder.path);
+      if (
+        fileManagerMounted.current &&
+        sshSessionIdRef.current === operationSession &&
+        currentPathRef.current === operationPath
+      ) {
         handleRefreshDirectory();
         clearSelection();
       }
-    } catch (error: unknown) {
-      console.error("Drag move operation failed:", error);
-      toast.error(
-        t("fileManager.moveOperationFailed") + ": " + fileMoveError(error),
-      );
     }
   }
 
@@ -3268,11 +3279,17 @@ function FileManagerContent({
     localStorage.setItem("fileManagerSortOrder", sortOrder);
   }, [sortBy, sortOrder]);
 
+  useEffect(() => {
+    localStorage.setItem("fileManagerShowHiddenFiles", String(showHiddenFiles));
+  }, [showHiddenFiles]);
+
   const filteredFiles = useMemo(
     () =>
       files
-        .filter((file) =>
-          file.name.toLowerCase().includes(searchQuery.toLowerCase()),
+        .filter(
+          (file) =>
+            (showHiddenFiles || !file.name.startsWith(".")) &&
+            file.name.toLowerCase().includes(searchQuery.toLowerCase()),
         )
         .sort((a, b) => {
           if (a.type === "directory" && b.type !== "directory") return -1;
@@ -3295,7 +3312,7 @@ function FileManagerContent({
           }
           return sortOrder === "desc" ? -result : result;
         }),
-    [files, searchQuery, sortBy, sortOrder],
+    [files, searchQuery, showHiddenFiles, sortBy, sortOrder],
   );
 
   if (!currentHost) {
@@ -3341,8 +3358,16 @@ function FileManagerContent({
           isLoading={isLoading}
           sshSessionId={sshSessionId}
           selectedFiles={selectedFiles}
+          showHiddenFiles={showHiddenFiles}
+          onShowHiddenFilesChange={(visible) => {
+            clearSelection();
+            setShowHiddenFiles(visible);
+          }}
           searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
+          setSearchQuery={(query) => {
+            if (query !== searchQuery) clearSelection();
+            setSearchQuery(query);
+          }}
           viewMode={viewMode}
           setViewMode={setViewMode}
           sortBy={sortBy}
@@ -3485,6 +3510,12 @@ function FileManagerContent({
             )}
             <div className="flex-1 relative min-h-0 h-full">
               <FileManagerGrid
+                operationScope={JSON.stringify([
+                  sshSessionId,
+                  currentPath,
+                  searchQuery,
+                  showHiddenFiles,
+                ])}
                 files={filteredFiles}
                 selectedFiles={selectedFiles}
                 onFileOpen={handleFileOpen}
@@ -3492,6 +3523,7 @@ function FileManagerContent({
                 onSelectionChange={setSelection}
                 onRefresh={handleRefreshDirectory}
                 onUpload={handleFilesDropped}
+                onExternalDrop={dragHandlers.onDrop}
                 sortBy={sortBy}
                 sortOrder={sortOrder}
                 onSortChange={(field) => {

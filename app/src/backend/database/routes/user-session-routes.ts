@@ -152,7 +152,10 @@ export function registerUserSessionRoutes(
           .json({ error: "Not authorized to revoke this session" });
       }
 
-      const success = await authManager.revokeSession(sessionId);
+      const success = await authManager.revokeSession(
+        sessionId,
+        session.userId,
+      );
 
       if (success) {
         authLogger.success("Session revoked", {

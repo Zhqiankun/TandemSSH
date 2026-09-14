@@ -42,6 +42,7 @@ export interface BackupPreset {
   tunnels: BackupTunnel[];
 }
 export interface BackupHost {
+  terminalEncoding?: import("./terminal-encoding.js").TerminalEncoding;
   ref: string;
   network?: BackupNetwork;
   terminalAppearance?: TerminalAppearance;
@@ -57,6 +58,9 @@ export interface BackupHost {
   originalAuthType: string;
 }
 export interface ConfigurationBackup {
+  desktopLayout?: import("./desktop-layout.js").DesktopLayout;
+  localTunnels?: Array<BackupTunnel & { displayName?: string }>;
+  hostDefaults?: import("./backup-host-defaults.js").BackupHostDefaults;
   format: "tandemssh-configuration";
   version: 2 | 3;
   tunnelPresets?: BackupPreset[];
@@ -85,9 +89,12 @@ export interface BackupPreview {
     port: number;
     username: string;
     originalAuthType: string;
+    terminalEncoding?: import("./terminal-encoding.js").TerminalEncoding;
   }>;
   workflows: Array<{ name: string; steps: number }>;
   hasPreferences: boolean;
+  localTunnelCount?: number;
+  hasHostDefaults?: boolean;
   keybindingsCount?: number;
   jumpHostCount?: number;
   tunnelCount?: number;
@@ -96,8 +103,16 @@ export interface BackupPreview {
   hasTerminalDefaults?: boolean;
   warnings: BackupWarning[];
 }
+export interface PendingLocalBackup {
+  at: number;
+  result: BackupImportResult;
+}
 export interface BackupImportResult {
   receiptId: string;
+  localTunnels?: Array<
+    import("./index.js").TunnelConnection & { displayName?: string }
+  >;
+  hostDefaultsRestored?: boolean;
   hostIds: number[];
   workflowIds: string[];
   preferencesRestored: boolean;

@@ -1,6 +1,14 @@
 import type { CustomKeybinding, KeyCombo } from "@/types/keybindings";
 
+/** Composition keys belong to the IME, not application shortcut dispatch. */
+export function isImeCompositionKey(
+  event: Pick<KeyboardEvent, "isComposing" | "keyCode">,
+): boolean {
+  return event.isComposing || event.keyCode === 229;
+}
+
 export function eventMatchesCombo(e: KeyboardEvent, combo: KeyCombo): boolean {
+  if (isImeCompositionKey(e)) return false;
   if (e.ctrlKey !== combo.ctrl) return false;
   if (e.altKey !== combo.alt) return false;
   if (e.shiftKey !== combo.shift) return false;

@@ -12,6 +12,7 @@ import {
 import { resolveAiAccess } from "../gating.js";
 import { getAdapter } from "../providers/registry.js";
 import {
+  AiProviderError,
   isAiProviderType,
   type ChatChunk,
   type ChatRequest,
@@ -110,6 +111,11 @@ async function* stream(
     }
     if (pending) yield { type: "text", text: scrub(pending) };
   } catch (error) {
+    if (error instanceof AiProviderError) {
+      if (error.status === 401 || error.status === 403)
+        throw new Error("MODEL_AUTH_FAILED");
+      if (error.status === 429) throw new Error("MODEL_RATE_LIMITED");
+    }
     if (error instanceof Error && /^[A-Z][A-Z0-9_]+$/.test(error.message))
       throw error;
     throw new Error("MODEL_REQUEST_FAILED");

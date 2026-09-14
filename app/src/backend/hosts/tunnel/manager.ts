@@ -1,3 +1,5 @@
+import { S2SStartAdmission } from "./s2s-admission.js";
+export const S2S_STREAM_LIMIT = 32;
 import { tunnelHostVerifier } from "./connection-trust.js";
 import { getErrorMessage } from "../../utils/error-message.js";
 import { type Response } from "express";
@@ -721,7 +723,7 @@ export async function establishDirectTunnel(
     signal?.throwIfAborted();
     const sockets = new Set<TcpSocket>();
     sourceClient.on("tcp connection", (info, accept, reject) => {
-      if (signal?.aborted || info.destPort !== remoteBindPort) {
+      if (signal?.aborted || info.destPort !== remoteBindPort || sockets.size >= S2S_STREAM_LIMIT) {
         reject();
         return;
       }
@@ -789,6 +791,7 @@ export async function establishDirectTunnel(
       .catch(() => socket.destroy());
   });
 
+  tcpServer.maxConnections = S2S_STREAM_LIMIT;
   await new Promise<void>((resolve, reject) => {
     const closed = () =>
       reject(signal?.reason ?? Error("TUNNEL_LISTENER_CLOSED"));
@@ -895,6 +898,7 @@ export async function establishManagedS2STunnel(
   );
   signal?.throwIfAborted();
 
+  const inboundStreams = new Set<ClientChannel>();
   const tcpHandler = (
     info: {
       destIP: string;
@@ -905,12 +909,14 @@ export async function establishManagedS2STunnel(
     accept: () => ClientChannel,
     reject: () => void,
   ) => {
-    if (signal?.aborted || info.destPort !== actualPort) {
+    if (signal?.aborted || info.destPort !== actualPort || inboundStreams.size >= S2S_STREAM_LIMIT) {
       reject();
       return;
     }
 
     const inbound = accept();
+    inboundStreams.add(inbound);
+    inbound.once("close", () => inboundStreams.delete(inbound));
     if (mode === "dynamic") {
       handleSocks5Connect(
         inbound,
@@ -936,6 +942,8 @@ export async function establishManagedS2STunnel(
 
   const close = () => {
     bindClient.off("tcp connection", tcpHandler);
+    for (const stream of inboundStreams) stream.destroy();
+    inboundStreams.clear();
     unbindForwardIn(bindClient, bindHost, actualPort);
     try {
       endpointClient.end();
@@ -961,7 +969,17 @@ export async function establishManagedS2STunnel(
   activeTunnels.set(tunnelName, sourceClient);
 }
 
-export async function connectSSHTunnel(
+const s2sStartAdmission = new S2SStartAdmission();
+export async function connectSSHTunnel(tunnelConfig: TunnelConfig, retryAttempt = 0): Promise<void> {
+  if (manualDisconnects.has(tunnelConfig.name)) return;
+  const release = s2sStartAdmission.acquire(tunnelConfig.name, [
+    ...activeTunnelRuntimes.keys(), ...activeTunnels.keys(), ...activeRetryTimers.keys(), ...tunnelConnecting,
+  ]);
+  try { await connectSSHTunnelAttempt(tunnelConfig, retryAttempt); }
+  finally { release(); }
+}
+
+async function connectSSHTunnelAttempt(
   tunnelConfig: TunnelConfig,
   retryAttempt = 0,
 ): Promise<void> {
@@ -1221,6 +1239,11 @@ export async function connectSSHTunnel(
   conn.once("close", () =>
     signal.removeEventListener("abort", abortConnection),
   );
+  const abortPreparation = () => {
+    if (tunnelConnectionControllers.get(tunnelName) === controller)
+      tunnelConnectionControllers.delete(tunnelName);
+    controller.abort(Error("TUNNEL_PREPARATION_FAILED"));
+  };
   // The verifier loads asynchronously, so errors already need a listener here.
   conn.on("error", () => {});
   let trustRefused = false;
@@ -1615,6 +1638,7 @@ export async function connectSSHTunnel(
       }
     } catch (socks5Error) {
       if (signal.aborted) return;
+      abortPreparation();
       tunnelLogger.error("SOCKS5 connection failed for tunnel", socks5Error, {
         operation: "tunnel_socks5_connection_failed",
         tunnelName,
@@ -1642,6 +1666,7 @@ export async function connectSSHTunnel(
     if (signal.aborted) return;
   } catch (error) {
     if (signal.aborted) return;
+    abortPreparation();
     tunnelLogger.error("Tunnel source hostname resolution failed", error, {
       operation: "tunnel_dns_resolve",
       tunnelName,

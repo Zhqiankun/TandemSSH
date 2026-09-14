@@ -206,3 +206,28 @@ describe("user and profile scoped host trust", () => {
     expect(outcome).toBe(false);
   });
 });
+
+it("never rewrites the stored pin while a changed key is pending or explicitly rejected", async () => {
+  const f = fixture();
+  const initial = f.service.verify(target, key());
+  const first = await request(f);
+  await f.service.decide("alice", choice(first));
+  expect(await initial).toBe(true);
+  const stored = structuredClone([...f.rows.values()]);
+  for (const candidate of [key(2), key(3)]) {
+    expect(await f.service.verify(target, candidate)).toBe(false);
+    const pending = await request(f);
+    expect(pending).toMatchObject({
+      scenario: "changed",
+      connectionStopped: true,
+      oldFingerprint: first.fingerprint,
+    });
+    expect([...f.rows.values()]).toEqual(stored);
+    expect(f.write).toHaveBeenCalledTimes(1);
+    await f.service.decide("alice", choice(pending, "reject"));
+    expect([...f.rows.values()]).toEqual(stored);
+    expect(f.write).toHaveBeenCalledTimes(1);
+  }
+  expect(await f.service.verify(target, key())).toBe(true);
+  expect([...f.rows.values()]).toEqual(stored);
+});

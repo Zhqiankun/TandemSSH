@@ -32,9 +32,38 @@ export function assignTabsToSplit(
   splitTabId: string,
   paneTabIds: (string | null)[],
 ): Tab[] {
-  const assigned = new Set(paneTabIds.filter((id): id is string => !!id));
+  const target = tabs.find((tab) => tab.id === splitTabId);
+  if (target?.type !== "split-screen") return tabs;
+  const eligible = new Set(
+    tabs.filter((tab) => tab.type !== "split-screen").map((tab) => tab.id),
+  );
+  const assigned = new Set<string>();
+  const panes = Array.from({ length: EMPTY_PANES }, (_, index) => {
+    const id = paneTabIds[index];
+    if (!id || !eligible.has(id) || assigned.has(id)) return null;
+    assigned.add(id);
+    return id;
+  });
   return tabs.map((tab) => {
-    if (tab.id === splitTabId) return tab;
+    if (tab.id === splitTabId) {
+      return tab.splitConfig
+        ? { ...tab, splitConfig: { ...tab.splitConfig, paneTabIds: panes } }
+        : tab;
+    }
+    if (tab.type === "split-screen" && tab.splitConfig) {
+      if (!tab.splitConfig.paneTabIds.some((id) => id && assigned.has(id))) {
+        return tab;
+      }
+      return {
+        ...tab,
+        splitConfig: {
+          ...tab.splitConfig,
+          paneTabIds: tab.splitConfig.paneTabIds.map((id) =>
+            id && assigned.has(id) ? null : id,
+          ),
+        },
+      };
+    }
     if (assigned.has(tab.id)) return { ...tab, parentSplitTabId: splitTabId };
     if (tab.parentSplitTabId === splitTabId) {
       const { parentSplitTabId: _removed, ...released } = tab;
@@ -73,18 +102,66 @@ export function serializeSplitTabs(tabs: Tab[]): PersistedSplitTab[] {
   });
 }
 
+// Persisted JSON is untrusted layout data, not a typed runtime configuration.
+function isPersistedSplitTab(value: unknown): value is PersistedSplitTab {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  const shapes: Record<string, number[]> = {
+    "2-way": [2],
+    "2-way-horizontal": [1, 1],
+    "3-way": [2, 1],
+    "3-way-horizontal": [2, 1],
+    "4-way": [2, 2],
+    "5-way": [3, 2],
+    "6-way": [3, 3],
+  };
+  const shape =
+    typeof item.mode === "string" && Object.hasOwn(shapes, item.mode)
+      ? shapes[item.mode]
+      : undefined;
+  const validSizes = (sizes: unknown, length: number): sizes is number[] =>
+    Array.isArray(sizes) &&
+    sizes.length === length &&
+    sizes.every(
+      (size) =>
+        typeof size === "number" &&
+        Number.isFinite(size) &&
+        size > 0 &&
+        size <= 100,
+    ) &&
+    Math.abs(sizes.reduce((sum, size) => sum + size, 0) - 100) < 0.5;
+  return (
+    !!shape &&
+    typeof item.instanceId === "string" &&
+    item.instanceId.length > 0 &&
+    typeof item.label === "string" &&
+    Array.isArray(item.paneInstanceIds) &&
+    item.paneInstanceIds.every((id) => id === null || typeof id === "string") &&
+    validSizes(item.rowSizes, shape.length) &&
+    Array.isArray(item.rowColSizes) &&
+    item.rowColSizes.length === shape.length &&
+    item.rowColSizes.every((row, index) => validSizes(row, shape[index]))
+  );
+}
+
 export function restoreSplitTabs(
-  persisted: PersistedSplitTab[],
+  persisted: unknown,
   tabs: Tab[],
   openedAt = Date.now(),
 ): Tab[] {
+  if (!Array.isArray(persisted)) return tabs;
   const tabIdByInstanceId = new Map(
     tabs.map((tab) => [tab.instanceId, tab.id]),
   );
   let next = [...tabs];
 
   for (const saved of persisted) {
+    if (!isPersistedSplitTab(saved)) continue;
     const id = `split-${saved.instanceId}`;
+    if (
+      next.some((tab) => tab.id === id || tab.instanceId === saved.instanceId)
+    )
+      continue;
     const paneTabIds = saved.paneInstanceIds.map((instanceId) =>
       instanceId ? (tabIdByInstanceId.get(instanceId) ?? null) : null,
     );

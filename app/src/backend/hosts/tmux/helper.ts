@@ -1,3 +1,4 @@
+import { StringDecoder } from "node:string_decoder";
 import type { Client, ClientChannel } from "ssh2";
 import { sshLogger } from "../../utils/logger.js";
 
@@ -41,18 +42,22 @@ export function execCommand(conn: Client, command: string): Promise<string> {
         reject(err);
         return;
       }
+      const stdoutDecoder = new StringDecoder("utf8");
+      const stderrDecoder = new StringDecoder("utf8");
       let stdout = "";
       let stderr = "";
       stream.on("data", (data: Buffer) => {
-        stdout += data.toString("utf-8");
+        stdout += stdoutDecoder.write(data);
       });
       stream.stderr.on("data", (data: Buffer) => {
-        stderr += data.toString("utf-8");
+        stderr += stderrDecoder.write(data);
       });
       stream.on("error", (err: Error) => {
         reject(err);
       });
       stream.on("close", (code: number) => {
+        stdout += stdoutDecoder.end();
+        stderr += stderrDecoder.end();
         if (code !== 0 && stdout === "") {
           reject(
             new Error(stderr.trim() || `Command exited with code ${code}`),

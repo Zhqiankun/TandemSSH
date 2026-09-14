@@ -6,18 +6,31 @@ export interface NetworkCounters {
   tx: string;
 }
 
+function unsignedCounter(value: string | undefined): bigint | null {
+  if (value === undefined || !/^\d{1,20}$/.test(value)) return null;
+  const parsed = BigInt(value);
+  return parsed <= 18446744073709551615n ? parsed : null;
+}
+
 export function parseNetworkCounters(
   output: string,
 ): Map<string, NetworkCounters> {
   const counters = new Map<string, NetworkCounters>();
   for (const line of output.split("\n").slice(2)) {
-    const parts = line.trim().split(/\s+/);
-    if (parts.length >= 10) {
-      counters.set(parts[0].replace(":", ""), {
-        rx: parts[1],
-        tx: parts[9],
-      });
-    }
+    const separator = line.lastIndexOf(":");
+    if (separator < 0) continue;
+    const name = line.slice(0, separator).trim();
+    const parts = line
+      .slice(separator + 1)
+      .trim()
+      .split(/\s+/);
+    if (
+      name &&
+      parts.length >= 16 &&
+      unsignedCounter(parts[0]) !== null &&
+      unsignedCounter(parts[8]) !== null
+    )
+      counters.set(name, { rx: parts[0], tx: parts[8] });
   }
   return counters;
 }
@@ -27,17 +40,20 @@ export function counterRate(
   after: string | undefined,
   elapsedSeconds: number,
 ): number | null {
-  const first = Number(before);
-  const second = Number(after);
+  const first = unsignedCounter(before),
+    second = unsignedCounter(after);
   if (
-    !Number.isFinite(first) ||
-    !Number.isFinite(second) ||
+    first === null ||
+    second === null ||
     second < first ||
+    !Number.isFinite(elapsedSeconds) ||
     elapsedSeconds <= 0
-  ) {
+  )
     return null;
-  }
-  return Math.round((second - first) / elapsedSeconds);
+  const delta = second - first;
+  if (delta > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+  const rate = Math.round(Number(delta) / elapsedSeconds);
+  return Number.isSafeInteger(rate) ? rate : null;
 }
 
 export async function collectNetworkMetrics(client: Client): Promise<{
@@ -99,8 +115,8 @@ export async function collectNetworkMetrics(client: Client): Promise<{
     }
 
     try {
-      const firstReadAt = Date.now();
       const procNet = await execMetricCommand(client, "network.3");
+      const firstReadAt = Date.now();
       await new Promise((resolve) => setTimeout(resolve, 500));
       const procNetAfter = await execMetricCommand(client, "network.3");
       const elapsedSeconds = (Date.now() - firstReadAt) / 1000;
@@ -118,8 +134,8 @@ export async function collectNetworkMetrics(client: Client): Promise<{
           name,
           ip: data.ip,
           state: data.state,
-          rxBytes: rxTx?.rx ?? null,
-          txBytes: rxTx?.tx ?? null,
+          rxBytes: after?.rx ?? null,
+          txBytes: after?.tx ?? null,
           rxRateBps: counterRate(rxTx?.rx, after?.rx, elapsedSeconds),
           txRateBps: counterRate(rxTx?.tx, after?.tx, elapsedSeconds),
         });

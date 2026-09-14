@@ -812,7 +812,14 @@ export function resolveTerminalFontFamily(fontFamily?: string): string {
   const known = TERMINAL_FONTS.find((f) => f.value === fontFamily);
   if (known) return known.fallback;
   if (fontFamily && fontFamily.trim()) {
-    return `"${fontFamily.trim()}", "SF Mono", Consolas, "Liberation Mono", monospace`;
+    const escaped = fontFamily
+      .trim()
+      .replace(
+        /["\\\u0000-\u001f\u007f]/g,
+        (character) =>
+          "\\" + (character.codePointAt(0) || 0xfffd).toString(16) + " ",
+      );
+    return `"${escaped}", "SF Mono", Consolas, "Liberation Mono", monospace`;
   }
   return TERMINAL_FONTS[0].fallback;
 }

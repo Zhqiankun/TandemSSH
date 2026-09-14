@@ -23,3 +23,24 @@ describe("resolveSshKeepalive", () => {
     });
   });
 });
+
+it.each([NaN, Infinity, -Infinity, Number.MAX_VALUE, 2147484])(
+  "does not pass an invalid or overflowing interval %s to a timer",
+  (interval) => {
+    expect(resolveSshKeepalive(interval, 3, 30000, 5).keepaliveInterval).toBe(
+      30000,
+    );
+  },
+);
+it.each([NaN, Infinity, -Infinity, Number.MAX_VALUE])(
+  "uses the configured count default for unsafe %s",
+  (count) => {
+    expect(resolveSshKeepalive(30, count, 30000, 5).keepaliveCountMax).toBe(5);
+  },
+);
+it("uses integer heartbeat counts and keeps a timer-safe boundary", () => {
+  expect(resolveSshKeepalive(2147483, 2.9, 30000, 5)).toEqual({
+    keepaliveInterval: 2147483000,
+    keepaliveCountMax: 2,
+  });
+});

@@ -77,3 +77,15 @@ describe("resolveSnippetContent", () => {
     expect(resolveSnippetContent("echo $INPUT_1", null)).toBe("echo $INPUT_1");
   });
 });
+
+it("localizes generated labels without changing explicit labels", () => {
+  expect(
+    extractSnippetInputs(
+      "$INPUT_1 ${INPUT_2:自定义标题}",
+      (number) => `参数 ${number}`,
+    ),
+  ).toEqual([
+    { key: "INPUT_1", label: "参数 1" },
+    { key: "INPUT_2", label: "自定义标题" },
+  ]);
+});

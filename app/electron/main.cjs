@@ -623,6 +623,7 @@ const externalEditorSessions = new Map();
 
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
 const c2sSession = new (require("./c2s-session.cjs").C2sSession)({
+  getActiveTunnelNames: () => c2sTunnelRuntimes.keys(),
   getWindow: () => mainWindow,
   appRoot: app.getAppPath(),
   isDev,
@@ -1620,18 +1621,34 @@ function getC2STunnelConfigPath() {
   return path.join(app.getPath("userData"), "c2s-tunnels.json");
 }
 
+function c2sConfigStore() {
+  const { C2sConfigStore } = require("./c2s-config-store.cjs");
+  return new C2sConfigStore(getC2STunnelConfigPath());
+}
+
 ipcMain.handle("get-c2s-tunnel-config", () => {
   try {
     const configPath = getC2STunnelConfigPath();
     if (!fs.existsSync(configPath)) {
       return [];
     }
-    const configData = fs.readFileSync(configPath, "utf8");
-    const parsed = JSON.parse(configData);
-    return Array.isArray(parsed) ? parsed : [];
+    return c2sConfigStore().snapshot().config;
   } catch (error) {
     console.error("Error reading C2S tunnel config:", error);
     return [];
+  }
+});
+
+ipcMain.handle("snapshot-c2s-tunnel-config", (event) => {
+  c2sSession.trusted(event);
+  return c2sConfigStore().snapshot();
+});
+ipcMain.handle("import-c2s-tunnel-config", (event, request) => {
+  try {
+    c2sSession.trusted(event);
+    return { success: true, ...c2sConfigStore().import(request) };
+  } catch (error) {
+    return { success: false, error: /^C2S_[A-Z_]+$/.test(error.message) ? error.message : "C2S_CONFIG_WRITE_FAILED" };
   }
 });
 
@@ -1641,6 +1658,7 @@ ipcMain.handle("save-c2s-tunnel-config", async (event, config) => {
     if (!Array.isArray(config)) {
       return { success: false, error: "C2S tunnel config must be an array" };
     }
+    const savedRevision = c2sConfigStore().snapshot().revision;
     const autoStartListeners = new Set();
     const autoStartRemoteListeners = new Set();
     for (const tunnel of config) {
@@ -1705,7 +1723,7 @@ ipcMain.handle("save-c2s-tunnel-config", async (event, config) => {
     if (!fs.existsSync(userDataPath)) {
       fs.mkdirSync(userDataPath, { recursive: true });
     }
-    fs.writeFileSync(getC2STunnelConfigPath(), JSON.stringify(config, null, 2));
+    c2sConfigStore().save(config, savedRevision);
     return { success: true };
   } catch (error) {
     console.error("Error saving C2S tunnel config:", error);
@@ -1878,15 +1896,15 @@ async function openC2SRelay(
   });
   const ws = new WebSocket(
     relayUrl,
-    getWebSocketOptions(relayUrl, { headers }),
+    require("./c2s-websocket-options.cjs").c2sWebSocketOptions(getWebSocketOptions(relayUrl, { headers })),
   );
-  const pendingChunks = [];
-  let ready = false;
   let closed = false;
 
   const cleanup = () => {
     if (closed) return;
     closed = true;
+    uploadPump.close();
+    downloadPump.close();
     try {
       socket.destroy();
     } catch {
@@ -1899,22 +1917,29 @@ async function openC2SRelay(
     }
   };
 
-  const sendChunk = (chunk) => {
-    if (ready && ws.readyState === WebSocket.OPEN) {
-      ws.send(chunk);
-    } else {
-      pendingChunks.push(chunk);
-    }
-  };
-
-  socket.on("data", sendChunk);
+  const { createC2SUploadPump } = require("./c2s-upload-pump.cjs");
+  const uploadPump = createC2SUploadPump(socket, ws, (error) => {
+    if (!closed && c2sTunnelRuntimes.get(tunnelName) === runtime)
+      setC2STunnelError(tunnelName, error.message || "Relay write failed");
+    cleanup();
+  });
+  const { createC2SDownloadPump } = require("./c2s-download-pump.cjs");
+  const downloadPump = createC2SDownloadPump(socket, ws, (error) => {
+    if (!closed && c2sTunnelRuntimes.get(tunnelName) === runtime)
+      setC2STunnelError(tunnelName, error.message || "Local socket write failed");
+    cleanup();
+  });
   socket.on("close", cleanup);
   socket.on("error", (error) => {
     if (!closed && c2sTunnelRuntimes.get(tunnelName) === runtime)
       setC2STunnelError(tunnelName, error.message || "Local socket error");
     cleanup();
   });
-  ws.on("close", cleanup);
+  ws.on("close", (code) => {
+    if (code === 1009 && !closed && c2sTunnelRuntimes.get(tunnelName) === runtime)
+      setC2STunnelError(tunnelName, "C2S_MESSAGE_TOO_LARGE");
+    cleanup();
+  });
   ws.on("error", (error) => {
     if (!closed && c2sTunnelRuntimes.get(tunnelName) === runtime)
       setC2STunnelError(tunnelName, error.message || "Relay connection failed");
@@ -1937,25 +1962,19 @@ async function openC2SRelay(
   ws.on("message", (data, isBinary) => {
     if (closed || c2sTunnelRuntimes.get(tunnelName) !== runtime) return;
     if (isBinary) {
-      socket.write(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      downloadPump.write(Buffer.isBuffer(data) ? data : Buffer.from(data));
       return;
     }
 
     try {
       const message = JSON.parse(data.toString());
       if (message.type === "ready") {
-        ready = true;
         logToFile(`[c2s] relay ready for ${tunnelName}`);
         setC2STunnelStatus(tunnelName, {
           connected: true,
           status: "CONNECTED",
         });
-        if (initialData?.length) {
-          ws.send(initialData);
-        }
-        while (pendingChunks.length > 0) {
-          ws.send(pendingChunks.shift());
-        }
+        uploadPump.start(initialData);
       } else if (message.type === "error") {
         logToFile("[c2s] relay error:", message.error);
         setC2STunnelError(
@@ -2237,7 +2256,7 @@ async function startC2SRemoteTunnel(tunnel, index, operation) {
   const headers = getC2SRelayHeaders(tunnel);
   const ws = new WebSocket(
     relayUrl,
-    getWebSocketOptions(relayUrl, { headers }),
+    require("./c2s-websocket-options.cjs").c2sWebSocketOptions(getWebSocketOptions(relayUrl, { headers })),
   );
   const sockets = new Map();
   let closed = false;
@@ -2341,6 +2360,12 @@ async function startC2SRemoteTunnel(tunnel, index, operation) {
       }
 
       if (message.type === "connection" && message.streamId) {
+        const admission = require("./c2s-remote-streams.cjs").remoteStreamAdmission(sockets, message.streamId);
+        if (admission === "duplicate") return;
+        if (admission === "full") {
+          sendC2SRemoteMessage(ws, { type: "close", streamId: message.streamId, error: "C2S_CONNECTION_LIMIT" });
+          return;
+        }
         const socket = net.createConnection(
           { host: localHost, port: localPort },
           () => {
@@ -2410,12 +2435,14 @@ async function startC2SRemoteTunnel(tunnel, index, operation) {
       }
     });
 
-    ws.on("close", () => {
+    ws.on("close", (code) => {
+      if (code === 1009 && !closed && c2sTunnelRuntimes.get(tunnelName) === runtime)
+        setC2STunnelError(tunnelName, "C2S_MESSAGE_TOO_LARGE");
       cleanup();
       if (c2sTunnelRuntimes.get(tunnelName) === runtime)
         c2sTunnelRuntimes.delete(tunnelName);
       emitC2STunnelStatuses();
-      settle({ success: false, error: "Remote tunnel relay closed" });
+      settle({ success: false, error: code === 1009 ? "C2S_MESSAGE_TOO_LARGE" : "Remote tunnel relay closed" });
     });
 
     ws.on("error", (error) => {
@@ -2511,6 +2538,8 @@ async function startC2STunnelRequest(tunnel, index, operation) {
       handleC2SLocalConnection({ ...tunnel, name: tunnelName, mode }, socket);
     }
   });
+
+  server.maxConnections = require("./c2s-session.cjs").C2S_LOCAL_CONNECTION_LIMIT;
 
   const runtime = {
     server,
@@ -2642,8 +2671,7 @@ async function startC2SAutoStartTunnels() {
     return { success: true, started: 0, errors: [] };
   }
 
-  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  const tunnels = Array.isArray(config) ? config : [];
+  const tunnels = c2sConfigStore().snapshot().config;
   const errors = [];
   let started = 0;
 

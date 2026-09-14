@@ -58,6 +58,25 @@ describe("HostResolutionRepository", () => {
     return new HostResolutionRepository(context, onWrite);
   }
 
+  it("reads only the history preference without loading or decrypting credentials", async () => {
+    const repository = await createRepository();
+    await adapter!.exec(
+      "UPDATE ssh_data SET enable_command_history=0 WHERE id=1",
+    );
+    await expect(repository.findHostHistoryPreference(1)).resolves.toEqual({
+      enableCommandHistory: false,
+    });
+    await adapter!.exec(
+      "UPDATE ssh_data SET enable_command_history=1 WHERE id=1",
+    );
+    await expect(repository.findHostHistoryPreference(1)).resolves.toEqual({
+      enableCommandHistory: true,
+    });
+    await expect(repository.findHostHistoryPreference(999)).resolves.toBeNull();
+    expect(DataCrypto.getUserDataKey).not.toHaveBeenCalled();
+    expect(DataCrypto.decryptRecord).not.toHaveBeenCalled();
+  });
+
   it("loads host and credential rows through the decryption boundary", async () => {
     vi.mocked(DataCrypto.getUserDataKey).mockReturnValue(
       Buffer.from("user-key"),

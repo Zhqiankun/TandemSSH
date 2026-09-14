@@ -193,3 +193,68 @@ it("rejects modified supplemental text in the distributed package", () => {
   );
   expect(() => verifyDependencyNotices(root)).toThrow("differs from source");
 });
+
+it("keeps provenance review open for a standard template supplement", () => {
+  const root = fixture();
+  pkg(root, "base32.js", {
+    name: "base32.js",
+    version: "0.0.1",
+    license: "MIT",
+  });
+  const result = collectDependencyNotices(root);
+  expect(result.inventory.packages[0].notices[0]).toMatchObject({
+    origin: "supplemental",
+    included: true,
+  });
+  expect(result.inventory.packages[0].reviewItems).toContain(
+    "UPSTREAM_NOTICE_NOT_LOCATED",
+  );
+  expect(result.text).toContain("not an original upstream LICENSE file");
+  expect(result.text).toContain("<copyright holders>");
+});
+
+it("uses verified source declaration while preserving missing package metadata", () => {
+  const root = fixture();
+  const dir = pkg(root, "precond", { name: "precond", version: "0.2.3" });
+  fs.mkdirSync(path.join(dir, "lib"));
+  fs.copyFileSync(
+    path.resolve(import.meta.dirname, "../node_modules/precond/lib/checks.js"),
+    path.join(dir, "lib/checks.js"),
+  );
+  const result = collectDependencyNotices(root).inventory.packages[0];
+  expect(result.declaredLicense).toBeNull();
+  expect(result.sourceLicenseDeclaration).toMatchObject({
+    license: "MIT",
+    file: "lib/checks.js",
+  });
+  expect(result.reviewItems).toEqual([]);
+});
+it("rejects a changed source instead of trusting the supplemental declaration", () => {
+  const root = fixture();
+  const dir = pkg(root, "precond", { name: "precond", version: "0.2.3" });
+  fs.mkdirSync(path.join(dir, "lib"));
+  fs.writeFileSync(
+    path.join(dir, "lib/checks.js"),
+    "/* Licensed under the MIT license. */",
+  );
+  expect(() => collectDependencyNotices(root)).toThrow(
+    "Source license evidence mismatch",
+  );
+});
+
+it("reports metadata conflicting with the verified source declaration", () => {
+  const root = fixture();
+  const dir = pkg(root, "precond", {
+    name: "precond",
+    version: "0.2.3",
+    license: "GPL-3.0-only",
+  });
+  fs.mkdirSync(path.join(dir, "lib"));
+  fs.copyFileSync(
+    path.resolve(import.meta.dirname, "../node_modules/precond/lib/checks.js"),
+    path.join(dir, "lib/checks.js"),
+  );
+  const result = collectDependencyNotices(root).inventory.packages[0];
+  expect(result.declaredLicense).toBe("GPL-3.0-only");
+  expect(result.reviewItems).toContain("LICENSE_DECLARATION_CONFLICT");
+});

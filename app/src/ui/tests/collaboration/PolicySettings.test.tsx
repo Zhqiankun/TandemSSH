@@ -246,6 +246,10 @@ it.each([
   "/usr/bin/python3",
   "/usr/bin/vim",
   "/usr/bin/python3.12",
+  "/bin/ksh93",
+  "/usr/bin/tclsh8.6",
+  "source",
+  "command",
   "PowerShell.exe",
   "./deploy.sh",
   "docker",
@@ -292,3 +296,34 @@ it.each([
     expect(collab.takeover).not.toHaveBeenCalled();
   },
 );
+
+it("does not restore an obsolete trial after the user takes over", async () => {
+  await open();
+  const original = api.trial.getMockImplementation()!;
+  let release!: (value: Awaited<ReturnType<typeof original>>) => void;
+  api.trial.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+  );
+  fireEvent.change(screen.getByLabelText("试算命令（仅一条）"), {
+    target: { value: "rm /srv/test" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "只试算，不执行" }));
+  await waitFor(() => expect(api.trial).toHaveBeenCalledTimes(1));
+  const response = await original(api.trial.mock.calls[0][0]);
+  fireEvent.click(screen.getByRole("button", { name: "立即接管" }));
+  await waitFor(() => expect(collab.takeover).toHaveBeenCalledWith("session"));
+  release(response);
+  await waitFor(() =>
+    expect(
+      screen.getByLabelText("试算命令（仅一条）").closest("fieldset")?.disabled,
+    ).toBe(false),
+  );
+  expect(screen.queryByText("规则拒绝")).toBeNull();
+  expect(api.save).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "只试算，不执行" }));
+  await screen.findByText("规则拒绝");
+  expect(api.trial).toHaveBeenCalledTimes(2);
+});

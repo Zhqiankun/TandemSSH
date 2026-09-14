@@ -452,9 +452,9 @@ export function registerHostBulkRoutes(
         errors: [] as string[],
       };
 
-      let existingHostMap: Map<string, { id: number }> | undefined;
+      let existingHostMap: Map<string, { id: number } | null> | undefined;
       const hostRepository = createCurrentHostRepository();
-      if (overwrite) {
+      {
         try {
           const allHosts =
             await createCurrentHostResolutionRepository().findHostsByUserId(
@@ -462,8 +462,8 @@ export function registerHostBulkRoutes(
             );
           existingHostMap = new Map();
           for (const h of allHosts) {
-            const key = `${h.ip}:${h.port}:${h.username}`;
-            existingHostMap.set(key, { id: h.id as number });
+            const key = JSON.stringify([h.ip, h.port, h.username]);
+            existingHostMap.set(key, existingHostMap.has(key) ? null : { id: h.id as number });
           }
         } catch {
           return res.status(409).json({
@@ -473,10 +473,15 @@ export function registerHostBulkRoutes(
         }
       }
 
-      const credentialAliasMap = new Map<string, number>();
-      const addCredentialAlias = (alias: unknown, id: number) => {
+      const credentialAliasMap = new Map<string, number | null>();
+      const addCredentialAlias = (alias: unknown, id: number | null) => {
         const key = textValue(alias);
-        if (key) credentialAliasMap.set(key.toLowerCase(), id);
+        if (!key) return;
+        const normalized = key.toLowerCase();
+        const previous = credentialAliasMap.get(normalized);
+        // Null is sticky: an ambiguous name must never regain an arbitrary ID.
+        credentialAliasMap.set(normalized,
+          previous !== undefined && previous !== id ? null : id);
       };
 
       try {
@@ -495,6 +500,10 @@ export function registerHostBulkRoutes(
             if (!alias || !name) continue;
 
             const existingId = credentialAliasMap.get(name.toLowerCase());
+            if (existingId === null) {
+              addCredentialAlias(alias, null);
+              continue;
+            }
             if (existingId) {
               addCredentialAlias(alias, existingId);
               continue;
@@ -542,6 +551,10 @@ export function registerHostBulkRoutes(
         const hostData = normalizeImportedHost(hostsToImport[i]);
 
         try {
+          if (!overwrite && existingHostMap?.has(JSON.stringify([hostData.ip, hostData.port, hostData.username]))) {
+            results.skipped++;
+            continue;
+          }
           const effectiveConnectionType = hostData.connectionType || "ssh";
 
           if (
@@ -550,9 +563,12 @@ export function registerHostBulkRoutes(
             !hostData.credentialId &&
             hostData.credentialAlias
           ) {
-            hostData.credentialId = credentialAliasMap.get(
+            const referencedId = credentialAliasMap.get(
               hostData.credentialAlias.toLowerCase(),
             );
+            if (referencedId === null)
+              throw new Error("HOST_IMPORT_CREDENTIAL_AMBIGUOUS — 凭据名称对应多条记录，请明确选择凭据后导入。");
+            hostData.credentialId = referencedId;
           }
 
           if (!isNonEmptyString(hostData.ip) || !isValidPort(hostData.port)) {
@@ -585,6 +601,7 @@ export function registerHostBulkRoutes(
               "opkssh",
               "tailscale",
               "vault",
+              "unconfigured",
             ].includes(hostData.authType)
           ) {
             results.failed++;
@@ -592,6 +609,13 @@ export function registerHostBulkRoutes(
               `Host ${i + 1}: Invalid authType. Must be 'password', 'key', 'credential', 'none', 'opkssh', 'tailscale', or 'vault'`,
             );
             continue;
+          }
+
+          if (hostData.authType === "unconfigured") {
+            hostData.password = undefined;
+            hostData.key = undefined;
+            hostData.keyPassword = undefined;
+            hostData.credentialId = undefined;
           }
 
           if (
@@ -642,23 +666,11 @@ export function registerHostBulkRoutes(
             );
 
             if (!cred) {
-              const fallback = await credentialRepository.listByUserId(userId);
-
-              if (fallback.length > 0) {
-                hostData.credentialId = fallback[0].id;
-              } else if (isNonEmptyString(hostData.key)) {
-                hostData.authType = "key";
-                hostData.credentialId = undefined;
-              } else if (isNonEmptyString(hostData.password)) {
-                hostData.authType = "password";
-                hostData.credentialId = undefined;
-              } else {
-                results.failed++;
-                results.errors.push(
-                  `Host ${i + 1}: credentialId ${hostData.credentialId} not found and no fallback credential available`,
-                );
-                continue;
-              }
+              results.failed++;
+              results.errors.push(
+                `Host ${i + 1}: HOST_IMPORT_CREDENTIAL_NOT_FOUND — 引用的凭据不存在或不可用，请重新选择凭据后导入。`,
+              );
+              continue;
             }
           }
 
@@ -777,8 +789,10 @@ export function registerHostBulkRoutes(
           if (runtimePolicy.desktop)
             Object.assign(sshDataObj, inactiveImportedHost(sshDataObj));
 
-          const lookupKey = `${hostData.ip}:${hostData.port}:${hostData.username}`;
+          const lookupKey = JSON.stringify([hostData.ip, hostData.port, hostData.username]);
           const existing = existingHostMap?.get(lookupKey);
+          if (existing === null)
+            throw new Error("HOST_IMPORT_TARGET_AMBIGUOUS — 多条已有连接匹配此地址、端口和用户名，请整理重复连接后再覆盖导入。");
 
           if (existing) {
             await hostRepository.updateEncryptedForUser(
@@ -789,7 +803,8 @@ export function registerHostBulkRoutes(
             results.updated++;
           } else {
             sshDataObj.createdAt = new Date().toISOString();
-            await hostRepository.createEncryptedForUser(userId, sshDataObj);
+            const created = await hostRepository.createEncryptedForUser(userId, sshDataObj);
+            existingHostMap?.set(lookupKey, { id: created.id as number });
             results.success++;
           }
         } catch (error) {
@@ -894,9 +909,9 @@ export function registerHostBulkRoutes(
         errors: [] as string[],
       };
 
-      let existingHostMap: Map<string, { id: number }> | undefined;
+      let existingHostMap: Map<string, { id: number } | null> | undefined;
       const hostRepository = createCurrentHostRepository();
-      if (overwrite) {
+      {
         try {
           const allHosts =
             await createCurrentHostResolutionRepository().findHostsByUserId(
@@ -904,8 +919,8 @@ export function registerHostBulkRoutes(
             );
           existingHostMap = new Map();
           for (const h of allHosts) {
-            const key = `${h.ip}:${h.port}:${h.username}`;
-            existingHostMap.set(key, { id: h.id as number });
+            const key = JSON.stringify([h.ip, h.port, h.username]);
+            existingHostMap.set(key, existingHostMap.has(key) ? null : { id: h.id as number });
           }
         } catch {
           return res.status(409).json({
@@ -921,6 +936,10 @@ export function registerHostBulkRoutes(
         );
 
         try {
+          if (!overwrite && existingHostMap?.has(JSON.stringify([hostData.ip, hostData.port, hostData.username]))) {
+            results.skipped++;
+            continue;
+          }
           if (!isNonEmptyString(hostData.ip) || !isValidPort(hostData.port)) {
             results.failed++;
             results.errors.push(
@@ -988,8 +1007,10 @@ export function registerHostBulkRoutes(
           if (runtimePolicy.desktop)
             Object.assign(sshDataObj, inactiveImportedHost(sshDataObj));
 
-          const lookupKey = `${hostData.ip}:${hostData.port}:${hostData.username}`;
+          const lookupKey = JSON.stringify([hostData.ip, hostData.port, hostData.username]);
           const existing = existingHostMap?.get(lookupKey);
+          if (existing === null)
+            throw new Error("HOST_IMPORT_TARGET_AMBIGUOUS — 多条已有连接匹配此地址、端口和用户名，请整理重复连接后再覆盖导入。");
 
           if (existing) {
             await hostRepository.updateEncryptedForUser(
@@ -1000,7 +1021,8 @@ export function registerHostBulkRoutes(
             results.updated++;
           } else {
             sshDataObj.createdAt = new Date().toISOString();
-            await hostRepository.createEncryptedForUser(userId, sshDataObj);
+            const created = await hostRepository.createEncryptedForUser(userId, sshDataObj);
+            existingHostMap?.set(lookupKey, { id: created.id as number });
             results.success++;
           }
         } catch (error) {

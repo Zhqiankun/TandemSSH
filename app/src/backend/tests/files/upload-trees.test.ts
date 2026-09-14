@@ -120,6 +120,34 @@ const manifest = (bytes: Buffer) => ({
   hashes: [createHash("sha256").update(bytes).digest("hex")],
 });
 describe("reviewed directory uploads over real SFTP", () => {
+
+  it("remaps every descendant after a parent rename and rejects the retired preview", async () => {
+    const f = await fixture();
+    await f.remote.mkdir("/dest/应用");
+    await f.remote.write("/dest/应用/结果 %.txt", "keep original");
+    const old = await f.preview();
+    expect(old.entries.find((e) => e.id === "file")?.status).toBe("conflict");
+    // The upload dialog retires its immutable preview before requesting a new one.
+    f.trees.forget(actor, old.id);
+    const next = await f.preview(mappings.map((e) =>
+      e.id === "dir" ? { ...e, name: "改名后的应用" } : e,
+    ));
+    await expect(f.confirm(old, "overwrite")).rejects.toThrow("UPLOAD_NOT_FOUND");
+    expect(next.entries.every((e) => e.status === "new")).toBe(true);
+    await expect(f.trees.directories(actor, next.id)).rejects.toThrow("UPLOAD_STATE_INVALID");
+    await f.confirm(next);
+    await f.trees.directories(actor, next.id);
+    const bytes = Buffer.from("data");
+    const prepared = await f.trees.prepareEntry(actor, next.id, "file", "session", randomUUID(), manifest(bytes));
+    await f.uploads.start(actor, prepared.id, { overwrite: false });
+    await f.uploads.chunk(actor, prepared.id, 0, bytes);
+    await f.uploads.finish(actor, prepared.id);
+    expect(await f.remote.read("/dest/改名后的应用/结果 %.txt")).toEqual(bytes);
+    expect(await f.remote.io.list!("/dest/改名后的应用/空目录", 10, () => {})).toEqual([]);
+    expect(await f.remote.read("/dest/应用/结果 %.txt")).toEqual(Buffer.from("keep original"));
+    await expect(f.remote.io.stat("/dest/应用/空目录")).rejects.toThrow("FILE_NOT_FOUND");
+  });
+
   it("does not write before confirmation and uploads through the existing verified engine", async () => {
     const f = await fixture(),
       p = await f.preview();
@@ -454,3 +482,103 @@ it("creates only one selected remote directory for one task operation", async ()
   expect(second).toHaveLength(1);
   expect(second[0]).toMatchObject({ id: "empty", state: "created" });
 });
+it.each(["FILE_PERMISSION_DENIED", "FILE_IO_FAILED"])(
+  "preserves completed and pending batch members around partial failure %s",
+  async (error) => {
+    const f = await fixture();
+    const entries = ["first", "second", "third"].map((id) => ({
+      id,
+      name: id + ".txt",
+      kind: "file" as const,
+      size: 4,
+      lastModified: 100,
+    }));
+    const preview = await f.preview(entries);
+    await f.confirm(preview);
+    const bytes = Buffer.from("data");
+    const prepare = (id: string) =>
+      f.trees.prepareEntry(
+        actor,
+        preview.id,
+        id,
+        "session",
+        randomUUID(),
+        manifest(bytes),
+      );
+    const first = await prepare("first");
+    await f.uploads.start(actor, first.id, { overwrite: false });
+    await f.uploads.chunk(actor, first.id, 0, bytes);
+    await f.uploads.finish(actor, first.id);
+    const receipt = await f.trees.completeEntry(
+      actor,
+      preview.id,
+      "first",
+      first.id,
+    );
+    const firstStat = await f.remote.io.stat("/dest/first.txt");
+    const second = await prepare("second");
+    const started = await f.uploads.start(actor, second.id, {
+      overwrite: false,
+    });
+    const originalWrite = f.remote.io.writeAt.bind(f.remote.io);
+    const failure = vi
+      .spyOn(f.remote.io, "writeAt")
+      .mockImplementationOnce(async (p, offset, data, guard) => {
+        await originalWrite(p, offset, data.subarray(0, 2), guard);
+        throw Error(error);
+      });
+    try {
+      await expect(
+        f.uploads.chunk(actor, second.id, 0, bytes),
+      ).resolves.toMatchObject({ state: "failed", error });
+    } finally {
+      failure.mockRestore();
+    }
+    expect(f.uploads.get(actor, second.id)).toMatchObject({
+      state: "failed",
+      receivedBytes: 0,
+      temporaryPath: started.temporaryPath,
+      error,
+    });
+    expect((await f.remote.read(started.temporaryPath!)).toString()).toBe("da");
+    expect(await f.remote.read("/dest/first.txt")).toEqual(bytes);
+    await expect(f.remote.io.stat("/dest/second.txt")).rejects.toThrow(
+      "FILE_NOT_FOUND",
+    );
+    await expect(f.remote.io.stat("/dest/third.txt")).rejects.toThrow(
+      "FILE_NOT_FOUND",
+    );
+    await expect(prepare("first")).rejects.toThrow(
+      "UPLOAD_TREE_ENTRY_UNAVAILABLE",
+    );
+    expect(
+      f.trees.get(actor, preview.id).entries.find((e) => e.id === "first")
+        ?.fileResult,
+    ).toEqual(receipt);
+    await f.uploads.resume(actor, second.id, "session");
+    expect((await f.remote.io.stat(started.temporaryPath!)).size).toBe(0);
+    await f.uploads.chunk(actor, second.id, 0, bytes);
+    await f.uploads.finish(actor, second.id);
+    await f.trees.completeEntry(actor, preview.id, "second", second.id);
+    expect(await f.remote.read("/dest/second.txt")).toEqual(bytes);
+    expect(await f.remote.read("/dest/first.txt")).toEqual(bytes);
+    expect(await f.remote.io.stat("/dest/first.txt")).toMatchObject({
+      size: firstStat.size,
+      mtime: firstStat.mtime,
+      mode: firstStat.mode,
+      uid: firstStat.uid,
+      gid: firstStat.gid,
+    });
+    expect(
+      f.trees.get(actor, preview.id).entries.find((e) => e.id === "first")
+        ?.fileResult,
+    ).toEqual(receipt);
+    expect(
+      f.trees.get(actor, preview.id).entries.find((e) => e.id === "third")
+        ?.fileResult,
+    ).toBeUndefined();
+    await expect(f.remote.io.stat("/dest/third.txt")).rejects.toThrow(
+      "FILE_NOT_FOUND",
+    );
+  },
+);

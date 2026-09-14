@@ -9,6 +9,8 @@ export function hostMatchesQuery(host: Host, query: string) {
     host.name.toLowerCase().includes(query) ||
     host.ip.toLowerCase().includes(query) ||
     host.username.toLowerCase().includes(query) ||
+    (host.notes ?? "").toLowerCase().includes(query) ||
+    (host.folder ?? "").toLowerCase().includes(query) ||
     host.tags?.some((t) => t.toLowerCase().includes(query))
   );
 }
@@ -18,7 +20,7 @@ export function hostExpandKey(host: Host): string {
   return `host:${host.id}`;
 }
 
-function hostHasMatch(host: Host, query: string): boolean {
+export function hostHasMatch(host: Host, query: string): boolean {
   if (hostMatchesQuery(host, query)) return true;
   return (host.childHosts ?? []).some((child) => hostHasMatch(child, query));
 }

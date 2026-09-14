@@ -112,3 +112,24 @@ it("does not dispatch disabled or unreviewed imported shortcuts", () => {
     ])?.id,
   ).toBe("imported");
 });
+it("does not match a custom binding while IME composition is active", () => {
+  const e = new KeyboardEvent("keydown", {
+    key: "c",
+    ctrlKey: true,
+    isComposing: true,
+  });
+  expect(eventMatchesCombo(e, ctrlC)).toBe(false);
+});
+it("does not dispatch a binding for the legacy IME keyCode 229 signal", () => {
+  const e = new KeyboardEvent("keydown", { key: "c", ctrlKey: true });
+  Object.defineProperty(e, "keyCode", { value: 229 });
+  const binding: CustomKeybinding = {
+    id: "ime",
+    combo: ctrlC,
+    action: { type: "sendText", text: "must-not-send" },
+    enabled: true,
+    createdAt: "",
+    updatedAt: "",
+  };
+  expect(findMatchingKeybinding(e, [binding])).toBeUndefined();
+});

@@ -1,3 +1,7 @@
+import {
+  TERMINAL_ENCODINGS,
+  terminalEncoding,
+} from "@/types/terminal-encoding";
 import { translateUiText } from "@/i18n/ui-text";
 import { LocalizedText } from "@/i18n/LocalizedText";
 import React, { useEffect, useState } from "react";
@@ -1470,6 +1474,38 @@ export function HostEditor({
                       </div>
                     </div>
                   </fieldset>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label
+                        htmlFor="host-terminal-encoding"
+                        className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground"
+                      >
+                        {t("hosts.terminalEncodingLabel")}
+                      </label>
+                      <select
+                        id="host-terminal-encoding"
+                        value={form.encoding}
+                        onChange={(event) =>
+                          setField(
+                            "encoding",
+                            terminalEncoding(event.target.value),
+                          )
+                        }
+                        className="flex h-9 w-full border border-border bg-background px-3 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+                      >
+                        {TERMINAL_ENCODINGS.map((encoding) => (
+                          <option key={encoding} value={encoding}>
+                            {encoding === "shift_jis"
+                              ? "Shift_JIS"
+                              : encoding.toUpperCase()}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-muted-foreground">
+                        {t("hosts.terminalEncodingHint")}
+                      </p>
+                    </div>
+                  </div>
                   {form.theme === "custom" && (
                     <div className="flex flex-col gap-3">
                       <div className="flex flex-col gap-1.5">
@@ -1831,6 +1867,11 @@ export function HostEditor({
                     description={
                       <>
                         {t("hosts.enableAutoTmuxDesc")}{" "}
+                        {form.autoTmux && form.encoding !== "utf-8" && (
+                          <span className="block text-amber-500">
+                            {t("terminal.tmuxEncodingRequired")}
+                          </span>
+                        )}
                         <a
                           href="https://docs.termix.site/features/terminal/tmux"
                           target="_blank"

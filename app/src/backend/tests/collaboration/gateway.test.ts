@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { SessionControl } from "../../collaboration/sessions/control.js";
+import {
+  SessionControl,
+  ControlError,
+} from "../../collaboration/sessions/control.js";
 import {
   OperationGateway,
   type CommandExecutorPort,
@@ -30,6 +33,7 @@ function fixture(
   options: {
     mode?: OperationContext["mode"];
     executor?: CommandExecutorPort;
+    validateWrite?: (data: Uint8Array) => void;
     audit?: OperationAuditPort;
     now?: () => number;
   } = {},
@@ -40,6 +44,7 @@ function fixture(
     "session-1",
     {
       isReady: () => true,
+      validateWrite: options.validateWrite,
       write: (data) => {
         writes.push(Buffer.from(data).toString());
       },
@@ -344,6 +349,7 @@ describe("operation gateway: automatic and cooperative execution", () => {
     const result = await f.gateway.dispatch(op.id);
     expect(f.writes).toEqual([]);
     expect(result.auditGap).toBe(true);
+    expect(f.gateway.canDiscard(op.id, true)).toBe(false);
     expect(f.control.snapshot().controller.kind).toBe("human");
   });
 });
@@ -821,6 +827,17 @@ it.each(
     "btop",
     "tmux",
     "screen",
+    "awk",
+    "gawk",
+    "mawk",
+    "nawk",
+    "busybox",
+    "ash",
+    "deno",
+    "deno2.1",
+    "busybox.exe",
+    "ksh", "ksh93", "csh", "tcsh", "mksh", "tclsh", "tclsh8.6", "wish", "expect",
+    "source", ".", "command", "builtin", "exec", "script.ksh", "script.csh", "script.tcl",
     "python3.12",
     "python3.13t",
     "pythonw.exe",
@@ -915,5 +932,105 @@ it.each(["python3-config", "node_exporter", "bashful", "printf"])(
         action(program, ["script.py", "bash.exe"]),
       ).outcome,
     ).toBe("allow");
+  },
+);
+
+it.each(["automatic", "collaborative"] as const)(
+  "records encoding preflight rejection as unsent in %s mode",
+  async (mode) => {
+    const f = fixture({
+      mode,
+      validateWrite: () => {
+        throw new ControlError("TERMINAL_INPUT_NOT_REPRESENTABLE");
+      },
+    });
+    f.grant();
+    const op = await f.gateway.propose(f.context("encoding"), action());
+    if (mode === "collaborative")
+      f.gateway.approveOnce(op.id, op.digest, op.decision.revision);
+    const result = await f.gateway.dispatch(op.id);
+    expect(result.status).toBe("cancelled-before-send");
+    expect(result.error).toBe("TERMINAL_INPUT_NOT_REPRESENTABLE");
+    expect(f.writes).toEqual([]);
+  },
+);
+
+ describe.each(["automatic", "collaborative"] as const)(
+  "%s takeover dispatch boundaries",
+  (mode) => {
+    it.each(["prepare", "intent", "before-send"] as const)(
+      "cancels the pending and queued commands after takeover at %s",
+      async (boundary) => {
+        const entered = deferred<void>();
+        const release = deferred<void>();
+        const disposed = vi.fn();
+        const completed: Array<{ id: string; status: string }> = [];
+        let preparations = 0;
+        const f = fixture({
+          mode,
+          executor: {
+            prepare: async () => {
+              preparations++;
+              if (boundary === "prepare") {
+                entered.resolve();
+                await release.promise;
+              }
+              return {
+                bytes: Buffer.from("must-not-send"),
+                completion: Promise.resolve({ exitCode: 0, output: "unused" }),
+                beforeSend: () => {
+                  if (boundary === "before-send") f.control.takeover();
+                },
+                dispose: disposed,
+              };
+            },
+          },
+          audit: {
+            append: async (event) => {
+              if (event.type === "operation.intent" && boundary === "intent") {
+                entered.resolve();
+                await release.promise;
+              }
+              if (event.type === "operation.completed")
+                completed.push({ id: event.operation.id, status: event.operation.status });
+            },
+          },
+        });
+        f.grant(2);
+        const first = await f.gateway.propose(f.context("boundary-first"), action());
+        const second = await f.gateway.propose(f.context("boundary-queued"), action());
+        if (mode === "collaborative") {
+          for (const op of [first, second])
+            f.gateway.approveOnce(op.id, op.digest, op.decision.revision);
+        }
+        const running = f.gateway.dispatch(first.id);
+        const queued = f.gateway.dispatch(second.id);
+        try {
+          if (boundary !== "before-send") {
+            await entered.promise;
+            f.control.takeover();
+            release.resolve();
+          }
+          const results = await Promise.all([running, queued]);
+          expect(results.map((op) => op.status)).toEqual([
+            "cancelled-before-send", "cancelled-before-send",
+          ]);
+          expect(results.every((op) => op.startedAt === undefined)).toBe(true);
+          expect(f.writes).toEqual([]);
+          expect(preparations).toBe(1);
+          expect(disposed).toHaveBeenCalled();
+          expect(completed).toEqual(results.map(({ id, status }) => ({ id, status })));
+          expect(await f.gateway.dispatch(first.id)).toEqual(results[0]);
+          expect(await f.gateway.dispatch(second.id)).toEqual(results[1]);
+          expect(f.writes).toEqual([]);
+          expect(f.control.snapshot().controller.kind).toBe("human");
+          f.control.humanInput(Buffer.from("manual-after-takeover"));
+          expect(f.writes).toEqual(["manual-after-takeover"]);
+        } finally {
+          release.resolve();
+          await Promise.allSettled([running, queued]);
+        }
+      },
+    );
   },
 );

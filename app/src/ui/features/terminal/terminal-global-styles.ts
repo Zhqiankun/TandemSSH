@@ -1,3 +1,5 @@
+import { resolveTerminalFontFamily } from "@/lib/terminal-themes";
+
 const style = document.createElement("style");
 style.innerHTML = `
 @font-face {
@@ -84,11 +86,12 @@ document.head.appendChild(style);
 // data is actually fetched before the terminal renders with it.
 export function ensureTerminalFontsLoaded(fontFamily: string): void {
   if (typeof document === "undefined" || !document.fonts) return;
+  const family = resolveTerminalFontFamily(fontFamily);
   const specs = [
-    `400 16px "${fontFamily}"`,
-    `700 16px "${fontFamily}"`,
-    `italic 400 16px "${fontFamily}"`,
-    `italic 700 16px "${fontFamily}"`,
+    `400 16px ${family}`,
+    `700 16px ${family}`,
+    `italic 400 16px ${family}`,
+    `italic 700 16px ${family}`,
   ];
   for (const spec of specs) {
     document.fonts.load(spec).catch(() => {});

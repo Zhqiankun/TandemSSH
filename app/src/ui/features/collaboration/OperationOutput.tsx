@@ -57,7 +57,7 @@ export function OperationOutput({
           disabled={busy}
           onClick={() => void expand()}
         >
-          {t("tandem.history.fullOutput")}
+          {t(operation.error === "COMMAND_OUTPUT_INCOMPLETE" ? "tandem.history.retainedOutput" : "tandem.history.fullOutput")}
         </Button>
       )}
       {error && (

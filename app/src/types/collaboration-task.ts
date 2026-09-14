@@ -97,6 +97,7 @@ export interface TaskView {
     completedSteps: number;
   };
   canArchive?: boolean;
+  archiveReviewIds?: string[];
   operationPage?: TaskOperationPage;
   id: string;
   sessionId: string;

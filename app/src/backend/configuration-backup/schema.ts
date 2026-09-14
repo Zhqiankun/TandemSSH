@@ -1,9 +1,11 @@
+import { TERMINAL_ENCODINGS } from "../../types/terminal-encoding.js";
 import {
   terminalAppearanceSchema,
   backupTerminalThemeSchema,
 } from "../../types/terminal-appearance.js";
 import {
   projectTerminalAppearance,
+  projectTerminalEncoding,
   projectTerminalThemes,
 } from "./terminal.js";
 import {
@@ -11,8 +13,11 @@ import {
   backupPresetSchema,
   projectNetwork,
   validateNetworkReferences,
+  backupLocalTunnelSchema,
 } from "./network.js";
 import { z } from "zod";
+import { backupHostDefaultsSchema } from "../../types/backup-host-defaults.js";
+import { desktopLayoutSchema } from "../../types/desktop-layout.js";
 import { desktopAppearanceSchema } from "../../types/desktop-preferences.js";
 import { backupKeybindingSchema, projectKeybindings } from "./keyboard.js";
 import { randomUUID } from "node:crypto";
@@ -32,6 +37,7 @@ const text = (max: number) =>
 const hostSchema = z.object({
   network: backupNetworkSchema.optional(),
   terminalAppearance: terminalAppearanceSchema.optional(),
+  terminalEncoding: z.enum(TERMINAL_ENCODINGS).optional(),
   ref: z.string().uuid(),
   name: text(512),
   ip: text(2048)
@@ -49,6 +55,9 @@ const hostSchema = z.object({
   originalAuthType: text(40),
 });
 const fileSchema = z.object({
+  desktopLayout: desktopLayoutSchema.optional(),
+  localTunnels: z.array(backupLocalTunnelSchema).max(128).optional(),
+  hostDefaults: backupHostDefaultsSchema.optional(),
   format: z.literal("tandemssh-configuration"),
   version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   tunnelPresets: z.array(backupPresetSchema).max(128).optional(),
@@ -132,14 +141,17 @@ export function parseConfigurationBackup(input: unknown): {
         ? raw.hosts.map((row, index) => {
             if (!row || typeof row !== "object" || Array.isArray(row))
               return row;
-            const { network, terminalAppearance, ...host } = row as Record<
-              string,
-              unknown
-            >;
+            const { network, terminalAppearance, terminalEncoding, ...host } =
+              row as Record<string, unknown>;
             if (network !== undefined)
               warnings.push({
                 code: "IGNORED_FIELD",
                 path: `backup.hosts[${index}].network`,
+              });
+            if (terminalEncoding !== undefined)
+              warnings.push({
+                code: "IGNORED_FIELD",
+                path: `backup.hosts[${index}].terminalEncoding`,
               });
             if (terminalAppearance !== undefined)
               warnings.push({
@@ -281,12 +293,22 @@ export function parseConfigurationBackup(input: unknown): {
     payload.tunnelPresets.length
   )
     throw Error("BACKUP_DUPLICATE_REFERENCE");
-  validateNetworkReferences(payload.hosts, payload.tunnelPresets);
+  if (
+    JSON.stringify(redact(payload.localTunnels)) !==
+    JSON.stringify(payload.localTunnels)
+  )
+    throw Error("BACKUP_NETWORK_SECRET");
+  validateNetworkReferences(
+    payload.hosts,
+    payload.tunnelPresets,
+    payload.localTunnels,
+  );
   if (
     payload.hosts.some(
       (h) => h.network?.jumpHostRefs.length || h.network?.tunnels.length,
     ) ||
-    payload.tunnelPresets.length
+    payload.tunnelPresets.length ||
+    payload.localTunnels?.length
   )
     warnings.push({ code: "NETWORK_REVIEW_REQUIRED", path: "network" });
   if (payload.terminalDefaults || payload.terminalThemes?.length)
@@ -315,6 +337,9 @@ export function projectConfigurationBackup(
   keybindings?: unknown,
   tunnelPresets: Array<Record<string, unknown>> = [],
   terminalSettings: { defaults?: unknown; themes?: unknown } = {},
+  hostDefaults?: unknown,
+  localTunnels: unknown[] = [],
+  desktopLayout?: unknown,
 ) {
   const warnings: BackupWarning[] = [],
     entries: unknown[] = [];
@@ -345,6 +370,11 @@ export function projectConfigurationBackup(
         refs,
         warnings,
         `hosts[${index}]`,
+      ),
+      terminalEncoding: projectTerminalEncoding(
+        host.terminalConfig,
+        warnings,
+        `hosts[${index}].terminalEncoding`,
       ),
       terminalAppearance: projectTerminalAppearance(
         host.terminalConfig,
@@ -391,6 +421,33 @@ export function projectConfigurationBackup(
     })),
     preferences,
     appearance,
+    hostDefaults,
+    desktopLayout,
+    localTunnels: localTunnels.flatMap((entry, index) => {
+      const at = "localTunnels[" + index + "]";
+      if (
+        !entry ||
+        typeof entry !== "object" ||
+        !(entry as Record<string, unknown>).sourceIdentity ||
+        (entry as Record<string, unknown>).relayOrigin !== "local"
+      ) {
+        warnings.push({ code: "NETWORK_REFERENCE_EXCLUDED", path: at });
+        return [];
+      }
+      const t = entry as Record<string, unknown>;
+      return projectNetwork(
+        { tunnelConnections: [t] },
+        eligible,
+        refs,
+        warnings,
+        at,
+        true,
+      ).tunnels.map((tunnel) => ({
+        ...tunnel,
+        displayName:
+          typeof t.displayName === "string" ? t.displayName : undefined,
+      }));
+    }),
     keybindings: projectedKeys.bindings,
     terminalDefaults: projectTerminalAppearance(
       terminalSettings.defaults,

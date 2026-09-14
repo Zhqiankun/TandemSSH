@@ -195,3 +195,123 @@ it("continues ignoring malformed unknown network fields in old formats, but reje
   ).toBeGreaterThanOrEqual(2);
   expect(() => parseConfigurationBackup({ ...input, version: 3 })).toThrow();
 });
+
+it.each([
+  { ip: "10.0.0.99", port: 22, username: "fixture" },
+  { ip: "10.0.0.1", port: 2222, username: "fixture" },
+  { ip: "10.0.0.1", port: 22, username: "another-user" },
+  null,
+  "invalid",
+])(
+  "does not rebind a client preset whose saved source identity differs: %j",
+  (sourceIdentity) => {
+    const { payload, warnings } = projectConfigurationBackup(
+      [host(1, "source")],
+      [],
+      undefined,
+      undefined,
+      undefined,
+      [
+        {
+          name: "client",
+          config: [
+            {
+              sourceHostId: 1,
+              relayOrigin: "local",
+              sourceIdentity,
+              mode: "dynamic",
+              sourcePort: 1080,
+            },
+          ],
+        },
+      ],
+    );
+    expect(payload.tunnelPresets?.[0].tunnels).toEqual([]);
+    expect(warnings).toContainEqual({
+      code: "NETWORK_REFERENCE_EXCLUDED",
+      path: "tunnelPresets[0].tunnels",
+    });
+  },
+);
+it("exports a client preset when the explicit source identity matches", () => {
+  const { payload } = projectConfigurationBackup(
+    [host(1, "source")],
+    [],
+    undefined,
+    undefined,
+    undefined,
+    [
+      {
+        name: "client",
+        config: [
+          {
+            sourceHostId: 1,
+            relayOrigin: "local",
+            sourceIdentity: { ip: "10.0.0.1", port: 22, username: "fixture" },
+            mode: "dynamic",
+            sourcePort: 1080,
+          },
+        ],
+      },
+    ],
+  );
+  expect(payload.tunnelPresets?.[0].tunnels[0].sourceHostRef).toBe(
+    payload.hosts[0].ref,
+  );
+});
+
+it("exports local client configurations with verified host identity and rejects missing references", () => {
+  const source = host(1, "source");
+  const { payload } = projectConfigurationBackup(
+    [source],
+    [],
+    undefined,
+    undefined,
+    undefined,
+    [],
+    {},
+    undefined,
+    [
+      {
+        sourceHostId: 1,
+        sourceIdentity: { ip: source.ip, port: 22, username: "fixture" },
+        relayOrigin: "local",
+        mode: "dynamic",
+        sourcePort: 1080,
+        displayName: "本地代理",
+        autoStart: true,
+        password: "fixture-secret",
+      },
+    ],
+  );
+  expect(payload.localTunnels?.[0]).toMatchObject({
+    sourceHostRef: payload.hosts[0].ref,
+    displayName: "本地代理",
+    scope: "c2s",
+    mode: "dynamic",
+  });
+  expect(JSON.stringify(payload)).not.toMatch(
+    /fixture-secret|autoStart|sourceIdentity/,
+  );
+  expect(() => parseConfigurationBackup({ ...payload, hosts: [] })).toThrow(
+    "BACKUP_HOST_REFERENCE",
+  );
+});
+it("does not export unreviewed local client configurations", () => {
+  const { payload, warnings } = projectConfigurationBackup(
+    [host(1, "source")],
+    [],
+    undefined,
+    undefined,
+    undefined,
+    [],
+    {},
+    undefined,
+    [{ sourceHostId: 1, mode: "dynamic", sourcePort: 1080 }],
+  );
+  expect(payload.localTunnels).toEqual([]);
+  expect(warnings).toContainEqual({
+    code: "NETWORK_REFERENCE_EXCLUDED",
+    path: "localTunnels[0]",
+  });
+});

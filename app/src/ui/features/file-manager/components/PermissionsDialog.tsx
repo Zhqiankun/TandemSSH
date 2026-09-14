@@ -99,7 +99,7 @@ export function PermissionsDialog({
   };
 
   const handleSave = async () => {
-    if (!file || !validPermissions) return;
+    if (!file || !validPermissions || file.type === "link") return;
 
     setLoading(true);
     try {
@@ -197,7 +197,7 @@ export function PermissionsDialog({
                     <input
                       type="checkbox"
                       aria-label={`${row.label} ${[t("fileManager.read"), t("fileManager.write"), t("fileManager.execute")][j]}`}
-                      disabled={loading}
+                      disabled={loading || file.type === "link"}
                       checked={perm.val}
                       onChange={(e) => perm.set(e.target.checked)}
                       className="accent-[var(--accent-brand)] size-4 cursor-pointer"
@@ -208,7 +208,10 @@ export function PermissionsDialog({
             ))}
           </div>
 
-          <fieldset disabled={loading} className="flex flex-wrap gap-3 text-xs">
+          <fieldset
+            disabled={loading || file.type === "link"}
+            className="flex flex-wrap gap-3 text-xs"
+          >
             <legend className="mb-2">
               {t("fileManager.specialPermissions")}
             </legend>
@@ -248,6 +251,11 @@ export function PermissionsDialog({
           </div>
         </div>
 
+        {file.type === "link" && (
+          <p role="note" className="text-sm text-muted-foreground">
+            {t("fileManager.symlinkPermissionsReadOnly")}
+          </p>
+        )}
         {!validPermissions && (
           <p role="alert" className="text-sm text-destructive">
             {t("fileManager.invalidPermissions")}
@@ -276,7 +284,7 @@ export function PermissionsDialog({
           <Button
             variant="outline"
             onClick={handleSave}
-            disabled={loading || !validPermissions}
+            disabled={loading || !validPermissions || file.type === "link"}
             className="border-accent-brand/40 text-accent-brand hover:bg-accent-brand/10 rounded-none text-[10px] font-bold uppercase tracking-widest"
           >
             {loading ? t("common.saving") : t("common.save")}

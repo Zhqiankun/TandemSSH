@@ -113,6 +113,7 @@ export function HostExportDialog({
     const cached = cache.current[mode];
     if (cached) {
       setRaw(cached);
+      setLoading(false);
       return;
     }
     let cancelled = false;

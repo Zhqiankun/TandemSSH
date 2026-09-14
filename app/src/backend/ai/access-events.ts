@@ -1,3 +1,4 @@
+import { aiSessionKeys } from "../database/repositories/ai-session-keys.js";
 type Change = { enabled: boolean; userId?: string };
 const listeners = new Set<(change: Change) => void>();
 export function onAiAccessChanged(
@@ -9,5 +10,6 @@ export function onAiAccessChanged(
   };
 }
 export function notifyAiAccessChanged(change: Change): void {
+  if (!change.enabled) aiSessionKeys.clear(change.userId);
   for (const listener of listeners) listener(change);
 }

@@ -353,3 +353,27 @@ it("masks URL userinfo and JSON auth containers without changing non-secret form
     "dXNlcjpwYXNz",
   );
 });
+
+it.each(["automatic", "collaborative"] as const)("does not revive cached document authority after a narrower grant in %s mode", async (mode) => {
+  const f = fixture("port=80\n", mode), taskId = await f.start();
+  const version = await f.read(taskId);
+  f.put("/other/config", "newly authorized");
+  f.control.takeover();
+  expect(() => f.files.content(f.actor, taskId, { version })).toThrow();
+  await f.runtime.authorize(f.human, taskId, {
+    ...f.control.snapshot(), policyRevision: 1, shellReady: true,
+    maxOperations: 5, durationMinutes: 1, allowReviewedPlan: false, matches: [],
+    fileScopes: [{ kind: "directory", path: "/other", access: ["read"] }],
+  });
+  expect(() => f.files.content(f.actor, taskId, { version })).toThrow("FILE_CONTEXT_EXPIRED");
+  await expect(f.files.change(f.actor, taskId, { version, edits: [{ before: "80", after: "81" }] }, "old-version-write", "edit")).rejects.toThrow("FILE_CONTEXT_EXPIRED");
+  expect(f.rows.get("/srv/config")!.bytes.toString()).toBe("port=80\n");
+  const read = await f.files.read(f.actor, taskId, { path: "/other/config" }, "fresh-read");
+  if (mode === "collaborative") {
+    const op = await f.wait(taskId, read.operationId, "awaiting-approval");
+    await f.runtime.approve(f.human, taskId, op.id, op.digest, 1);
+  }
+  const op = await f.wait(taskId, read.operationId, "succeeded");
+  expect(f.files.content(f.actor, taskId, { version: op.fileResult!.document!.version }).content).toBe("newly authorized");
+  expect(f.writes.every(text => text === "context")).toBe(true);
+});

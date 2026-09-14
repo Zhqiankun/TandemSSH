@@ -1,3 +1,4 @@
+import { aiSessionKeys } from "../database/repositories/ai-session-keys.js";
 import { getErrorMessage } from "./error-message.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -435,7 +436,8 @@ class AuthManager {
     // expected - no-op, handled by session management
   }
 
-  async revokeSession(sessionId: string): Promise<boolean> {
+  async revokeSession(sessionId: string, userId: string): Promise<boolean> {
+    aiSessionKeys.clear(userId);
     try {
       authLogger.info("User session invalidated", {
         operation: "user_logout",
@@ -458,6 +460,7 @@ class AuthManager {
     userId: string,
     exceptSessionId?: string,
   ): Promise<number> {
+    aiSessionKeys.clear(userId);
     try {
       const sessionRepository = createCurrentSessionRepository();
       const userSessions = await sessionRepository.listByUserId(userId);
@@ -509,6 +512,7 @@ class AuthManager {
 
       const matchedIds = matched.map((s) => s.id);
       const affectedUsers = new Set(matched.map((s) => s.userId));
+      for (const userId of affectedUsers) aiSessionKeys.clear(userId);
 
       await db.delete(sessions).where(inArray(sessions.id, matchedIds));
 
@@ -969,6 +973,7 @@ class AuthManager {
   }
 
   async logoutUser(userId: string, sessionId?: string): Promise<void> {
+    aiSessionKeys.clear(userId);
     const sessionRepository = createCurrentSessionRepository();
 
     try {

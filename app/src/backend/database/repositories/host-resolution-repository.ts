@@ -68,6 +68,18 @@ export class HostResolutionRepository {
     private readonly onLazyWrite?: () => void | Promise<void>,
   ) {}
 
+  /** Non-secret history preference. Callers must authorize host access first. */
+  async findHostHistoryPreference(
+    hostId: number,
+  ): Promise<{ enableCommandHistory: boolean | null } | null> {
+    const rows = await this.context.drizzle
+      .select({ enableCommandHistory: hosts.enableCommandHistory })
+      .from(hosts)
+      .where(eq(hosts.id, hostId))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   async findHostById(
     hostId: number,
     userId: string,

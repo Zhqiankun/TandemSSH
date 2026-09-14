@@ -13,20 +13,24 @@ export async function collectMemoryMetrics(client: Client): Promise<{
 
   try {
     const memInfo = await execMetricCommand(client, "memory.1");
-    const lines = memInfo.stdout.split("\n");
-    const getVal = (key: string) => {
-      const line = lines.find((l) => l.startsWith(key));
-      if (!line) return null;
-      const m = line.match(/\d+/);
-      return m ? Number(m[0]) : null;
+    const lines = memInfo.stdout.split("\n").map((line) => line.trim());
+    const getVal = (key: string): number | null => {
+      const matches = lines.filter((line) => line.startsWith(key));
+      if (matches.length !== 1) return null;
+      const parsed = matches[0].slice(key.length).match(/^\s*(\d+)\s+kB\s*$/);
+      if (!parsed) return null;
+      const value = Number(parsed[1]);
+      return Number.isSafeInteger(value) ? value : null;
     };
     const totalKb = getVal("MemTotal:");
     const availKb = getVal("MemAvailable:");
-    if (totalKb && availKb && totalKb > 0) {
-      const usedKb = totalKb - availKb;
-      memPercent = Math.max(0, Math.min(100, (usedKb / totalKb) * 100));
-      usedGiB = kibToGiB(usedKb);
+    if (totalKb !== null && totalKb > 0) {
       totalGiB = kibToGiB(totalKb);
+      if (availKb !== null && availKb <= totalKb) {
+        const usedKb = totalKb - availKb;
+        memPercent = (usedKb / totalKb) * 100;
+        usedGiB = kibToGiB(usedKb);
+      }
     }
   } catch {
     memPercent = null;
@@ -36,7 +40,7 @@ export async function collectMemoryMetrics(client: Client): Promise<{
 
   return {
     percent: toFixedNum(memPercent, 0),
-    usedGiB: usedGiB ? toFixedNum(usedGiB, 2) : null,
-    totalGiB: totalGiB ? toFixedNum(totalGiB, 2) : null,
+    usedGiB: toFixedNum(usedGiB, 2),
+    totalGiB: toFixedNum(totalGiB, 2),
   };
 }

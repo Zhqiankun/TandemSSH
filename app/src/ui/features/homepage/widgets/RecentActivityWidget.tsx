@@ -1,3 +1,4 @@
+import { formatRecentActivityTime } from "../recent-activity-time";
 import { translateUiText } from "@/i18n/ui-text";
 import { useEffect, useState } from "react";
 import {
@@ -23,16 +24,6 @@ import {
 import { WidgetTitle } from "./WidgetTitle";
 import { runVisibleInterval } from "../use-visible-interval";
 
-function relativeTime(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime();
-  const m = Math.floor(diff / 60_000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
-
 function ActivityIcon({ type }: { type: string }) {
   const cls = "shrink-0 text-accent-brand";
   switch (type) {
@@ -57,7 +48,17 @@ function RecentActivityWidget({
   widget,
   config,
 }: WidgetComponentProps<RecentActivityConfig>) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const typeLabels: Record<RecentActivityItem["type"], string> = {
+    terminal: t("networkGraph.terminal"),
+    file_manager: t("networkGraph.fileManager"),
+    server_stats: t("networkGraph.serverStats"),
+    tunnel: t("networkGraph.tunnel"),
+    docker: t("networkGraph.docker"),
+    rdp: "RDP",
+    vnc: "VNC",
+    telnet: "Telnet",
+  };
   const { maxItems, filterTypes, showTimestamp } = config;
   const [items, setItems] = useState<RecentActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,12 +119,16 @@ function RecentActivityWidget({
                 {item.hostName}
               </span>
               <span className="text-[9px] text-muted-foreground capitalize">
-                {item.type.replace("_", " ")}
+                {typeLabels[item.type] ?? item.type}
               </span>
             </div>
             {showTimestamp && (
               <span className="text-[9px] text-muted-foreground shrink-0">
-                {relativeTime(item.timestamp)}
+                {formatRecentActivityTime(
+                  item.timestamp,
+                  i18n.resolvedLanguage ?? i18n.language,
+                  t("dashboard.justNow"),
+                )}
               </span>
             )}
           </div>

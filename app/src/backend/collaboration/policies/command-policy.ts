@@ -65,6 +65,27 @@ const OPAQUE_PROGRAMS = new Set([
   "zsh",
   "fish",
   "dash",
+  "ash",
+  "ksh",
+  "csh",
+  "tcsh",
+  "mksh",
+  "tclsh",
+  "wish",
+  "expect",
+  // Shell builtins can source scripts or dispatch another executable.
+  "source",
+  ".",
+  "command",
+  "builtin",
+  "exec",
+  "awk",
+  "gawk",
+  "mawk",
+  "nawk",
+  // Multi-call and script runtimes can dispatch commands hidden in arguments.
+  "busybox",
+  "deno",
   "eval",
   "python",
   "python3",
@@ -111,7 +132,7 @@ const OPAQUE_PROGRAMS = new Set([
 function isOpaqueProgram(program: string): boolean {
   const name = program.split(/[\\/]/).at(-1)!.toLowerCase();
   if (
-    /\.(?:sh|bash|zsh|fish|py|pyw|js|mjs|cjs|ts|rb|pl|lua|php|ps1|cmd|bat)$/.test(
+    /\.(?:sh|bash|zsh|fish|ksh|csh|tcl|py|pyw|js|mjs|cjs|ts|rb|pl|lua|php|ps1|cmd|bat)$/.test(
       name,
     )
   )
@@ -119,7 +140,7 @@ function isOpaqueProgram(program: string): boolean {
   const executable = name.replace(/\.(?:exe|com)$/, "");
   return (
     OPAQUE_PROGRAMS.has(executable) ||
-    /^(?:bash|zsh|fish|dash|pythonw?|pypy|node(?:js)?|perl|ruby|php|lua|luajit|pwsh|powershell|rscript|vim|nvim)-?\d+(?:\.\d+)*(?:t|d)?$/.test(
+    /^(?:bash|zsh|fish|dash|ash|ksh|csh|tcsh|mksh|tclsh|wish|expect|deno|pythonw?|pypy|node(?:js)?|perl|ruby|php|lua|luajit|pwsh|powershell|rscript|vim|nvim)-?\d+(?:\.\d+)*(?:t|d)?$/.test(
       executable,
     )
   );

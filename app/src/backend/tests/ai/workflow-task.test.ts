@@ -26,7 +26,13 @@ function reply(request: ChatRequest, name: string) {
 }
 async function setup(
   mode: "automatic" | "collaborative" = "automatic",
-  options: { hold?: boolean; failed?: boolean; batch?: boolean } = {},
+  options: {
+    hold?: boolean;
+    holdProgram?: string;
+    failed?: boolean;
+    batch?: boolean;
+    thirdStep?: boolean;
+  } = {},
 ) {
   const writes: string[] = [],
     requests: ChatRequest[] = [];
@@ -67,7 +73,8 @@ async function setup(
         dispose: () => {},
       }),
       prepare: async (action: { program: string; cwd: string }) => {
-        const wait = options.hold && !held;
+        const wait =
+          (options.hold || options.holdProgram === action.program) && !held;
         if (wait) held = true;
         return {
           bytes: Buffer.from(action.program),
@@ -131,6 +138,12 @@ async function setup(
       },
     ],
   };
+  if (options.thirdStep)
+    definition.steps.push({
+      id: "three",
+      name: "最后核对",
+      action: { type: "command", program: "pwd", args: ["-L"] },
+    });
   await workflows.save("owner", { definition, allowedHostIds: [1] });
   const coordinator = new AiTaskCoordinator({
     tasks: runtime,
@@ -330,4 +343,125 @@ describe("built-in AI reuses a saved workflow in its parent task", () => {
       "completed-with-errors",
     );
   });
+});
+
+it.each([
+  ["automatic", "skip"],
+  ["automatic", "retry"],
+  ["collaborative", "skip"],
+  ["collaborative", "retry"],
+] as const)(
+  "keeps the AI parent idle during second-step takeover and resumes only remaining work in %s mode with %s",
+  async (mode, reconciliation) => {
+    const f = await setup(mode, {
+      holdProgram: "printf",
+      thirdStep: true,
+      batch: true,
+    });
+    await f.authorize();
+    const approveNext = async (index: number) => {
+      await vi.waitFor(
+        () => {
+          const task = f.runtime.get(human, f.created.task.id);
+          expect(task.operations).toHaveLength(index + 1);
+          expect(task.operations[index].status).toBe("awaiting-approval");
+        },
+        { timeout: 3000 },
+      );
+      const op = f.runtime.get(human, f.created.task.id).operations[index];
+      await f.runtime.approve(human, f.created.task.id, op.id, op.digest, 1);
+    };
+    if (mode === "collaborative") {
+      await approveNext(0);
+      await approveNext(1);
+    }
+    await vi.waitFor(() => expect(f.writes).toContain("printf"), {
+      timeout: 3000,
+    });
+    const before = f.runtime.get(human, f.created.task.id);
+    expect(before.operations[0].status).toBe("succeeded");
+    const workflowId = before.workflowRuns![0].id;
+    f.control.humanInput(Buffer.from("manual-second-step"));
+    await vi.waitFor(() =>
+      expect(f.coordinator.get("owner", f.created.run.id).phase).toBe(
+        "paused-human",
+      ),
+    );
+    const requests = f.requests.length,
+      writes = [...f.writes];
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(f.requests).toHaveLength(requests);
+    expect(f.writes).toEqual(writes);
+    expect(f.writes).toContain("manual-second-step");
+    await expect(f.authorize()).rejects.toThrow("RECONCILIATION_REQUIRED");
+    expect(f.writes).toEqual(writes);
+    await f.authorize(reconciliation);
+    if (mode === "collaborative") {
+      await vi.waitFor(() =>
+        expect(f.runtime.get(human, f.created.task.id).operations).toHaveLength(
+          3,
+        ),
+      );
+      expect(f.writes.filter((value) => value === "pwd")).toHaveLength(1);
+      await approveNext(2);
+      if (reconciliation === "retry") await approveNext(3);
+    }
+    await vi.waitFor(
+      () =>
+        expect(f.coordinator.get("owner", f.created.run.id).phase).toBe(
+          reconciliation === "skip" ? "completed-with-errors" : "completed",
+        ),
+      { timeout: 3000 },
+    );
+    const task = f.runtime.get(human, f.created.task.id);
+    expect(task.workflowRuns).toHaveLength(1);
+    expect(task.workflowRuns![0].id).toBe(workflowId);
+    expect(task.operations.map((op) => op.status)).toEqual([
+      "succeeded",
+      "unknown",
+      ...(reconciliation === "retry" ? ["succeeded"] : []),
+      "succeeded",
+    ]);
+    expect(task.operations[1]).toMatchObject({
+      reviewed: { decision: reconciliation },
+    });
+    expect(f.writes.filter((value) => value === "printf")).toHaveLength(
+      reconciliation === "retry" ? 2 : 1,
+    );
+    expect(f.writes.filter((value) => value === "pwd")).toHaveLength(2);
+    expect(
+      f.requests
+        .at(-1)!
+        .messages.some((message) =>
+          message.content.includes("WORKFLOW_RESULT_REVIEW_REQUIRED"),
+        ),
+    ).toBe(true);
+  },
+  10_000,
+);
+it("human pause stops the built-in AI parent until fresh authorization", async () => {
+  const f = await setup("automatic", { hold: true });
+  await f.authorize();
+  await vi.waitFor(() => expect(f.writes).toContain("pwd"), { timeout: 3000 });
+  f.runtime.pauseTask(human, f.created.task.id);
+  await vi.waitFor(() =>
+    expect(f.coordinator.get("owner", f.created.run.id).phase).toBe(
+      "paused-human",
+    ),
+  );
+  const count = f.requests.length,
+    writes = [...f.writes];
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(f.requests).toHaveLength(count);
+  expect(f.writes).toEqual(writes);
+  await f.authorize("skip");
+  await vi.waitFor(
+    () =>
+      expect(f.coordinator.get("owner", f.created.run.id).phase).toBe(
+        "completed-with-errors",
+      ),
+    { timeout: 3000 },
+  );
+  expect(f.writes.filter((value) => value === "pwd")).toHaveLength(1);
+  expect(f.runtime.get(human, f.created.task.id).workflowRuns).toHaveLength(1);
 });

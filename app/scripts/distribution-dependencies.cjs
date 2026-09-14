@@ -89,6 +89,7 @@ function collectDependencyNotices(packageRoot) {
     const name = typeof metadata.name === "string" ? metadata.name : relative;
     const version =
       typeof metadata.version === "string" ? metadata.version : null;
+    let sourceLicenseDeclaration;
     const texts = [];
     sections.push(
       "\n============================================================",
@@ -123,6 +124,40 @@ function collectDependencyNotices(packageRoot) {
     }
     const supplement = supplements.get(name + "@" + version);
     if (supplement) {
+      if (supplement.source?.sourceLicense !== undefined) {
+        const source = supplement.source;
+        const evidence = source.sourceNotice;
+        if (
+          source.kind !== "installed-readme-linked-author-license" ||
+          source.sourceLicense !== "MIT" ||
+          !evidence ||
+          typeof evidence.file !== "string" ||
+          typeof evidence.header !== "string" ||
+          !evidence.header.includes("Licensed under the MIT license.")
+        )
+          throw Error("Invalid source license declaration");
+        const sourceFile = inside(folder, path.join(folder, evidence.file));
+        const bytes = read(sourceFile, 4 * 1024 * 1024);
+        if (
+          digest(bytes) !== evidence.sha256 ||
+          !bytes.toString("utf8").startsWith(evidence.header)
+        )
+          throw Error("Source license evidence mismatch");
+        sourceLicenseDeclaration = {
+          license: source.sourceLicense,
+          file: evidence.file,
+          sha256: evidence.sha256,
+        };
+        const missing = issues.indexOf("LICENSE_DECLARATION_MISSING");
+        if (missing >= 0) issues.splice(missing, 1);
+        if (declaration && declaration !== source.sourceLicense)
+          issues.push("LICENSE_DECLARATION_CONFLICT");
+        sections.push(
+          "Verified source declaration: MIT (" + evidence.file + ")",
+        );
+      }
+      if (supplement.source?.kind === "declared-spdx-standard-template")
+        issues.push("UPSTREAM_NOTICE_NOT_LOCATED");
       const text = new TextDecoder("utf-8", { fatal: true }).decode(
         supplement.content,
       );
@@ -149,6 +184,7 @@ function collectDependencyNotices(packageRoot) {
       name,
       version,
       declaredLicense: declaration,
+      ...(sourceLicenseDeclaration ? { sourceLicenseDeclaration } : {}),
       packageSha256,
       notices: texts,
       reviewItems: issues,

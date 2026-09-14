@@ -110,19 +110,21 @@ export const MONITORING_COMMANDS = [
   {
     id: "processes.1",
     widget: "processes",
-    template: "(ps aux --sort=-%cpu 2>/dev/null || ps aux) | head -n 11",
+    template:
+      "(LC_ALL=C ps aux --sort=-%cpu 2>/dev/null || LC_ALL=C ps aux) | awk 'NR <= 11 {print} END {if (NR == 0) exit 1}'",
     timeoutMs: 15000,
   },
   {
     id: "processes.2",
     widget: "processes",
-    template: "ps aux | wc -l",
+    template: "LC_ALL=C ps aux | awk 'END {if (NR == 0) exit 1; print NR}'",
     timeoutMs: 15000,
   },
   {
     id: "processes.3",
     widget: "processes",
-    template: "ps aux | grep -c ' R '",
+    template:
+      "(LC_ALL=C ps -o stat 2>/dev/null || LC_ALL=C ps aux) | awk 'NR == 1 {for (i=1;i<=NF;i++) if ($i == \"STAT\") s=i} NR > 1 && s && $s ~ /^R/ {n++} END {if (!s) exit 1; print n+0}'",
     timeoutMs: 15000,
   },
   {
