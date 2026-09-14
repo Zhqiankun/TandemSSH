@@ -52,6 +52,8 @@ jobs:
           npm test -- src/backend/tests/collaboration/pty-integration.test.ts
       - name: Build Windows installer and portable archive
         run: npm run build:win-installer
+      - name: Install reference Electron runtime for notice verification
+        run: node node_modules/electron/install.js
       - name: Verify packaged native modules
         run: node scripts/verify-native-package.cjs
       - name: Verify Windows installation, online upgrade and removal

@@ -2,11 +2,11 @@
 
 一个面向人机协同的开源 SSH 桌面客户端：人和 AI 共用终端，执行过程可见，控制权随时可收回。
 
-**Windows x64 · v0.1.1 正式版 · 默认简体中文。** 支持 SSH/SFTP、在线编辑、自动执行与人机协作、随时人工接管、自定义流程和 Codex MCP 接入。模型使用自己的 API 地址、Key 和模型名称，核心功能不需要本软件会员。
+**Windows x64 · v0.1.2 正式版 · 默认简体中文。** 支持 SSH/SFTP、在线编辑、自动执行与人机协作、随时人工接管、自定义流程和 Codex MCP 接入。模型使用自己的 API 地址、Key 和模型名称，核心功能不需要本软件会员。
 
 ## Windows 下载
 
-[下载安装版 EXE](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.1/TandemSSH-0.1.1-x64.exe) · [下载免安装 ZIP](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.1/TandemSSH-0.1.1-x64.zip) · [发布说明与校验和](https://github.com/Zhqiankun/TandemSSH/releases/tag/v0.1.1)
+[下载安装版 EXE](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.2/TandemSSH-0.1.2-x64.exe) · [下载免安装 ZIP](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.2/TandemSSH-0.1.2-x64.zip) · [发布说明与校验和](https://github.com/Zhqiankun/TandemSSH/releases/tag/v0.1.2)
 
 安装版支持应用内更新：启动时检查，运行期间每 20 分钟检查一次；下载和重启安装由用户点击。安装包、免安装包、latest.yml、blockmap 与 SHA256SUMS.txt 均由 GitHub Actions 构建发布。源码压缩包不能直接安装。
 

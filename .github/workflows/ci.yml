@@ -55,9 +55,12 @@ jobs:
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
           $compiler = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre -property installationPath
           if (-not $compiler) { throw 'Spectre-enabled MSVC libraries are required for the native build' }
-      - name: Build Windows preview installers
+      - name: Build Windows installers
         if: github.event_name != 'pull_request'
         run: npm run build:win-installer
+      - name: Install reference Electron runtime for notice verification
+        if: github.event_name != 'pull_request'
+        run: node node_modules/electron/install.js
       - name: Verify packaged native modules
         if: github.event_name != 'pull_request'
         run: node scripts/verify-native-package.cjs
@@ -73,11 +76,11 @@ jobs:
           path: app/release/installer-validation
           retention-days: 7
           if-no-files-found: ignore
-      - name: Preserve Windows preview installers
+      - name: Preserve Windows installers
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: TandemSSH-Windows-preview
+          name: TandemSSH-Windows
           path: |
             app/release/TandemSSH-*-x64.exe
             app/release/TandemSSH-*-x64.zip
