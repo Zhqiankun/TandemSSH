@@ -1,4 +1,4 @@
-# TandemSSH v0.1.0 正式版
+# TandemSSH v0.1.1 正式版
 
 同舟 SSH 是 Windows 优先的人机协作 SSH 工作台，基于 Termix 改造。使用自己的模型 API 地址、Key 和模型名称，核心 SSH、协作和 MCP 功能不要求软件会员。
 
@@ -14,8 +14,8 @@
 
 ## 下载
 
-- TandemSSH-0.1.0-x64.exe：Windows x64 安装版。
-- TandemSSH-0.1.0-x64.zip：免安装版，完整解压后运行 TandemSSH.exe。
+- TandemSSH-0.1.1-x64.exe：Windows x64 安装版。
+- TandemSSH-0.1.1-x64.zip：免安装版，完整解压后运行 TandemSSH.exe。
 - SHA256SUMS.txt：下载文件校验值。
 - latest.yml 与 .blockmap：应用内更新使用的元数据。
 

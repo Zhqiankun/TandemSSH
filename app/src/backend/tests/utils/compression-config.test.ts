@@ -34,7 +34,7 @@ describe("createCompressionMiddleware", () => {
     configure(app);
 
     // Some Windows port ranges include service ports rejected by Fetch.
-    // Bind a high private port instead; keep the HTTP requests and assertions intact.
+    // Bind a high private port and retry Windows-reserved or occupied ports.
     for (let attempt = 0; attempt < 10; attempt++) {
       try {
         server = await new Promise<Server>((resolve, reject) => {
@@ -51,7 +51,9 @@ describe("createCompressionMiddleware", () => {
         break;
       } catch (error) {
         if (
-          (error as NodeJS.ErrnoException).code !== "EADDRINUSE" ||
+          !["EADDRINUSE", "EACCES"].includes(
+            (error as NodeJS.ErrnoException).code ?? "",
+          ) ||
           attempt === 9
         )
           throw error;
