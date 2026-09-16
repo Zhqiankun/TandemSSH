@@ -8,6 +8,9 @@ export interface AiExecutionCheckpoint {
   history: Array<
     Array<Omit<ChatMessage, "role"> & { role: "user" | "assistant" | "tool" }>
   >;
+  context?: Array<
+    Pick<ChatMessage, "role" | "content"> & { role: "user" | "assistant" }
+  >;
   question?: { id: string; text: string; answer?: string };
   interruptedModel: boolean;
 }

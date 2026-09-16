@@ -319,3 +319,39 @@ describe("damaged terminal frame handling", () => {
     },
   );
 });
+
+it("arms the terminal display only at send time and releases it on cleanup", async () => {
+  const stream = Object.assign(new EventEmitter(), { destroyed: false });
+  const display = { arm: vi.fn(), release: vi.fn() };
+  const executor = new PtyCommandExecutor(() => stream, 1000, display);
+  const prepared = await executor.prepare(
+    {
+      type: "terminal.command",
+      program: "docker",
+      args: ["ps"],
+      cwd: "/",
+    },
+    "operation",
+  );
+
+  expect(display.arm).not.toHaveBeenCalled();
+  prepared.beforeSend?.();
+  expect(display.arm).toHaveBeenCalledOnce();
+  const frame = display.arm.mock.calls[0][0];
+  expect(frame.visibleCommand).toBe("docker ps");
+  expect(frame.expectedEcho).toContain(
+    `\\033]633;Tandem;${frame.token};begin\\007`,
+  );
+
+  stream.emit(
+    "data",
+    `\x1b]633;Tandem;${frame.token};begin\x07` +
+      `\x1b]633;Tandem;${frame.token};end;0;Lw==\x07`,
+  );
+  await expect(prepared.completion).resolves.toMatchObject({
+    exitCode: 0,
+    cwd: "/",
+  });
+  prepared.dispose();
+  expect(display.release).toHaveBeenCalledWith(frame.token);
+});

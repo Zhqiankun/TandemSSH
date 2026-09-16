@@ -30,6 +30,8 @@ export const aiRecoverySchema = z
     view: z
       .object({
         id,
+        conversationId: id.optional(),
+        continuedFromRunId: id.optional(),
         taskId: id,
         sessionId: z.string().min(1).max(256),
         providerId: z.number().int().positive(),
@@ -74,6 +76,17 @@ export const aiRecoverySchema = z
       })
       .strict(),
     history: z.array(z.array(message).max(17)).max(128),
+    context: z
+      .array(
+        z
+          .object({
+            role: z.enum(["user", "assistant"]),
+            content: z.string().max(16000),
+          })
+          .strict(),
+      )
+      .max(48)
+      .optional(),
     question: z
       .object({
         id,
@@ -88,7 +101,8 @@ export const aiRecoverySchema = z
   .superRefine((v, ctx) => {
     if (
       v.view.turns > v.view.maxTurns ||
-      Buffer.byteLength(JSON.stringify(v.history)) > 256000
+      Buffer.byteLength(JSON.stringify(v.history)) > 256000 ||
+      Buffer.byteLength(JSON.stringify(v.context ?? [])) > 40000
     )
       ctx.addIssue({ code: "custom", message: "AI_RECOVERY_LIMIT" });
     if (

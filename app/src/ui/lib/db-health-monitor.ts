@@ -17,6 +17,7 @@
 type EventListener = (...args: unknown[]) => void;
 
 interface HttpLikeError {
+  name?: string;
   message?: string;
   code?: string;
   response?: {
@@ -25,6 +26,21 @@ interface HttpLikeError {
       code?: string;
     };
   };
+}
+
+/** Client-request cancellation is expected during view cleanup and refreshes. */
+export function isRequestCancellation(error: unknown): boolean {
+  const errorLike = error as HttpLikeError;
+  const message = (errorLike.message || "").trim().toLowerCase();
+
+  return (
+    errorLike.code === "ERR_CANCELED" ||
+    errorLike.code === "ABORT_ERR" ||
+    errorLike.name === "CanceledError" ||
+    errorLike.name === "AbortError" ||
+    message === "canceled" ||
+    message === "cancelled"
+  );
 }
 
 class DatabaseHealthMonitor {
@@ -70,6 +86,10 @@ class DatabaseHealthMonitor {
   }
 
   reportDatabaseError(error: unknown) {
+    if (isRequestCancellation(error)) {
+      return;
+    }
+
     const errorLike = error as HttpLikeError;
     const errorMessage =
       errorLike.response?.data?.error || errorLike.message || "";
@@ -89,7 +109,6 @@ class DatabaseHealthMonitor {
       errorCode === "ECONNABORTED" ||
       errorCode === "ECONNRESET" ||
       errorCode === "ETIMEDOUT" ||
-      errorCode === "ERR_CANCELED" ||
       (lowerMessage.includes("network error") &&
         errorLike.response === undefined) ||
       lowerMessage.includes("request aborted") ||

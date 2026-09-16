@@ -8,6 +8,7 @@ type DirectoryProbe = {
     protocolError?: boolean;
     timedOut?: boolean;
   }>;
+  beforeSend?(): void;
   dispose(): void;
 };
 const active = new WeakSet<SessionControl>();
@@ -41,6 +42,7 @@ export async function readTerminalDirectory(
       throw Error("CWD_CHANGED");
     unsubscribe = control.subscribe(() => probe?.dispose());
     const expectedInput = control.humanInputRevision() + 1;
+    probe.beforeSend?.();
     control.humanInput(probe.bytes);
     const result = await probe.completion;
     const after = control.snapshot();

@@ -1,22 +1,47 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Loader2, Send, Square } from "lucide-react";
 import { Button } from "@/components/button";
 import { aiTaskApi } from "@/api/ai-task-api";
 import type { AiTaskView } from "@/types/ai-task";
-export function AiTaskTranscript({ run }: { run: AiTaskView }) {
+import { AiMessage } from "../AiMessage";
+
+const TERMINAL_PHASES = [
+  "completed",
+  "completed-with-errors",
+  "cancelled",
+] as const;
+
+export function AiTaskTranscript({
+  run,
+  onContinue,
+}: {
+  run: AiTaskView;
+  onContinue?: (message: string) => Promise<boolean>;
+}) {
   const { t } = useTranslation();
   const nextBudget = Math.min(64, run.maxTurns + 10);
   const [draft, setDraft] = useState<{
-      runId: string;
-      questionId: string;
-      text: string;
-    }>(),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    runId: string;
+    questionId: string;
+    text: string;
+  }>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [continueDraft, setContinueDraft] = useState<{
+    runId: string;
+    text: string;
+  }>();
   const answer =
     draft?.runId === run.id && draft.questionId === run.question?.id
       ? draft.text
       : "";
+  const followUp = continueDraft?.runId === run.id ? continueDraft.text : "";
+  const canContinue =
+    !!onContinue &&
+    !run.question &&
+    TERMINAL_PHASES.includes(run.phase as (typeof TERMINAL_PHASES)[number]);
+
   async function action(work: () => Promise<unknown>) {
     setBusy(true);
     setError("");
@@ -28,42 +53,62 @@ export function AiTaskTranscript({ run }: { run: AiTaskView }) {
       setBusy(false);
     }
   }
+
+  const messages = run.messages.filter(
+    (message) =>
+      message.content.trim() ||
+      (message.role === "assistant" && message.status !== "complete"),
+  );
+
   return (
     <section className="tandem-agent-transcript">
-      <div className="flex items-center justify-between gap-2">
-        <strong>{run.providerLabel}</strong>
-        <span className="text-muted-foreground text-[10px]">{run.model}</span>
+      <div className="tandem-agent-run-header">
+        <span
+          className={
+            ["planning", "thinking", "executing"].includes(run.phase)
+              ? "tandem-status-dot active"
+              : "tandem-status-dot"
+          }
+          aria-hidden="true"
+        />
+        <strong>{t("tandem.agent.phases." + run.phase)}</strong>
       </div>
+
       {run.recoveredFrom && (
         <p className="tandem-task-help">{t("taskRecovery.aiRestored")}</p>
       )}
-      <div className="tandem-task-meta">
-        <span>{t("tandem.agent.phases." + run.phase)}</span>
-        <span>
-          {t("tandem.agent.turns", { used: run.turns, max: run.maxTurns })}
-        </span>
+
+      <div
+        className="tandem-agent-messages"
+        aria-live={run.phase === "thinking" ? "polite" : "off"}
+      >
+        {messages.map((message) => (
+          <div
+            key={message.id}
+            className={"tandem-agent-message " + message.role}
+          >
+            <AiMessage
+              role={message.role}
+              content={
+                message.content ||
+                (message.status === "streaming"
+                  ? t("tandem.agent.thinking")
+                  : t("tandem.agent.interrupted"))
+              }
+              outcome={
+                message.status === "interrupted" ? "interrupted" : undefined
+              }
+            />
+          </div>
+        ))}
+        {!messages.length && run.phase === "planning" && (
+          <div className="tandem-agent-thinking" role="status">
+            <Loader2 size={14} className="animate-spin" />
+            {t("tandem.agent.thinking")}
+          </div>
+        )}
       </div>
-      <div className="tandem-agent-messages">
-        {run.messages
-          .filter(
-            (message) =>
-              message.role === "assistant" &&
-              (message.content.trim() || message.status !== "complete"),
-          )
-          .map((message) => (
-            <div key={message.id} className="tandem-agent-message">
-              <p>
-                {message.content ||
-                  (message.status === "streaming"
-                    ? t("tandem.agent.thinking")
-                    : t("tandem.agent.interrupted"))}
-              </p>
-              {message.status === "interrupted" && !!message.content && (
-                <small>{t("tandem.agent.interrupted")}</small>
-              )}
-            </div>
-          ))}
-      </div>
+
       {run.error && (
         <p role="alert" className="tandem-task-error">
           {t("tandem.agent.errors." + run.error, {
@@ -76,26 +121,29 @@ export function AiTaskTranscript({ run }: { run: AiTaskView }) {
           {error}
         </p>
       )}
+
       {run.question && (
-        <form
-          className="tandem-authorization"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void action(async () => {
-              await aiTaskApi.reply(run.id, run.question!.id, answer);
-              setDraft((current) =>
-                current?.runId === run.id &&
-                current.questionId === run.question!.id &&
-                current.text === answer
-                  ? undefined
-                  : current,
-              );
-            });
-          }}
-        >
-          <label>
-            {run.question.text}
+        <div className="tandem-agent-question">
+          <form
+            className="tandem-ai-input-shell tandem-agent-reply"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const sentAnswer = answer;
+              if (!sentAnswer.trim()) return;
+              void action(async () => {
+                await aiTaskApi.reply(run.id, run.question!.id, sentAnswer);
+                setDraft((current) =>
+                  current?.runId === run.id &&
+                  current.questionId === run.question!.id &&
+                  current.text === sentAnswer
+                    ? undefined
+                    : current,
+                );
+              });
+            }}
+          >
             <textarea
+              aria-label={run.question.text}
               value={answer}
               onChange={(event) =>
                 setDraft({
@@ -104,38 +152,129 @@ export function AiTaskTranscript({ run }: { run: AiTaskView }) {
                   text: event.target.value,
                 })
               }
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  !event.nativeEvent.isComposing
+                ) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
               required
               maxLength={8000}
               rows={3}
             />
-          </label>
-          <Button type="submit" disabled={busy || !answer.trim()}>
-            {t("tandem.agent.reply")}
-          </Button>
+            <div className="tandem-ai-input-footer">
+              <span>{t("tandem.agent.enterHint")}</span>
+              <Button
+                type="submit"
+                size="icon"
+                disabled={busy || !answer.trim()}
+                aria-label={t("tandem.agent.reply")}
+              >
+                {busy ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Send size={14} />
+                )}
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {canContinue && (
+        <form
+          className="tandem-ai-input-shell tandem-agent-reply tandem-agent-continuation"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const sentMessage = followUp;
+            if (!sentMessage.trim()) return;
+            void (async () => {
+              let continued = false;
+              await action(async () => {
+                continued = await onContinue!(sentMessage.trim());
+                if (!continued) throw Error("CONTINUE_FAILED");
+              });
+              if (continued)
+                setContinueDraft((current) =>
+                  current?.runId === run.id && current.text === sentMessage
+                    ? undefined
+                    : current,
+                );
+            })();
+          }}
+        >
+          <textarea
+            aria-label={t("tandem.agent.continueMessage")}
+            value={followUp}
+            onChange={(event) =>
+              setContinueDraft({ runId: run.id, text: event.target.value })
+            }
+            onKeyDown={(event) => {
+              if (
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing
+              ) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+            disabled={busy}
+            required
+            maxLength={8000}
+            rows={3}
+            placeholder={t("tandem.agent.continueHint")}
+            autoFocus
+          />
+          <div className="tandem-ai-input-footer">
+            <span>{t("tandem.agent.enterHint")}</span>
+            <Button
+              type="submit"
+              size="icon"
+              disabled={busy || !followUp.trim()}
+              aria-label={t("tandem.agent.continueSend")}
+            >
+              {busy ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Send size={14} />
+              )}
+            </Button>
+          </div>
         </form>
       )}
-      {run.error === "MODEL_BUDGET_EXCEEDED" && run.maxTurns < 64 && (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={() =>
-            void action(() => aiTaskApi.budget(run.id, nextBudget))
-          }
-        >
-          {t("tandem.agent.addBudget", { count: nextBudget - run.maxTurns })}
-        </Button>
-      )}
-      {!["completed", "cancelled"].includes(run.phase) && (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={() => void action(() => aiTaskApi.stop(run.id))}
-        >
-          {t("tandem.agent.stop")}
-        </Button>
-      )}
+
+      <div className="tandem-agent-actions">
+        {run.error === "MODEL_BUDGET_EXCEEDED" && run.maxTurns < 64 && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() =>
+              void action(() => aiTaskApi.budget(run.id, nextBudget))
+            }
+          >
+            {t("tandem.agent.addBudget", { count: nextBudget - run.maxTurns })}
+          </Button>
+        )}
+        {!TERMINAL_PHASES.includes(
+          run.phase as (typeof TERMINAL_PHASES)[number],
+        ) && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => void action(() => aiTaskApi.stop(run.id))}
+          >
+            <Square size={12} />
+            {t("tandem.agent.stop")}
+          </Button>
+        )}
+      </div>
     </section>
   );
 }

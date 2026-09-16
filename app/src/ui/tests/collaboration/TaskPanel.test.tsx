@@ -12,6 +12,13 @@ import {
 } from "../../../backend/collaboration/tasks/runtime";
 import { SessionControl } from "../../../backend/collaboration/sessions/control";
 import i18n from "../../i18n/i18n";
+import type { AiTaskView } from "../../../types/ai-task";
+const agentApi = vi.hoisted(() => ({
+  create: vi.fn(),
+  budget: vi.fn(),
+  stop: vi.fn(),
+  reply: vi.fn(),
+}));
 const api = vi.hoisted(() => ({
   snapshot: vi.fn(),
   taskPage: vi.fn(),
@@ -24,6 +31,7 @@ const api = vi.hoisted(() => ({
   interrupt: vi.fn(),
   takeover: vi.fn(),
 }));
+vi.mock("@/api/ai-task-api", () => ({ aiTaskApi: agentApi }));
 vi.mock("@/api/collaboration-api", () => ({
   collaborationApi: api,
   collaborationErrorCode: () => "STALE_CONTROL",
@@ -34,10 +42,14 @@ vi.mock("@/api/directory-transfer-api", () => ({
   },
 }));
 vi.mock("@/features/mcp/McpSettings", () => ({ McpSettings: () => null }));
+vi.mock("@/features/ai/tasks/AiTaskComposer", () => ({
+  AiTaskComposer: () => <div>AI 对话输入</div>,
+}));
 import { TaskPanel } from "../../features/collaboration/TaskPanel";
 let runtime: TaskRuntime, control: SessionControl;
 const actor: TaskActor = { kind: "human", userId: "test-user" };
 let writes: string[];
+let agentRuns: AiTaskView[];
 let failCompletionAudit = false;
 let incompleteCommandOutput = false;
 let heldCommand:
@@ -48,8 +60,12 @@ let heldCommand:
   | undefined;
 beforeEach(async () => {
   vi.clearAllMocks();
+  agentApi.budget.mockResolvedValue({});
+  agentApi.stop.mockResolvedValue({});
+  agentApi.reply.mockResolvedValue({});
   await i18n.changeLanguage("zh-CN");
   writes = [];
+  agentRuns = [];
   failCompletionAudit = false;
   incompleteCommandOutput = false;
   heldCommand = undefined;
@@ -104,9 +120,13 @@ beforeEach(async () => {
   runtime = new TaskRuntime({
     getSession: () => session,
     policy: async () => ({ revision: 1, sets: [] }),
-    audit: () => ({ append: async (event) => {
-      if (failCompletionAudit && event.type === "operation.completed") throw Error("AUDIT_UNAVAILABLE");
-    }, record: async () => {} }),
+    audit: () => ({
+      append: async (event) => {
+        if (failCompletionAudit && event.type === "operation.completed")
+          throw Error("AUDIT_UNAVAILABLE");
+      },
+      record: async () => {},
+    }),
   });
   api.snapshot.mockImplementation(async () => ({
     tasks: runtime.list(actor),
@@ -118,6 +138,7 @@ beforeEach(async () => {
       control: control.snapshot(),
     },
     policy: { revision: 1, sets: [] },
+    agents: agentRuns,
   }));
   api.archive.mockImplementation((id, ids) =>
     runtime.archive(actor, id, async () => {}, ids),
@@ -152,6 +173,13 @@ afterEach(() => {
 async function createPlan(automatic = false) {
   render(<TaskPanel sessionId="session" onClose={() => {}} />);
   await screen.findByText("你持有控制权");
+  fireEvent.click(screen.getByRole("button", { name: "命令流程" }));
+  fireEvent.change(
+    screen.getByRole("textbox", {
+      name: i18n.t("tandem.collaboration.commandPlan"),
+    }),
+    { target: { value: "pwd\ndf -h\nuptime" } },
+  );
   if (automatic)
     fireEvent.click(screen.getByRole("radio", { name: /自动执行/ }));
   fireEvent.click(screen.getByRole("button", { name: "检查计划与授权" }));
@@ -164,6 +192,92 @@ function authorize() {
   fireEvent.click(screen.getByRole("button", { name: "授权并交还控制权" }));
 }
 describe("Chinese workbench wired to the actual task runtime", () => {
+  it("opens with the AI conversation as the default task entry", async () => {
+    render(<TaskPanel sessionId="session" onClose={() => {}} />);
+
+    await screen.findByText("你持有控制权");
+    expect(await screen.findByText("AI 对话输入")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "AI 对话" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("keeps a failed assistant task chat-first without a generic next-step heading", async () => {
+    const taskActor: TaskActor = {
+      kind: "agent",
+      userId: "test-user",
+      agentRunId: "assistant-run",
+    };
+    const created = await runtime.create(taskActor, {
+      sessionId: "session",
+      requestId: "assistant-task",
+      title: "帮我查一下 Docker 都跑了什么服务",
+      mode: "collaborative",
+      source: "assistant",
+    });
+    runtime.suspend(taskActor, created.id, "COMMAND_FAILED");
+    agentRuns = [
+      {
+        id: "assistant-run",
+        taskId: created.id,
+        sessionId: "session",
+        providerId: 1,
+        providerLabel: "我的模型",
+        model: "custom",
+        goal: created.title,
+        mode: "collaborative",
+        phase: "paused-error",
+        turns: 2,
+        maxTurns: 10,
+        messages: [
+          {
+            id: "user-message",
+            role: "user",
+            content: created.title,
+            status: "complete",
+          },
+          {
+            id: "assistant-message",
+            role: "assistant",
+            content: "查询失败：当前 SSH 用户没有 Docker 权限。",
+            status: "complete",
+          },
+        ],
+        createdAt: 0,
+      },
+    ];
+
+    render(
+      <TaskPanel
+        sessionId="session"
+        focusTaskId={created.id}
+        onClose={() => {}}
+      />,
+    );
+
+    await screen.findByText("查询失败：当前 SSH 用户没有 Docker 权限。");
+    expect(
+      screen.getByRole("heading", { level: 3, name: "AI 对话" }).textContent,
+    ).toBe("AI 对话");
+    expect(screen.queryByText("下一步")).toBeNull();
+    expect(screen.getByText("允许本次诊断")).toBeTruthy();
+
+    const executionDetails = screen
+      .getByText("执行详情")
+      .closest("details") as HTMLDetailsElement;
+    const settings = screen
+      .getByText("工具与设置")
+      .closest("details") as HTMLDetailsElement;
+    expect(executionDetails.open).toBe(false);
+    expect(settings.open).toBe(false);
+
+    fireEvent.click(screen.getByText("执行详情"));
+    expect(executionDetails.open).toBe(true);
+    expect(screen.getByText(/我的模型/)).toBeTruthy();
+  });
+
   it("requires the shell acknowledgment then approves and shows each real service step", async () => {
     await createPlan();
     expect(
@@ -621,29 +735,167 @@ it("requires Chinese human confirmation before archiving unknown cancelled comma
   }
 });
 
-it.each([false, true])("shows an audit gap and stops following steps with automatic=%s", async (automatic) => {
-  failCompletionAudit = true;
-  await createPlan(automatic);
-  authorize();
-  if (!automatic) fireEvent.click(await screen.findByRole("button", { name: "确认执行这一条" }));
-  const message = i18n.t("tandem.collaboration.errors.AUDIT_UNAVAILABLE");
-  await waitFor(() => expect(screen.getAllByRole("alert").some(node => node.textContent?.includes(message))).toBe(true));
-  expect(writes).toEqual(["context", "pwd"]);
-  expect(control.snapshot().controller.kind).toBe("human");
-  expect(runtime.list(actor)[0].operations[0]).toMatchObject({ status: "succeeded", auditGap: true });
-  expect(screen.queryByRole("button", { name: "确认执行这一条" })).toBeNull();
-  control.humanInput(Uint8Array.from(Buffer.from("manual")));
-  expect(writes).toEqual(["context", "pwd", "manual"]);
-});
+it.each([false, true])(
+  "shows an audit gap and stops following steps with automatic=%s",
+  async (automatic) => {
+    failCompletionAudit = true;
+    await createPlan(automatic);
+    authorize();
+    if (!automatic)
+      fireEvent.click(
+        await screen.findByRole("button", { name: "确认执行这一条" }),
+      );
+    const message = i18n.t("tandem.collaboration.errors.AUDIT_UNAVAILABLE");
+    await waitFor(() =>
+      expect(
+        screen
+          .getAllByRole("alert")
+          .some((node) => node.textContent?.includes(message)),
+      ).toBe(true),
+    );
+    expect(writes).toEqual(["context", "pwd"]);
+    expect(control.snapshot().controller.kind).toBe("human");
+    expect(runtime.list(actor)[0].operations[0]).toMatchObject({
+      status: "succeeded",
+      auditGap: true,
+    });
+    expect(screen.queryByRole("button", { name: "确认执行这一条" })).toBeNull();
+    control.humanInput(Uint8Array.from(Buffer.from("manual")));
+    expect(writes).toEqual(["context", "pwd", "manual"]);
+  },
+);
 
-it.each([false, true])("shows incomplete command output and pauses with automatic=%s", async (automatic) => {
-  incompleteCommandOutput = true;
-  await createPlan(automatic);
-  authorize();
-  if (!automatic) fireEvent.click(await screen.findByRole("button", { name: "确认执行这一条" }));
-  const message = i18n.t("tandem.collaboration.errors.COMMAND_OUTPUT_INCOMPLETE");
-  await waitFor(() => expect(document.body.textContent).toContain(message));
-  expect(writes).toEqual(["context", "pwd"]);
-  expect(control.snapshot().controller.kind).toBe("human");
-  expect(runtime.list(actor)[0].operations[0]).toMatchObject({ status: "unknown", exitCode: 0, outputTruncated: true, error: "COMMAND_OUTPUT_INCOMPLETE" });
+it.each([false, true])(
+  "shows incomplete command output and pauses with automatic=%s",
+  async (automatic) => {
+    incompleteCommandOutput = true;
+    await createPlan(automatic);
+    authorize();
+    if (!automatic)
+      fireEvent.click(
+        await screen.findByRole("button", { name: "确认执行这一条" }),
+      );
+    const message = i18n.t(
+      "tandem.collaboration.errors.COMMAND_OUTPUT_INCOMPLETE",
+    );
+    await waitFor(() => expect(document.body.textContent).toContain(message));
+    expect(writes).toEqual(["context", "pwd"]);
+    expect(control.snapshot().controller.kind).toBe("human");
+    expect(runtime.list(actor)[0].operations[0]).toMatchObject({
+      status: "unknown",
+      exitCode: 0,
+      outputTruncated: true,
+      error: "COMMAND_OUTPUT_INCOMPLETE",
+    });
+  },
+);
+it("starts the next audited task from the completed chat input", async () => {
+  const firstActor: TaskActor = {
+    kind: "agent",
+    userId: "test-user",
+    agentRunId: "first-run",
+  };
+  const firstTask = await runtime.create(firstActor, {
+    sessionId: "session",
+    requestId: "first-task",
+    title: "查看 Docker 服务",
+    mode: "collaborative",
+    source: "assistant",
+  });
+  runtime.cancel(firstActor, firstTask.id);
+  const firstRun: AiTaskView = {
+    id: "first-run",
+    conversationId: "first-run",
+    taskId: firstTask.id,
+    sessionId: "session",
+    providerId: 7,
+    providerLabel: "我的模型",
+    model: "agent-model",
+    goal: firstTask.title,
+    mode: "collaborative",
+    phase: "completed",
+    turns: 3,
+    maxTurns: 20,
+    messages: [
+      {
+        id: "first-user",
+        role: "user",
+        content: firstTask.title,
+        status: "complete",
+      },
+      {
+        id: "first-assistant",
+        role: "assistant",
+        content: "当前运行 3 个容器。",
+        status: "complete",
+      },
+    ],
+    createdAt: 1,
+  };
+  agentRuns = [firstRun];
+  agentApi.create.mockImplementation(async (input) => {
+    const nextActor: TaskActor = {
+      kind: "agent",
+      userId: "test-user",
+      agentRunId: "next-run",
+    };
+    const nextTask = await runtime.create(nextActor, {
+      sessionId: input.sessionId,
+      requestId: input.requestId,
+      title: input.goal,
+      mode: input.mode,
+      source: "assistant",
+    });
+    agentRuns = [
+      firstRun,
+      {
+        ...firstRun,
+        id: "next-run",
+        taskId: nextTask.id,
+        goal: input.goal,
+        phase: "planning",
+        continuedFromRunId: firstRun.id,
+        messages: [
+          ...firstRun.messages,
+          {
+            id: "next-user",
+            role: "user",
+            content: input.goal,
+            status: "complete",
+          },
+        ],
+        createdAt: 2,
+      },
+    ];
+    return { task: nextTask, run: agentRuns[1] };
+  });
+
+  render(
+    <TaskPanel
+      sessionId="session"
+      focusTaskId={firstTask.id}
+      onClose={() => {}}
+    />,
+  );
+  await screen.findByText("当前运行 3 个容器。");
+
+  fireEvent.change(screen.getByRole("textbox", { name: "继续对话" }), {
+    target: { value: "再查一下这些容器的端口" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+  await waitFor(() =>
+    expect(agentApi.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session",
+        providerId: 7,
+        model: "agent-model",
+        goal: "再查一下这些容器的端口",
+        mode: "collaborative",
+        maxTurns: 20,
+        autoAuthorizeReadOnly: true,
+        continueFromRunId: "first-run",
+      }),
+    ),
+  );
 });

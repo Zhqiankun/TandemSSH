@@ -746,6 +746,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
             const executor = new PtyCommandExecutor(
               () => session.sshStream,
               15000,
+              sessionManager.commandDisplay(session.id),
             );
             const cwd = await readTerminalDirectory(
               session.control,
@@ -2255,13 +2256,8 @@ wss.on("connection", async (ws: WebSocket, req) => {
               if (!utf8String) return;
 
               const session = sessionManager.getSession(boundSessionId);
-              if (session) {
-                sessionManager.bufferOutput(boundSessionId!, utf8String);
-                sessionManager.broadcast(boundSessionId!, {
-                  type: "data",
-                  data: utf8String,
-                });
-              }
+              if (session)
+                sessionManager.receiveOutput(boundSessionId!, utf8String);
             } catch (error) {
               sshLogger.error("Error encoding terminal data", error, {
                 operation: "terminal_data_encoding",
@@ -2270,13 +2266,8 @@ wss.on("connection", async (ws: WebSocket, req) => {
               });
               const fallback = data.toString("latin1");
               const session = sessionManager.getSession(boundSessionId);
-              if (session) {
-                sessionManager.bufferOutput(boundSessionId!, fallback);
-                sessionManager.broadcast(boundSessionId!, {
-                  type: "data",
-                  data: fallback,
-                });
-              }
+              if (session)
+                sessionManager.receiveOutput(boundSessionId!, fallback);
             }
           });
 

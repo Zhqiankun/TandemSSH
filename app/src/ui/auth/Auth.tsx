@@ -284,15 +284,11 @@ export function Auth({ onLogin }: AuthProps) {
   // when running standalone -- the embedded backend auto-provisions a
   // single local user on first boot, and this component silently exchanges
   // that for a session instead of rendering login/register.
-  // null = probe still in flight (Electron only, blocks rendering below).
-  // true = probe settled with no auto-login (not applicable outside
-  // Electron, multiple users exist, or setup is genuinely required) --
-  // safe to fall through to the normal form/health-check flow.
-  // Auto-login success never sets this; it calls onLogin directly and this
-  // component unmounts.
-  const [desktopAutoSessionDone, setDesktopAutoSessionDone] = useState<
-    boolean | null
-  >(!isElectron() || isInElectronWebView() ? true : null);
+  // null keeps a standalone desktop window on its startup screen until
+  // auto-session succeeds. Browser and embedded authentication views retain
+  // the upstream account flow.
+  const desktopAutoSessionDone: boolean | null =
+    !isElectron() || isInElectronWebView() ? true : null;
   const [desktopAutoSessionRetries, setDesktopAutoSessionRetries] = useState(0);
 
   useEffect(() => {
@@ -443,14 +439,13 @@ export function Auth({ onLogin }: AuthProps) {
           );
           return;
         }
-        if (outcome.kind === "retry") {
-          const delay = Math.min(1000 * 2 ** desktopAutoSessionRetries, 10000);
-          retryTimer = setTimeout(() => {
-            if (!cancelled) setDesktopAutoSessionRetries((c) => c + 1);
-          }, delay);
-          return;
-        }
-        setDesktopAutoSessionDone(true);
+        // A standalone desktop window has no account workflow. Even a
+        // definitive decline means local provisioning has not settled yet, so
+        // keep the startup screen and retry instead of exposing login/register.
+        const delay = Math.min(1000 * 2 ** desktopAutoSessionRetries, 10000);
+        retryTimer = setTimeout(() => {
+          if (!cancelled) setDesktopAutoSessionRetries((count) => count + 1);
+        }, delay);
       })
       .catch(() => {
         if (cancelled) return;

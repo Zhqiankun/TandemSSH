@@ -892,3 +892,47 @@ it("rejects unrepresentable input before SSH writes while manual takeover still 
     sessionManager.destroySession(id);
   }
 });
+
+it("removes private automation framing before terminal broadcast and history", () => {
+  const id = sessionManager.createSession(
+      "display-owner",
+      1,
+      "fixture",
+      80,
+      24,
+    ),
+    ws = makeFakeWs(),
+    stream = { write: vi.fn(), end: vi.fn(), destroyed: false },
+    token = "c".repeat(32),
+    expectedEcho = `if command printf '\\033]633;Tandem;${token};begin\\007'; then internal; fi`,
+    begin = `\x1b]633;Tandem;${token};begin\x07`,
+    end = `\x1b]633;Tandem;${token};end;0;L3Nydg==\x07`;
+  try {
+    sessionManager.setSSHState(id, { end: vi.fn() } as never, stream as never);
+    sessionManager.attachWs(id, "display-owner", ws);
+    sessionManager.commandDisplay(id).arm({
+      token,
+      expectedEcho,
+      visibleCommand: "docker ps",
+    });
+
+    sessionManager.receiveOutput(
+      id,
+      expectedEcho + "\r\n" + begin + "api\r\n" + end + "owner@host:/srv$ ",
+    );
+
+    const visible = "docker ps\r\napi\r\nowner@host:/srv$ ";
+    expect(ws.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "data", data: visible }),
+      expect.any(Function),
+    );
+    const history = sessionManager.getOutputSnapshot(
+      sessionManager.getSession(id)!,
+    ).text;
+    expect(history).toBe(visible);
+    expect(history).not.toContain("__tandem_");
+    expect(history).not.toContain("633;Tandem");
+  } finally {
+    sessionManager.destroySession(id);
+  }
+});

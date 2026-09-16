@@ -19,6 +19,8 @@ export interface AiTaskMessage {
 }
 export interface AiTaskView {
   recoveredFrom?: { runId: string; taskId: string };
+  conversationId?: string;
+  continuedFromRunId?: string;
   id: string;
   taskId: string;
   sessionId: string;
@@ -43,4 +45,6 @@ export interface CreateAiTask {
   goal: string;
   mode: TaskMode;
   maxTurns: number;
+  autoAuthorizeReadOnly?: boolean;
+  continueFromRunId?: string;
 }

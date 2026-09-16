@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { isReadOnlyCommand } from "../../ai/tools/command-allowlist.js";
+import {
+  isReadOnlyCommand,
+  isReadOnlyCommandAction,
+} from "../../collaboration/policies/read-only-command.js";
 
 /**
  * These commands can run without a per-command approval click, so the parser
@@ -60,8 +63,19 @@ describe("isReadOnlyCommand", () => {
 
     expect(isReadOnlyCommand("docker ps").allowed).toBe(true);
     expect(isReadOnlyCommand("docker stats --no-stream").allowed).toBe(true);
+    expect(isReadOnlyCommand("docker stats").allowed).toBe(false);
+    expect(isReadOnlyCommand("docker logs -f web").allowed).toBe(false);
     expect(isReadOnlyCommand("docker rm -f web").allowed).toBe(false);
     expect(isReadOnlyCommand("docker exec -it web sh").allowed).toBe(false);
+  });
+
+  it("accepts structured Docker inspection argv without treating arguments as shell", () => {
+    expect(
+      isReadOnlyCommandAction({
+        program: "docker",
+        args: ["ps", "--format", "{{.Names}}\t{{.Status}}"],
+      }).allowed,
+    ).toBe(true);
   });
 
   it("limits cat to safe paths", () => {

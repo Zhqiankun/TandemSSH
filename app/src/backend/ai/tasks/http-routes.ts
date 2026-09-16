@@ -52,6 +52,8 @@ router.post(
           goal: z.string().min(1).max(8000),
           mode: z.enum(["collaborative", "automatic"]),
           maxTurns: z.number().int().min(2).max(64).default(20),
+          autoAuthorizeReadOnly: z.boolean().optional().default(false),
+          continueFromRunId: id.optional(),
         })
         .strict()
         .parse(req.body),

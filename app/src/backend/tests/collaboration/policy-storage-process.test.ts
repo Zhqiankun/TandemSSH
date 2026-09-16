@@ -22,6 +22,7 @@ it("persists policy through the real encrypted desktop database across processes
           env: {
             ...process.env,
             DATA_DIR: directory,
+            ALLOW_EMPTY_DATA_DIR: "true",
             DATABASE_DIALECT: "sqlite",
             DB_FILE_ENCRYPTION: "true",
             DATABASE_KEY: key,

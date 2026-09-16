@@ -2,6 +2,7 @@ import { fetchBoundedResponse } from "./response-budget.js";
 import { fetchWithProxy } from "../../utils/proxy-agent.js";
 import { safeOutboundFetch } from "../../utils/safe-outbound-fetch.js";
 import { evaluateEgress, readPrivateAllowlist } from "../egress.js";
+import { runtimePolicy } from "../../runtime/policy.js";
 import { AiProviderError } from "./types.js";
 
 /**
@@ -31,7 +32,11 @@ export async function providerFetch(
 
   return fetchBoundedResponse(
     (target, options) =>
-      safeOutboundFetch(target, options) as unknown as Promise<Response>,
+      safeOutboundFetch(target, options, {
+        // Transparent desktop proxies may use 198.18.0.0/15 for DNS answers.
+        // Literal addresses and server-mode destinations remain blocked.
+        allowProxyFakeIp: runtimePolicy.desktop,
+      }) as unknown as Promise<Response>,
     url,
     init,
   );

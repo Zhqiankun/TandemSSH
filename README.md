@@ -2,11 +2,15 @@
 
 一个面向人机协同的开源 SSH 桌面客户端：人和 AI 共用终端，执行过程可见，控制权随时可收回。
 
-**Windows x64 · v0.1.2 正式版 · 默认简体中文。** 支持 SSH/SFTP、在线编辑、自动执行与人机协作、随时人工接管、自定义流程和 Codex MCP 接入。模型使用自己的 API 地址、Key 和模型名称，核心功能不需要本软件会员。
+**Windows x64 · v0.2.0 正式版 · 默认简体中文。** 支持 SSH/SFTP、在线编辑、连续 AI 对话与自动执行、随时人工接管、自定义流程和 Codex MCP 接入。模型使用自己的 API 地址、Key 和模型名称，核心功能不需要本软件会员。
+
+## 使用手册
+
+第一次使用请先看[中文操作手册](docs/00-user-guide.md)：连接服务器、配置 AI、接管、命令流程、黑白名单、文件操作和新增功能说明。
 
 ## Windows 下载
 
-[下载安装版 EXE](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.2/TandemSSH-0.1.2-x64.exe) · [下载免安装 ZIP](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.1.2/TandemSSH-0.1.2-x64.zip) · [发布说明与校验和](https://github.com/Zhqiankun/TandemSSH/releases/tag/v0.1.2)
+[下载安装版 EXE](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.2.0/TandemSSH-0.2.0-x64.exe) · [下载免安装 ZIP](https://github.com/Zhqiankun/TandemSSH/releases/download/v0.2.0/TandemSSH-0.2.0-x64.zip) · [发布说明与校验和](https://github.com/Zhqiankun/TandemSSH/releases/tag/v0.2.0)
 
 安装版支持应用内更新：启动时检查，运行期间每 20 分钟检查一次；下载和重启安装由用户点击。安装包、免安装包、latest.yml、blockmap 与 SHA256SUMS.txt 均由 GitHub Actions 构建发布。源码压缩包不能直接安装。
 
@@ -35,92 +39,92 @@
 
 ## 文档导航
 
-| 文档 | 回答的问题 |
-| --- | --- |
-| [产品需求](docs/01-product.md) | 做给谁用、首版做什么、怎样算完成 |
-| [界面与协作流程](docs/02-experience.md) | 如何连接、协同、接管、交还、查看执行记录 |
-| [系统架构](docs/03-architecture.md) | 模块责任、依赖方向、技术选型和存储边界 |
-| [会话与接口契约](docs/04-contracts.md) | 控制权、状态机、事件、错误与并发语义 |
-| [策略与安全设计](docs/05-security-policy.md) | 黑白名单如何生效、凭据如何保护、风险在哪里 |
-| [交付与验收计划](docs/06-delivery.md) | 实施顺序、验证场景、发布门槛 |
-| [决策与参考来源](docs/07-decisions.md) | 哪些已确认、哪些待定、参考了什么、如何开源 |
-| [自定义命令流程](docs/08-workflows.md) | 如何把“先做 A、再做 B”保存、运行和导出 |
-| [基础 SSH 与文件工作台](docs/09-base-features.md) | 基础功能有哪些、在线编辑与上传下载如何保证结果明确 |
-| [开源底座评估](docs/10-open-source-base.md) | 能复用什么、主候选与备选、如何验证和保留许可来源 |
-| [M0 Windows 验证与改造入口](docs/11-m0-validation.md) | 原始底座构建/启动基线与改造依据 |
-| [实施与汉化记录](docs/12-implementation.md) | 当前代码、中文界面、测试结果和未完成工作 |
-| [MCP 接入与验证](docs/13-mcp.md) | 配对、Codex 配置、当前工具与实际验证边界 |
-| [内置 AI 与共享终端](docs/14-built-in-ai.md) | 自带模型接口、规划、执行、问答、接管与验证 |
-| [保存流程实施说明](docs/15-saved-workflows.md) | 已保存定义、参数、预览和执行语义的实现与剩余工作 |
-| [AI/MCP 调用保存流程](docs/16-ai-mcp-workflows.md) | 独立流程与父任务复用、授权边界和实际验证 |
-| [带版本的文件编辑](docs/17-file-documents.md) | 草稿、冲突保存、编码和人工接管的实现与专项验证 |
-| [文件动作网关与路径授权](docs/18-file-operation-gateway.md) | 文件/命令共用队列、独立路径权限与中文配置；工具接入状态 |
-| [AI/MCP 文件工具](docs/19-ai-mcp-files.md) | 正式 SSH/SFTP 接入、文件修改与人工审阅 |
-| [旧快捷命令与宏迁移](docs/20-legacy-command-migration.md) | 模式选择、待授权任务、参数绑定与旧自动化执行边界 |
-| [目录与文件属性查询](docs/21-file-inspection.md) | 24 项 MCP 工具、目录分页、子项规则、链接属性与验证 |
-| [分块上传与队列](docs/22-upload-transfers.md) | 手工上传预览、校验、暂停恢复、身份绑定与实际验证 |
-| [SSH 主机信任](docs/23-host-trust.md) | 首次人工核对、密钥变化拒绝、持久化与桌面验证 |
-| [下载与原生落盘](docs/24-download-transfers.md) | 来源版本、分块传输、本地临时文件、暂停恢复与校验 |
-| [GitHub 与在线更新](docs/25-github-releases.md) | 更新按钮、固定发行源、Actions 与版本发布 |
-| [目录批量传输](docs/26-directory-transfers.md) | 来源集合、目标预览、目录创建与批次队列接入进度 |
-| [目录上传批次](docs/27-directory-uploads.md) | 目录上传中文预览、原生来源、批次队列及验证 |
-| [AI/MCP 文件传输](docs/28-automated-transfers.md) | 二进制执行核心、本地授权边界与文件流程接入计划 |
-| [任务本地文件授权](docs/29-local-file-grants.md) | 中文来源/目标选择、私有进程通道、任务授权与撤销验证 |
-| [AI/MCP 传输工具](docs/30-transfer-tools.md) | 29 项 MCP 工具、内置 AI 文件传输与真实桌面自动/协同验证 |
-| [保存流程中的文件步骤](docs/31-workflow-files.md) | 混合步骤、中文本地文件绑定、父任务预算与恢复验证 |
-| [终端可靠性记录](docs/32-terminal-reliability.md) | 损坏标记与核对超时处理、实际桌面正负向验证及兼容风险 |
-| [任务目录传输接入](docs/33-task-directory-transfers.md) | 原生目录授权、逐次 I/O 检查与 AI/MCP 目录工具接线进度 |
-| [目录批次与模型工具](docs/34-directory-task-adapters.md) | 逐项任务执行、AI/MCP 目录工具、验证证据与剩余中文桌面接线 |
-| [中文目录工作台](docs/35-directory-workbench.md) | 目录任务创建、分页审核、逐项审批、实际桌面与 Codex 验证 |
-| [目录保存流程](docs/36-workflow-directory-steps.md) | v3 目录槽位、冲突策略、父任务游标与实际桌面双模式验证 |
-| [任务历史与归档](docs/37-task-history-and-retention.md) | 操作分页、重启后脱敏历史、已结束任务资源释放与验证 |
-| [本机加密文件草稿](docs/38-encrypted-file-drafts.md) | 加密快照、重启后三份内容审阅、人工恢复与实际桌面验证 |
-| [下载重启恢复](docs/39-download-recovery.md) | 加密检查点、中文恢复清单、重新确认与真实应用重启/中断验收 |
-| [上传重启恢复](docs/40-upload-recovery.md) | 加密检查点、中文恢复入口、来源重新选择与实际桌面重启/中断验收 |
-| [目录重启恢复](docs/41-directory-recovery.md) | 上传批次中文恢复、加密记录与实际重启/中断验收；下载和任务恢复继续实施 |
-| [下载批次恢复](docs/42-download-batch-recovery.md) | 中文整批保存/恢复、逐项核对与真实 Windows 重启/中断续传 |
-| [任务执行恢复](docs/43-task-execution-recovery.md) | 中文独立流程/MCP 检查点、重新授权与真实双模式重启验证 |
-| [内置 AI 恢复](docs/44-ai-task-recovery.md) | 对话、问题、预算和模型配置绑定，真实双模式重启验证 |
-| [父任务流程恢复](docs/45-parent-workflow-recovery.md) | AI/MCP 自动与协作模式，原流程快照、结果继承和父任务继续 |
-| [在线更新验收](docs/46-online-update-acceptance.md) | 真实下载校验、跨版本安装验收与当前失败证据 |
-| [任务目录恢复](docs/47-task-directory-recovery.md) | 上传目录条目边界、原来源重新授权与真实双模式重启验证 |
-| [任务下载目录恢复](docs/48-task-download-directory-recovery.md) | 固定来源、本地完成收据、异步快照与双模式重启验证 |
-| [隧道身份与生命周期](docs/49-tunnel-trust-and-lifecycle.md) | 源/端点信任、认证前阻断、真实转发与资源释放 |
-| [配置备份与恢复](docs/54-configuration-backup.md) | 中文预览确认、凭据重新配置、流程绑定与实际重启验证 |
-| [应用设置备份](docs/55-application-settings-backup.md) | 外观、界面偏好与快捷键的独立恢复、审阅和重启验证 |
-| [真实 Linux 验收](docs/56-linux-ssh-acceptance.md) | Alpine 实机、Windows/MCP 自动与协作、权限和磁盘失败验证 |
-| [终端回复与接管](docs/57-terminal-protocol-replies.md) | 自动光标回复不再误触发人工接管，保留真实人工输入的控制权 |
-| [本地/远端双面板](docs/58-local-remote-file-panels.md) | 中文本机浏览、双向传输预览、覆盖审批和真实桌面文件验证 |
-| [Windows 文件属性](docs/59-windows-file-attributes.md) | 隐藏/系统项、只读属性、取消读取和打包后的真实桌面验证 |
-| [SSH 交互认证](docs/60-keyboard-interactive-auth.md) | 终端多字段/多轮提示、原样回复、取消隔离与认证后的双模式验收 |
-| [文件交互认证](docs/61-file-interactive-auth.md) | SFTP 多轮提示、取消和人工重连、共享认证边界与真实文件传输验证 |
-| [跳板机交互认证](docs/62-jump-interactive-auth.md) | 各跳独立提示、整链取消、中文终端/SFTP 接线与真实传输验证 |
-| [监控交互认证](docs/63-monitoring-interactive-auth.md) | 中文多轮登录、取消/人工重连、认证连接复用和真实 Linux 卡片验证 |
-| [跳板机组合验收](docs/64-jump-combined-acceptance.md) | 经交互跳板机的 MCP 自动/协作、接管与 Linux 监控 |
-| [终端压力测量](docs/65-terminal-pressure.md) | 持续输出下的真实接管延迟、正则热点修复与参考机数据 |
-| [终端输出容量](docs/66-terminal-output-bounds.md) | 渲染确认、慢窗口保护、中文缺口、MCP 标记与原会话恢复 |
-| [终端录制写入边界](docs/67-recording-write-bounds.md) | 有界录制队列、存储故障暂停、人工接管与中文不完整提示 |
-| [模型响应边界](docs/68-provider-response-bounds.md) | 网络容量/超时、SDK 取消、中文错误与真实双模式暂停验收 |
-| [聊天流与执行容量](docs/69-chat-stream-bounds.md) | 旧请求隔离、取消与背压、工具预算、桌面认证和中文故障恢复 |
-| [总体验收基线](docs/70-acceptance-baseline.md) | 79 项原始要求索引、已核实交付缺口与后续顺序 |
-| [网络配置备份](docs/71-network-configuration-backup.md) | 跳板、隧道和 C2S 预设迁移、新主机引用、关闭自动启动与重启验证 |
-| [终端显示设置备份](docs/72-terminal-preferences-backup.md) | 用户默认值、配色库、主机外观及恢复后的可见画面验证 |
-| [隧道模式协议矩阵](docs/73-tunnel-mode-matrix.md) | 实际转发/中继数据、监听冲突、错误分类和零重试验证 |
-| [独立桌面隧道](docs/74-standalone-c2s.md) | 本机中继、真实三模式数据、旧配置复核和中文启停 |
-| [开发预览下载说明](docs/75-preview-release-notes.md) | Windows 安装/免安装包和当前试用边界 |
-| [隧道在途取消](docs/76-c2s-pending-cancellation.md) | 认证等待取消、旧响应隔离、中文控件与三模式回归 |
-| [任务历史导出](docs/77-history-export.md) | 脱敏完整导出、中文取消与真实 MCP 撤销/文件下载验证 |
-| [预览版内部更新](docs/78-preview-auto-updates.md) | latest.yml、主进程每 20 分钟检查、真实桌面与 Actions 发布 |
-| [执行历史来源与目标](docs/79-history-provenance.md) | 中文来源、主机/会话、策略判断、退出码与脱敏输出摘要 |
-| [Unix 权限编辑](docs/80-unix-permissions.md) | 目录权限解析、中文特殊权限位、完整八进制传递与输入保护 |
-| [文件时间汉化](docs/87-file-time-localization.md) | 列表与编辑器随界面语言显示修改时间，保留原始时间戳与旧值回退 |
-| [随包依赖声明](docs/88-packaged-dependency-notices.md) | 实际 npm 包版本/许可证字段/原文摘要、声明汇编和待核对项 |
+| 文档                                                            | 回答的问题                                                            |
+| --------------------------------------------------------------- | --------------------------------------------------------------------- |
+| [产品需求](docs/01-product.md)                                  | 做给谁用、首版做什么、怎样算完成                                      |
+| [界面与协作流程](docs/02-experience.md)                         | 如何连接、协同、接管、交还、查看执行记录                              |
+| [系统架构](docs/03-architecture.md)                             | 模块责任、依赖方向、技术选型和存储边界                                |
+| [会话与接口契约](docs/04-contracts.md)                          | 控制权、状态机、事件、错误与并发语义                                  |
+| [策略与安全设计](docs/05-security-policy.md)                    | 黑白名单如何生效、凭据如何保护、风险在哪里                            |
+| [交付与验收计划](docs/06-delivery.md)                           | 实施顺序、验证场景、发布门槛                                          |
+| [决策与参考来源](docs/07-decisions.md)                          | 哪些已确认、哪些待定、参考了什么、如何开源                            |
+| [自定义命令流程](docs/08-workflows.md)                          | 如何把“先做 A、再做 B”保存、运行和导出                                |
+| [基础 SSH 与文件工作台](docs/09-base-features.md)               | 基础功能有哪些、在线编辑与上传下载如何保证结果明确                    |
+| [开源底座评估](docs/10-open-source-base.md)                     | 能复用什么、主候选与备选、如何验证和保留许可来源                      |
+| [M0 Windows 验证与改造入口](docs/11-m0-validation.md)           | 原始底座构建/启动基线与改造依据                                       |
+| [实施与汉化记录](docs/12-implementation.md)                     | 当前代码、中文界面、测试结果和未完成工作                              |
+| [MCP 接入与验证](docs/13-mcp.md)                                | 配对、Codex 配置、当前工具与实际验证边界                              |
+| [内置 AI 与共享终端](docs/14-built-in-ai.md)                    | 自带模型接口、规划、执行、问答、接管与验证                            |
+| [保存流程实施说明](docs/15-saved-workflows.md)                  | 已保存定义、参数、预览和执行语义的实现与剩余工作                      |
+| [AI/MCP 调用保存流程](docs/16-ai-mcp-workflows.md)              | 独立流程与父任务复用、授权边界和实际验证                              |
+| [带版本的文件编辑](docs/17-file-documents.md)                   | 草稿、冲突保存、编码和人工接管的实现与专项验证                        |
+| [文件动作网关与路径授权](docs/18-file-operation-gateway.md)     | 文件/命令共用队列、独立路径权限与中文配置；工具接入状态               |
+| [AI/MCP 文件工具](docs/19-ai-mcp-files.md)                      | 正式 SSH/SFTP 接入、文件修改与人工审阅                                |
+| [旧快捷命令与宏迁移](docs/20-legacy-command-migration.md)       | 模式选择、待授权任务、参数绑定与旧自动化执行边界                      |
+| [目录与文件属性查询](docs/21-file-inspection.md)                | 24 项 MCP 工具、目录分页、子项规则、链接属性与验证                    |
+| [分块上传与队列](docs/22-upload-transfers.md)                   | 手工上传预览、校验、暂停恢复、身份绑定与实际验证                      |
+| [SSH 主机信任](docs/23-host-trust.md)                           | 首次人工核对、密钥变化拒绝、持久化与桌面验证                          |
+| [下载与原生落盘](docs/24-download-transfers.md)                 | 来源版本、分块传输、本地临时文件、暂停恢复与校验                      |
+| [GitHub 与在线更新](docs/25-github-releases.md)                 | 更新按钮、固定发行源、Actions 与版本发布                              |
+| [目录批量传输](docs/26-directory-transfers.md)                  | 来源集合、目标预览、目录创建与批次队列接入进度                        |
+| [目录上传批次](docs/27-directory-uploads.md)                    | 目录上传中文预览、原生来源、批次队列及验证                            |
+| [AI/MCP 文件传输](docs/28-automated-transfers.md)               | 二进制执行核心、本地授权边界与文件流程接入计划                        |
+| [任务本地文件授权](docs/29-local-file-grants.md)                | 中文来源/目标选择、私有进程通道、任务授权与撤销验证                   |
+| [AI/MCP 传输工具](docs/30-transfer-tools.md)                    | 29 项 MCP 工具、内置 AI 文件传输与真实桌面自动/协同验证               |
+| [保存流程中的文件步骤](docs/31-workflow-files.md)               | 混合步骤、中文本地文件绑定、父任务预算与恢复验证                      |
+| [终端可靠性记录](docs/32-terminal-reliability.md)               | 损坏标记与核对超时处理、实际桌面正负向验证及兼容风险                  |
+| [任务目录传输接入](docs/33-task-directory-transfers.md)         | 原生目录授权、逐次 I/O 检查与 AI/MCP 目录工具接线进度                 |
+| [目录批次与模型工具](docs/34-directory-task-adapters.md)        | 逐项任务执行、AI/MCP 目录工具、验证证据与剩余中文桌面接线             |
+| [中文目录工作台](docs/35-directory-workbench.md)                | 目录任务创建、分页审核、逐项审批、实际桌面与 Codex 验证               |
+| [目录保存流程](docs/36-workflow-directory-steps.md)             | v3 目录槽位、冲突策略、父任务游标与实际桌面双模式验证                 |
+| [任务历史与归档](docs/37-task-history-and-retention.md)         | 操作分页、重启后脱敏历史、已结束任务资源释放与验证                    |
+| [本机加密文件草稿](docs/38-encrypted-file-drafts.md)            | 加密快照、重启后三份内容审阅、人工恢复与实际桌面验证                  |
+| [下载重启恢复](docs/39-download-recovery.md)                    | 加密检查点、中文恢复清单、重新确认与真实应用重启/中断验收             |
+| [上传重启恢复](docs/40-upload-recovery.md)                      | 加密检查点、中文恢复入口、来源重新选择与实际桌面重启/中断验收         |
+| [目录重启恢复](docs/41-directory-recovery.md)                   | 上传批次中文恢复、加密记录与实际重启/中断验收；下载和任务恢复继续实施 |
+| [下载批次恢复](docs/42-download-batch-recovery.md)              | 中文整批保存/恢复、逐项核对与真实 Windows 重启/中断续传               |
+| [任务执行恢复](docs/43-task-execution-recovery.md)              | 中文独立流程/MCP 检查点、重新授权与真实双模式重启验证                 |
+| [内置 AI 恢复](docs/44-ai-task-recovery.md)                     | 对话、问题、预算和模型配置绑定，真实双模式重启验证                    |
+| [父任务流程恢复](docs/45-parent-workflow-recovery.md)           | AI/MCP 自动与协作模式，原流程快照、结果继承和父任务继续               |
+| [在线更新验收](docs/46-online-update-acceptance.md)             | 真实下载校验、跨版本安装验收与当前失败证据                            |
+| [任务目录恢复](docs/47-task-directory-recovery.md)              | 上传目录条目边界、原来源重新授权与真实双模式重启验证                  |
+| [任务下载目录恢复](docs/48-task-download-directory-recovery.md) | 固定来源、本地完成收据、异步快照与双模式重启验证                      |
+| [隧道身份与生命周期](docs/49-tunnel-trust-and-lifecycle.md)     | 源/端点信任、认证前阻断、真实转发与资源释放                           |
+| [配置备份与恢复](docs/54-configuration-backup.md)               | 中文预览确认、凭据重新配置、流程绑定与实际重启验证                    |
+| [应用设置备份](docs/55-application-settings-backup.md)          | 外观、界面偏好与快捷键的独立恢复、审阅和重启验证                      |
+| [真实 Linux 验收](docs/56-linux-ssh-acceptance.md)              | Alpine 实机、Windows/MCP 自动与协作、权限和磁盘失败验证               |
+| [终端回复与接管](docs/57-terminal-protocol-replies.md)          | 自动光标回复不再误触发人工接管，保留真实人工输入的控制权              |
+| [本地/远端双面板](docs/58-local-remote-file-panels.md)          | 中文本机浏览、双向传输预览、覆盖审批和真实桌面文件验证                |
+| [Windows 文件属性](docs/59-windows-file-attributes.md)          | 隐藏/系统项、只读属性、取消读取和打包后的真实桌面验证                 |
+| [SSH 交互认证](docs/60-keyboard-interactive-auth.md)            | 终端多字段/多轮提示、原样回复、取消隔离与认证后的双模式验收           |
+| [文件交互认证](docs/61-file-interactive-auth.md)                | SFTP 多轮提示、取消和人工重连、共享认证边界与真实文件传输验证         |
+| [跳板机交互认证](docs/62-jump-interactive-auth.md)              | 各跳独立提示、整链取消、中文终端/SFTP 接线与真实传输验证              |
+| [监控交互认证](docs/63-monitoring-interactive-auth.md)          | 中文多轮登录、取消/人工重连、认证连接复用和真实 Linux 卡片验证        |
+| [跳板机组合验收](docs/64-jump-combined-acceptance.md)           | 经交互跳板机的 MCP 自动/协作、接管与 Linux 监控                       |
+| [终端压力测量](docs/65-terminal-pressure.md)                    | 持续输出下的真实接管延迟、正则热点修复与参考机数据                    |
+| [终端输出容量](docs/66-terminal-output-bounds.md)               | 渲染确认、慢窗口保护、中文缺口、MCP 标记与原会话恢复                  |
+| [终端录制写入边界](docs/67-recording-write-bounds.md)           | 有界录制队列、存储故障暂停、人工接管与中文不完整提示                  |
+| [模型响应边界](docs/68-provider-response-bounds.md)             | 网络容量/超时、SDK 取消、中文错误与真实双模式暂停验收                 |
+| [聊天流与执行容量](docs/69-chat-stream-bounds.md)               | 旧请求隔离、取消与背压、工具预算、桌面认证和中文故障恢复              |
+| [总体验收基线](docs/70-acceptance-baseline.md)                  | 79 项原始要求索引、已核实交付缺口与后续顺序                           |
+| [网络配置备份](docs/71-network-configuration-backup.md)         | 跳板、隧道和 C2S 预设迁移、新主机引用、关闭自动启动与重启验证         |
+| [终端显示设置备份](docs/72-terminal-preferences-backup.md)      | 用户默认值、配色库、主机外观及恢复后的可见画面验证                    |
+| [隧道模式协议矩阵](docs/73-tunnel-mode-matrix.md)               | 实际转发/中继数据、监听冲突、错误分类和零重试验证                     |
+| [独立桌面隧道](docs/74-standalone-c2s.md)                       | 本机中继、真实三模式数据、旧配置复核和中文启停                        |
+| [正式版发布说明](docs/75-preview-release-notes.md)              | Windows 安装/免安装包和已知限制                                       |
+| [隧道在途取消](docs/76-c2s-pending-cancellation.md)             | 认证等待取消、旧响应隔离、中文控件与三模式回归                        |
+| [任务历史导出](docs/77-history-export.md)                       | 脱敏完整导出、中文取消与真实 MCP 撤销/文件下载验证                    |
+| [预览版内部更新](docs/78-preview-auto-updates.md)               | latest.yml、主进程每 20 分钟检查、真实桌面与 Actions 发布             |
+| [执行历史来源与目标](docs/79-history-provenance.md)             | 中文来源、主机/会话、策略判断、退出码与脱敏输出摘要                   |
+| [Unix 权限编辑](docs/80-unix-permissions.md)                    | 目录权限解析、中文特殊权限位、完整八进制传递与输入保护                |
+| [文件时间汉化](docs/87-file-time-localization.md)               | 列表与编辑器随界面语言显示修改时间，保留原始时间戳与旧值回退          |
+| [随包依赖声明](docs/88-packaged-dependency-notices.md)          | 实际 npm 包版本/许可证字段/原文摘要、声明汇编和待核对项               |
 
 ## 产品主线
 
 ```text
-选择服务器 → 打开 SSH 终端 → 让 AI 理解当前任务
-→ 查看计划和执行 → 随时接管 → 人工处理 → 交还 AI → 验证结果
+选择服务器 → 打开 SSH 终端 → 在 AI 对话中直接描述任务
+→ AI 连续检查并执行 → 查看结论或展开命令详情 → 继续追问或随时人工接管
 ```
 
 FinalShell 的终端/SFTP 同屏与服务器监控、XTerminal 的连接管理与 AI 操作确认用于产品参考。当前 app 已采用固定 Termix 发布源码；Tabby 为早期备选，ssh-mcp-server 为技术参考。共享会话接管和统一策略须单独验证、补齐，不假设任何候选已满足 TandemSSH 的全部要求。

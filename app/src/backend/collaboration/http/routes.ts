@@ -89,6 +89,7 @@ const authorization = z
     matches: z.array(match).max(128).optional(),
     fileScopes: z.array(fileScopeSchema).max(128).optional(),
     allowReviewedPlan: z.boolean(),
+    allowReadOnlyAutoRun: z.boolean().optional(),
     reconciliation: z.enum(["retry", "skip"]).optional(),
   })
   .strict();

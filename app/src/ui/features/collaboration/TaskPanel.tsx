@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/button";
 import { collaborationApi } from "@/api/collaboration-api";
+import { aiTaskApi } from "@/api/ai-task-api";
 import type {
   TaskMode,
   TaskOperation,
@@ -93,9 +94,9 @@ export function TaskPanel({
   }, [focusTaskId]);
   const [composer, setComposer] = useState<
     "workflow" | "assistant" | "directory"
-  >("workflow");
+  >("assistant");
   const [title, setTitle] = useState("");
-  const [plan, setPlan] = useState("pwd\ndf -h\nuptime");
+  const [plan, setPlan] = useState("");
   const [mode, setMode] = useState<TaskMode>("collaborative");
   const [formError, setFormError] = useState("");
   const tasks = work.snapshot?.tasks ?? [];
@@ -148,6 +149,304 @@ export function TaskPanel({
       else setFormError(t("tandem.collaboration.errors.INVALID_REQUEST"));
     }
   };
+
+  const localGrantFor = (operation: TaskOperation) =>
+    task &&
+    localGrants?.taskId === task.id &&
+    "localGrantId" in operation.action
+      ? localGrants.grants.find(
+          (grant) =>
+            grant.id ===
+              (operation.action as { localGrantId: string }).localGrantId &&
+            grant.version ===
+              (operation.action as { localVersion: string }).localVersion,
+        )
+      : undefined;
+
+  const approveOperation = (
+    operation: TaskOperation,
+    fileReviewId?: string,
+  ) => {
+    if (!task) return;
+    void work.run(() =>
+      collaborationApi.approve(task.id, {
+        operationId: operation.id,
+        digest: operation.digest,
+        policyRevision: task.policyRevision,
+        fileReviewId,
+      }),
+    );
+  };
+
+  const pendingOperationIndex = task
+    ? task.operations.findIndex(
+        (operation) =>
+          task.state === "awaiting-approval" &&
+          operation.status === "awaiting-approval" &&
+          operation.decision.outcome !== "deny",
+      )
+    : -1;
+  const pendingOperation =
+    task && pendingOperationIndex >= 0
+      ? task.operations[pendingOperationIndex]
+      : undefined;
+  const visibleOperations =
+    task?.operations.filter(
+      (operation) =>
+        task.source !== "assistant" || operation.id !== pendingOperation?.id,
+    ) ?? [];
+  const authorizationVisible =
+    !!task &&
+    resumable(task) &&
+    !page.loading &&
+    !page.error &&
+    (task.source !== "assistant" || (!!agent && agent.phase !== "planning"));
+  const taskAuthorization =
+    task && authorizationVisible ? (
+      <TaskAuthorizationForm
+        key={
+          task.id +
+          ":" +
+          task.control.controlEpoch +
+          ":" +
+          task.state +
+          ":" +
+          (task.planRevision ?? 0) +
+          ":" +
+          task.control.generation +
+          ":" +
+          (work.snapshot?.policy.revision ?? task.policyRevision)
+        }
+        task={task}
+        localGrants={localGrants?.taskId === task.id ? localGrants.grants : []}
+        disabled={
+          work.busy ||
+          page.loading ||
+          !!page.error ||
+          !session?.connected ||
+          ownsAutomation
+        }
+        revision={work.snapshot?.policy.revision ?? task.policyRevision}
+        onAuthorize={(scope) =>
+          work.run(() => collaborationApi.authorize(task.id, scope))
+        }
+      />
+    ) : null;
+  const pendingOperationCard =
+    task && pendingOperation ? (
+      <OperationCard
+        key={pendingOperation.id}
+        workflowName={
+          task.workflowRuns?.find(
+            (run) => run.id === pendingOperation.workflowRunId,
+          )?.name
+        }
+        taskId={task.id}
+        taskState={task.state}
+        operation={pendingOperation}
+        localGrant={localGrantFor(pendingOperation)}
+        index={operationOffset + pendingOperationIndex}
+        canApprove
+        disabled={work.busy || page.loading || !!page.error}
+        onApprove={(fileReviewId) =>
+          approveOperation(pendingOperation, fileReviewId)
+        }
+      />
+    ) : null;
+  const taskFileTools = task ? (
+    <>
+      <TaskLocalFiles
+        key={task.id}
+        taskId={task.id}
+        onGrantsChange={(grants) => setLocalGrants({ taskId: task.id, grants })}
+        disabled={finished(task) || !session?.connected}
+      />
+      {(task.stepCount === 0 ||
+        task.operations.some((operation) =>
+          isDirectoryAction(operation.action),
+        )) && (
+        <TaskDirectoryTransfers
+          key={"directories:" + task.id}
+          taskId={task.id}
+          grants={localGrants?.taskId === task.id ? localGrants.grants : []}
+          onActiveChange={(active) =>
+            setDirectoryActive({ taskId: task.id, active })
+          }
+          operationVersion={[
+            task.operationPage?.latest?.id,
+            task.operationPage?.latest?.status,
+            task.operationPage?.latest?.auditGap,
+            task.state,
+          ].join(":")}
+          ready={task.state === "ready"}
+          disabled={finished(task) || !session?.connected || task.stepCount > 0}
+          onChange={() => {
+            void work.run(() => Promise.resolve(task));
+          }}
+        />
+      )}
+    </>
+  ) : null;
+
+  const operationHistory = task ? (
+    <div className="tandem-operation-history">
+      {page.error && (
+        <p role="alert" className="tandem-task-error">
+          {t("tandem.collaboration.errors." + page.error, {
+            defaultValue: t("tandem.history.failed"),
+          })}
+        </p>
+      )}
+      {page.loading && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {t("tandem.history.loadingOperations")}
+        </p>
+      )}
+      {operationTotal > task.operations.length && (
+        <nav
+          className="flex flex-wrap items-center gap-2 text-xs"
+          aria-label={t("tandem.directoryTask.operationPages")}
+        >
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={
+              page.loading || task.operationPage?.previousOffset === null
+            }
+            onClick={() =>
+              page.move(task.operationPage?.previousOffset ?? undefined)
+            }
+          >
+            {t("tandem.directoryTask.previous")}
+          </Button>
+          <span>
+            {t("tandem.directoryTask.page", {
+              from: operationOffset + 1,
+              to: operationOffset + task.operations.length,
+              total: operationTotal,
+            })}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page.loading || task.operationPage?.nextOffset === null}
+            onClick={() =>
+              page.move(task.operationPage?.nextOffset ?? undefined)
+            }
+          >
+            {t("tandem.directoryTask.next")}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => page.move(undefined)}
+          >
+            {t("tandem.directoryTask.latest")}
+          </Button>
+        </nav>
+      )}
+      {visibleOperations.map((op) => (
+        <OperationCard
+          key={op.id}
+          workflowName={
+            task.workflowRuns?.find((run) => run.id === op.workflowRunId)?.name
+          }
+          taskId={task.id}
+          taskState={task.state}
+          operation={op}
+          localGrant={localGrantFor(op)}
+          index={operationOffset + task.operations.indexOf(op)}
+          canApprove={
+            task.state === "awaiting-approval" &&
+            op.status === "awaiting-approval" &&
+            op.decision.outcome !== "deny"
+          }
+          disabled={work.busy || page.loading || !!page.error}
+          onApprove={(fileReviewId) => approveOperation(op, fileReviewId)}
+        />
+      ))}
+    </div>
+  ) : null;
+
+  const taskControls = task ? (
+    <div className="tandem-task-controls">
+      {task.source !== "assistant" &&
+        task.stepCount === 0 &&
+        task.state === "ready" && (
+          <Button
+            variant="outline"
+            disabled={
+              work.busy ||
+              (directoryActive?.taskId === task.id && directoryActive.active)
+            }
+            onClick={() =>
+              void work.run(() => collaborationApi.finish(task.id))
+            }
+          >
+            {t("tandem.directoryTask.finish")}
+          </Button>
+        )}
+      {finished(task) && (
+        <section className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            {t("tandem.history.archiveHint")}
+          </p>
+          {task.canArchive === false && (
+            <p className="text-xs text-amber-500">
+              {t("tandem.history.archiveBlocked")}
+            </p>
+          )}
+          <Button
+            variant="outline"
+            disabled={
+              work.busy ||
+              (task.canArchive === false && !task.archiveReviewIds?.length)
+            }
+            onClick={async () => {
+              const reviewIds = task.archiveReviewIds;
+              if (
+                reviewIds?.length &&
+                !window.confirm(
+                  t("tandem.history.archiveUnknownConfirm", {
+                    count: reviewIds.length,
+                  }),
+                )
+              )
+                return;
+              if (await work.archive(task.id, reviewIds)) {
+                setSelected(undefined);
+                setComposing(true);
+              }
+            }}
+          >
+            {t("tandem.history.archive")}
+          </Button>
+        </section>
+      )}
+      {!finished(task) && !task.state.startsWith("paused") && (
+        <Button
+          variant="outline"
+          disabled={work.takeoverPending}
+          title={t("tandem.collaboration.pauseHint")}
+          onClick={() => void work.pause(task.id)}
+        >
+          <Pause size={12} />
+          {t("tandem.collaboration.pause")}
+        </Button>
+      )}
+      {!finished(task) && (
+        <Button
+          variant="outline"
+          disabled={work.busy}
+          onClick={() => void work.run(() => collaborationApi.cancel(task.id))}
+        >
+          <Square size={12} />
+          {t("tandem.collaboration.cancel")}
+        </Button>
+      )}
+    </div>
+  ) : null;
+
   return (
     <aside
       className="tandem-task-panel"
@@ -210,9 +509,11 @@ export function TaskPanel({
         </p>
       )}
       <div className="tandem-task-scroll">
-        <p className="tandem-task-help">
-          {t("tandem.collaboration.sharedHint")}
-        </p>
+        {(composing || task?.source !== "assistant") && (
+          <p className="tandem-task-help">
+            {t("tandem.collaboration.sharedHint")}
+          </p>
+        )}
         {tasks.length > 0 && (
           <div className="tandem-task-picker">
             <label>
@@ -239,31 +540,37 @@ export function TaskPanel({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setComposing(true)}
+              onClick={() => {
+                setComposer("assistant");
+                setComposing(true);
+              }}
             >
               {t("tandem.collaboration.newTask")}
             </Button>
           </div>
         )}
         {composing && (
-          <div className="flex gap-2 mb-3">
-            <Button
-              size="sm"
-              variant={composer === "workflow" ? "default" : "outline"}
-              onClick={() => setComposer("workflow")}
-            >
-              {t("tandem.collaboration.workflow")}
-            </Button>
+          <div className="tandem-composer-switch">
             <Button
               size="sm"
               variant={composer === "assistant" ? "default" : "outline"}
+              aria-pressed={composer === "assistant"}
               onClick={() => setComposer("assistant")}
             >
               {t("tandem.agent.task")}
             </Button>
             <Button
               size="sm"
+              variant={composer === "workflow" ? "default" : "outline"}
+              aria-pressed={composer === "workflow"}
+              onClick={() => setComposer("workflow")}
+            >
+              {t("tandem.collaboration.workflow")}
+            </Button>
+            <Button
+              size="sm"
               variant={composer === "directory" ? "default" : "outline"}
+              aria-pressed={composer === "directory"}
               onClick={() => setComposer("directory")}
             >
               {t("tandem.directoryTask.title")}
@@ -348,40 +655,46 @@ export function TaskPanel({
         ) : task ? (
           <div className="tandem-task-details">
             <div className="tandem-task-title">
-              <h3>{task.title}</h3>
+              <h3>
+                {task.source === "assistant"
+                  ? t("tandem.agent.task")
+                  : task.title}
+              </h3>
               <span className={"tandem-task-state " + task.state}>
                 {t("tandem.collaboration.states." + task.state)}
               </span>
             </div>
-            <div className="tandem-task-meta">
-              <span>{t("tandem.collaboration.modes." + task.mode)}</span>
-              <span>
-                {task.source === "mcp"
-                  ? "MCP"
-                  : task.source === "assistant"
-                    ? "AI"
-                    : t(
-                        task.stepCount
-                          ? "tandem.collaboration.workflow"
-                          : "tandem.directoryTask.title",
-                      )}
-              </span>
-              <span>
-                {task.stepCount
-                  ? t("tandem.collaboration.progress", {
-                      done: task.nextStep,
-                      total: task.stepCount,
-                    })
-                  : t("tandem.collaboration.operationProgress", {
-                      done: task.operationPage?.succeeded ?? 0,
-                      total: operationTotal,
-                    })}
-              </span>
-            </div>
-            {task.cwd && (
-              <p className="tandem-task-directory" title={task.cwd}>
-                {task.cwd}
-              </p>
+            {task.source !== "assistant" && (
+              <>
+                <div className="tandem-task-meta">
+                  <span>{t("tandem.collaboration.modes." + task.mode)}</span>
+                  <span>
+                    {task.source === "mcp"
+                      ? "MCP"
+                      : t(
+                          task.stepCount
+                            ? "tandem.collaboration.workflow"
+                            : "tandem.directoryTask.title",
+                        )}
+                  </span>
+                  <span>
+                    {task.stepCount
+                      ? t("tandem.collaboration.progress", {
+                          done: task.nextStep,
+                          total: task.stepCount,
+                        })
+                      : t("tandem.collaboration.operationProgress", {
+                          done: task.operationPage?.succeeded ?? 0,
+                          total: operationTotal,
+                        })}
+                  </span>
+                </div>
+                {task.cwd && (
+                  <p className="tandem-task-directory" title={task.cwd}>
+                    {task.cwd}
+                  </p>
+                )}
+              </>
             )}
             {task.error && (
               <p role="alert" className="tandem-task-error">
@@ -397,286 +710,136 @@ export function TaskPanel({
             )}
             {agent && (
               <Suspense fallback={null}>
-                <AiTaskTranscript key={agent.id} run={agent} />
+                <AiTaskTranscript
+                  key={agent.id}
+                  run={agent}
+                  onContinue={async (goal) => {
+                    const created = await work.run(
+                      async () =>
+                        (
+                          await aiTaskApi.create({
+                            sessionId: agent.sessionId,
+                            requestId: crypto.randomUUID(),
+                            providerId: agent.providerId,
+                            model: agent.model,
+                            goal,
+                            mode: agent.mode,
+                            maxTurns: agent.maxTurns,
+                            autoAuthorizeReadOnly:
+                              agent.mode === "collaborative",
+                            continueFromRunId: agent.id,
+                          })
+                        ).task,
+                    );
+                    if (!created) return false;
+                    setSelected(created.id);
+                    setComposing(false);
+                    return true;
+                  }}
+                />
               </Suspense>
             )}
-            <TaskLocalFiles
-              key={task.id}
-              taskId={task.id}
-              onGrantsChange={(grants) =>
-                setLocalGrants({ taskId: task.id, grants })
-              }
-              disabled={finished(task) || !session?.connected}
-            />
-            {(task.stepCount === 0 ||
-              task.operations.some((op) => isDirectoryAction(op.action))) && (
-              <TaskDirectoryTransfers
-                key={"directories:" + task.id}
-                taskId={task.id}
-                grants={
-                  localGrants?.taskId === task.id ? localGrants.grants : []
-                }
-                onActiveChange={(active) =>
-                  setDirectoryActive({ taskId: task.id, active })
-                }
-                operationVersion={[
-                  task.operationPage?.latest?.id,
-                  task.operationPage?.latest?.status,
-                  task.operationPage?.latest?.auditGap,
-                  task.state,
-                ].join(":")}
-                ready={task.state === "ready"}
-                disabled={
-                  finished(task) || !session?.connected || task.stepCount > 0
-                }
-                onChange={() => {
-                  void work.run(() => Promise.resolve(task));
-                }}
-              />
-            )}
-            {resumable(task) && !page.loading && !page.error && (
-              <TaskAuthorizationForm
-                key={
-                  task.id +
-                  ":" +
-                  task.control.controlEpoch +
-                  ":" +
-                  task.state +
-                  ":" +
-                  (task.planRevision ?? 0) +
-                  ":" +
-                  task.control.generation +
-                  ":" +
-                  (work.snapshot?.policy.revision ?? task.policyRevision)
-                }
-                task={task}
-                localGrants={
-                  localGrants?.taskId === task.id ? localGrants.grants : []
-                }
-                disabled={
-                  work.busy ||
-                  page.loading ||
-                  !!page.error ||
-                  !session?.connected ||
-                  ownsAutomation ||
-                  (task.source === "assistant" &&
-                    (!agent || agent.phase === "planning"))
-                }
-                revision={work.snapshot?.policy.revision ?? task.policyRevision}
-                onAuthorize={(scope) =>
-                  work.run(() => collaborationApi.authorize(task.id, scope))
-                }
-              />
-            )}
-            {page.error && (
-              <p role="alert" className="tandem-task-error">
-                {t("tandem.collaboration.errors." + page.error, {
-                  defaultValue: t("tandem.history.failed"),
-                })}
-              </p>
-            )}
-            {page.loading && (
-              <p role="status" className="text-xs text-muted-foreground">
-                {t("tandem.history.loadingOperations")}
-              </p>
-            )}
-            {operationTotal > task.operations.length && (
-              <nav
-                className="flex flex-wrap items-center gap-2 text-xs"
-                aria-label={t("tandem.directoryTask.operationPages")}
-              >
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={
-                    page.loading || task.operationPage?.previousOffset === null
-                  }
-                  onClick={() =>
-                    page.move(task.operationPage?.previousOffset ?? undefined)
-                  }
-                >
-                  {t("tandem.directoryTask.previous")}
-                </Button>
-                <span>
-                  {t("tandem.directoryTask.page", {
-                    from: operationOffset + 1,
-                    to: operationOffset + task.operations.length,
-                    total: operationTotal,
-                  })}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={
-                    page.loading || task.operationPage?.nextOffset === null
-                  }
-                  onClick={() =>
-                    page.move(task.operationPage?.nextOffset ?? undefined)
-                  }
-                >
-                  {t("tandem.directoryTask.next")}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => page.move(undefined)}
-                >
-                  {t("tandem.directoryTask.latest")}
-                </Button>
-              </nav>
-            )}
-            {task.operations.map((op, index) => (
-              <OperationCard
-                key={op.id}
-                workflowName={
-                  task.workflowRuns?.find((run) => run.id === op.workflowRunId)
-                    ?.name
-                }
-                taskId={task.id}
-                taskState={task.state}
-                operation={op}
-                localGrant={
-                  localGrants?.taskId === task.id && "localGrantId" in op.action
-                    ? localGrants.grants.find(
-                        (g) =>
-                          g.id ===
-                            (op.action as { localGrantId: string })
-                              .localGrantId &&
-                          g.version ===
-                            (op.action as { localVersion: string })
-                              .localVersion,
-                      )
-                    : undefined
-                }
-                index={operationOffset + index}
-                canApprove={
-                  task.state === "awaiting-approval" &&
-                  op.status === "awaiting-approval" &&
-                  op.decision.outcome !== "deny"
-                }
-                disabled={work.busy || page.loading || !!page.error}
-                onApprove={(fileReviewId) =>
-                  void work.run(() =>
-                    collaborationApi.approve(task.id, {
-                      operationId: op.id,
-                      digest: op.digest,
-                      policyRevision: task.policyRevision,
-                      fileReviewId,
-                    }),
-                  )
-                }
-              />
-            ))}
-            {task.stepCount === 0 && task.state === "ready" && (
-              <Button
-                variant="outline"
-                disabled={
-                  work.busy ||
-                  (directoryActive?.taskId === task.id &&
-                    directoryActive.active)
-                }
-                onClick={() =>
-                  void work.run(() => collaborationApi.finish(task.id))
-                }
-              >
-                {t("tandem.directoryTask.finish")}
-              </Button>
-            )}
-            {finished(task) && (
-              <section className="space-y-2 mt-3">
-                <p className="text-xs text-muted-foreground">
-                  {t("tandem.history.archiveHint")}
-                </p>
-                {task.canArchive === false && (
-                  <p className="text-xs text-amber-500">
-                    {t("tandem.history.archiveBlocked")}
-                  </p>
-                )}
-                <Button
-                  variant="outline"
-                  disabled={
-                    work.busy ||
-                    (task.canArchive === false &&
-                      !task.archiveReviewIds?.length)
-                  }
-                  onClick={async () => {
-                    const reviewIds = task.archiveReviewIds;
-                    if (
-                      reviewIds?.length &&
-                      !window.confirm(
-                        t("tandem.history.archiveUnknownConfirm", {
-                          count: reviewIds.length,
-                        }),
-                      )
-                    )
-                      return;
-                    if (await work.archive(task.id, reviewIds)) {
-                      setSelected(undefined);
-                      setComposing(true);
-                    }
-                  }}
-                >
-                  {t("tandem.history.archive")}
-                </Button>
-              </section>
-            )}
-            {!finished(task) && !task.state.startsWith("paused") && (
-              <Button
-                variant="outline"
-                disabled={work.takeoverPending}
-                title={t("tandem.collaboration.pauseHint")}
-                onClick={() => void work.pause(task.id)}
-              >
-                <Pause size={12} />
-                {t("tandem.collaboration.pause")}
-              </Button>
-            )}
-            {!finished(task) && (
-              <Button
-                variant="outline"
-                disabled={work.busy}
-                onClick={() =>
-                  void work.run(() => collaborationApi.cancel(task.id))
-                }
-              >
-                <Square size={12} />
-                {t("tandem.collaboration.cancel")}
-              </Button>
+            {task.source === "assistant" &&
+              (taskAuthorization || pendingOperationCard) && (
+                <section className="tandem-next-action">
+                  {taskAuthorization}
+                  {pendingOperationCard}
+                </section>
+              )}
+
+            {task.source === "assistant" ? (
+              <details className="tandem-task-tools tandem-assistant-details">
+                <summary>
+                  <span>{t("tandem.collaboration.executionDetails")}</span>
+                  <small>
+                    {t("tandem.collaboration.executionDetailsHint")}
+                  </small>
+                </summary>
+                <div className="tandem-assistant-details-body">
+                  <div className="tandem-assistant-details-meta">
+                    <span>{t("tandem.collaboration.modes." + task.mode)}</span>
+                    <span>
+                      {t("tandem.collaboration.operationProgress", {
+                        done: task.operationPage?.succeeded ?? 0,
+                        total: operationTotal,
+                      })}
+                    </span>
+                    {agent && (
+                      <>
+                        <span>
+                          {agent.providerLabel} · {agent.model}
+                        </span>
+                        <span>
+                          {t("tandem.agent.turns", {
+                            used: agent.turns,
+                            max: agent.maxTurns,
+                          })}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {task.cwd && (
+                    <p className="tandem-task-directory" title={task.cwd}>
+                      {task.cwd}
+                    </p>
+                  )}
+                  {taskFileTools}
+                  {operationHistory}
+                  {taskControls}
+                </div>
+              </details>
+            ) : (
+              <>
+                {taskFileTools}
+                {taskAuthorization}
+                {operationHistory}
+                {taskControls}
+              </>
             )}
           </div>
         ) : null}
       </div>
-      <footer className="flex flex-wrap items-center gap-2 justify-between">
-        <span>{t("tandem.collaboration.recordingHint")}</span>
-        <Suspense fallback={null}>
-          <WorkflowLibrary
-            sessionId={sessionId}
-            hostId={session?.hostId}
-            connected={!!session?.connected}
-            onCreated={(created) => {
-              void work.run(async () => created);
-              setSelected(created.id);
-              setComposing(false);
-            }}
-          />
-          <PolicySettings
-            sessionId={sessionId}
-            hostId={session?.hostId}
-            taskId={task?.id}
-          />
-        </Suspense>
-        <TaskRecovery
-          key={sessionId}
-          sessionId={sessionId}
-          task={task}
-          onRestored={(created) => {
-            void work.run(async () => created);
-            setSelected(created.id);
-            setComposing(false);
-          }}
-        />
-        <TaskHistoryButton taskId={task?.id} />
-        <McpSettings hostId={session?.hostId} />
+      <footer className="tandem-panel-footer">
+        <details className="tandem-panel-settings">
+          <summary>
+            <span>{t("tandem.collaboration.toolsAndSettings")}</span>
+            <small>{t("tandem.collaboration.toolsAndSettingsHint")}</small>
+          </summary>
+          <div className="tandem-panel-settings-body">
+            <p>{t("tandem.collaboration.recordingHint")}</p>
+            <div className="tandem-panel-settings-actions">
+              <Suspense fallback={null}>
+                <WorkflowLibrary
+                  sessionId={sessionId}
+                  hostId={session?.hostId}
+                  connected={!!session?.connected}
+                  onCreated={(created) => {
+                    void work.run(async () => created);
+                    setSelected(created.id);
+                    setComposing(false);
+                  }}
+                />
+                <PolicySettings
+                  sessionId={sessionId}
+                  hostId={session?.hostId}
+                  taskId={task?.id}
+                />
+              </Suspense>
+              <TaskRecovery
+                key={sessionId}
+                sessionId={sessionId}
+                task={task}
+                onRestored={(created) => {
+                  void work.run(async () => created);
+                  setSelected(created.id);
+                  setComposing(false);
+                }}
+              />
+              <TaskHistoryButton taskId={task?.id} />
+              <McpSettings hostId={session?.hostId} />
+            </div>
+          </div>
+        </details>
       </footer>
     </aside>
   );

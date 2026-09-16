@@ -3,12 +3,14 @@ import { SessionControl } from "../../../collaboration/sessions/control.js";
 import { readTerminalDirectory } from "../../../hosts/terminal/working-directory.js";
 function fixture() {
   const writes: Uint8Array[] = [];
+  const events: string[] = [];
   let ready = true;
   const control = new SessionControl(
     "session",
     {
       isReady: () => ready,
       write: (bytes) => {
+        events.push("write");
         writes.push(bytes);
       },
     },
@@ -20,16 +22,20 @@ function fixture() {
       finish = resolve;
     },
   );
+  const beforeSend = vi.fn(() => events.push("beforeSend"));
   const dispose = vi.fn(() => finish({ exitCode: null }));
   const prepare = vi.fn(() => ({
     bytes: Buffer.from("fixed-probe\r"),
     completion,
+    beforeSend,
     dispose,
   }));
   return {
     control,
     writes,
+    events,
     finish,
+    beforeSend,
     dispose,
     prepare,
     disconnect: () => {
@@ -55,6 +61,7 @@ it("returns only the same terminal's confirmed directory and prevents a parallel
   const pending = f.read();
   await expect(f.read()).rejects.toThrow("CWD_QUERY_BUSY");
   expect(f.writes).toHaveLength(1);
+  expect(f.events).toEqual(["beforeSend", "write"]);
   f.finish({ exitCode: 0, cwd: "/srv/中文 folder" });
   expect(await pending).toBe("/srv/中文 folder");
   expect(f.dispose).toHaveBeenCalledTimes(1);

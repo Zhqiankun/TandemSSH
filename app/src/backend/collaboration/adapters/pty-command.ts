@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
+import { displayCommand } from "../../../domain/commands/display-command.js";
 import type { CommandAction } from "../../../types/collaboration-operations.js";
+import { redactString } from "../../privacy/redaction.js";
 import type {
   CommandExecutorPort,
   PreparedCommand,
@@ -15,6 +17,14 @@ export interface TerminalOutputStream {
     listener: (data: Uint8Array | string) => void,
   ): unknown;
   removeListener(event: "close" | "error", listener: () => void): unknown;
+}
+export interface PtyCommandDisplayPort {
+  arm(frame: {
+    token: string;
+    expectedEcho: string;
+    visibleCommand?: string;
+  }): void;
+  release(token: string): void;
 }
 export interface PtyCommandResult {
   exitCode: number | null;
@@ -32,6 +42,15 @@ export function quoteShellWord(value: string): string {
   if (/[\x00-\x1f\x7f]/.test(value))
     throw new Error("UNSUPPORTED_TERMINAL_CONTROL_CHARACTER");
   return "'" + value.replaceAll("'", "'\\''") + "'";
+}
+
+function terminalCommandLabel(action: CommandAction): string {
+  const label = redactString(displayCommand(action))
+    .replaceAll("\r", "\\r")
+    .replaceAll("\n", "\\n")
+    .replaceAll("\t", "\\t")
+    .replace(/[\x00-\x1f\x7f]/g, "\uFFFD");
+  return label.length > 1000 ? label.slice(0, 997) + "..." : label;
 }
 
 export function frameCommand(
@@ -238,6 +257,7 @@ export class PtyCommandExecutor implements CommandExecutorPort {
   constructor(
     private readonly stream: () => TerminalOutputStream | null,
     private readonly timeoutMs = 60_000,
+    private readonly display?: PtyCommandDisplayPort,
   ) {}
   prepare(
     action: CommandAction,
@@ -256,8 +276,11 @@ export class PtyCommandExecutor implements CommandExecutorPort {
     if (!stream || stream.destroyed) throw new Error("TRANSPORT_UNAVAILABLE");
     const token = randomBytes(16).toString("hex");
     const bytes = frameCommand(action, token);
+    const expectedEcho = Buffer.from(bytes).toString("utf8").replace(/\r$/, "");
+    const visibleCommand = action ? terminalCommandLabel(action) : undefined;
     let settled = false;
     let timedOut = false;
+    let displayArmed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let resolve!: (result: PtyCommandResult) => void;
     const completion = new Promise<PtyCommandResult>((done) => {
@@ -278,7 +301,7 @@ export class PtyCommandExecutor implements CommandExecutorPort {
         resolve({ ...result, timedOut });
       },
       256_000,
-      Buffer.from(bytes).toString("utf8").replace(/\r$/, ""),
+      expectedEcho,
     );
     const onData = (data: Uint8Array | string) => decoder.feed(data);
     const onClose = () => decoder.unknown();
@@ -291,6 +314,8 @@ export class PtyCommandExecutor implements CommandExecutorPort {
       beforeSend: () => {
         if (settled || stream.destroyed)
           throw new Error("TRANSPORT_UNAVAILABLE");
+        this.display?.arm({ token, expectedEcho, visibleCommand });
+        displayArmed = !!this.display;
         timer = setTimeout(
           () => {
             timedOut = true;
@@ -303,6 +328,10 @@ export class PtyCommandExecutor implements CommandExecutorPort {
       },
       dispose: () => {
         cleanup();
+        if (displayArmed) {
+          displayArmed = false;
+          this.display?.release(token);
+        }
         if (!settled) decoder.unknown();
       },
     };

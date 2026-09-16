@@ -143,5 +143,6 @@ export interface TaskAuthorization {
   matches?: CommandMatch[];
   fileScopes?: FileScope[];
   allowReviewedPlan: boolean;
+  allowReadOnlyAutoRun?: boolean;
   reconciliation?: "retry" | "skip";
 }

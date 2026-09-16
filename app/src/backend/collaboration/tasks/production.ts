@@ -123,6 +123,8 @@ export const taskRuntime = new TaskRuntime({
       ),
       executor: new PtyCommandExecutor(
         () => sessionManager.getSession(id)?.sshStream ?? null,
+        undefined,
+        sessionManager.commandDisplay(id),
       ),
     };
   },

@@ -61,7 +61,10 @@ import {
   dashboardLogger,
   type LogContext,
 } from "@/lib/frontend-logger";
-import { dbHealthMonitor } from "@/lib/db-health-monitor";
+import {
+  dbHealthMonitor,
+  isRequestCancellation,
+} from "@/lib/db-health-monitor";
 import { asHttpError } from "@/lib/http-error";
 import { getDeviceId } from "@/lib/device-id";
 
@@ -547,6 +550,12 @@ function createApiInstance(
       return response;
     },
     (error: AxiosErrorExtended) => {
+      // AbortController is used when a view is replaced or unmounted. This is
+      // an expected client lifecycle event, not a backend connectivity error.
+      if (isRequestCancellation(error)) {
+        return Promise.reject(error);
+      }
+
       const endTime = performance.now();
       const startTime = error.config?.startTime;
       const requestId = error.config?.requestId;

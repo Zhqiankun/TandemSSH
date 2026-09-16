@@ -346,3 +346,446 @@
   flex: 1;
   min-width: 0;
 }
+.tandem-composer-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.tandem-composer-switch button {
+  min-width: 0;
+  padding-inline: 8px;
+}
+.tandem-ai-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.tandem-ai-intro {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 4px 2px 2px;
+}
+.tandem-ai-intro-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border: 1px solid color-mix(in srgb, var(--primary) 38%, var(--border));
+  border-radius: 9px;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 9%, var(--background));
+}
+.tandem-ai-intro strong {
+  display: block;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.tandem-ai-intro p {
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.65;
+}
+.tandem-ai-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tandem-ai-suggestions button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: var(--muted-foreground);
+  background: color-mix(in srgb, var(--muted) 72%, transparent);
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: left;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+}
+.tandem-ai-suggestions button:hover {
+  color: var(--foreground);
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, var(--background));
+}
+.tandem-ai-input-shell {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--muted) 22%, var(--background));
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.tandem-ai-input-shell:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.tandem-task-panel .tandem-ai-input-shell textarea {
+  min-height: 104px;
+  resize: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: inherit;
+  line-height: 1.7;
+  padding: 12px;
+}
+.tandem-task-panel .tandem-ai-input-shell textarea:focus-visible {
+  outline: none;
+}
+.tandem-ai-input-footer {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  gap: 8px;
+  padding: 6px 7px 7px 11px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.tandem-ai-provider-summary {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tandem-ai-provider-summary > span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #34b484;
+  box-shadow: 0 0 0 3px #34b48418;
+}
+.tandem-ai-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.tandem-ai-mode {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  margin-right: auto;
+}
+.tandem-ai-mode label {
+  position: relative;
+  cursor: pointer;
+}
+.tandem-ai-mode input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.tandem-ai-mode span {
+  display: block;
+  padding: 6px 9px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 1;
+}
+.tandem-ai-mode label.selected span {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--primary) 13%, var(--background));
+}
+.tandem-ai-mode input:focus-visible + span {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.tandem-ai-advanced {
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--muted);
+}
+.tandem-ai-consent {
+  margin: 0;
+  padding-inline: 2px;
+}
+.tandem-agent-transcript {
+  gap: 11px;
+  border-top: 0;
+  padding-top: 0;
+}
+.tandem-agent-run-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 10px;
+}
+.tandem-agent-run-header strong {
+  font-size: 11px;
+}
+.tandem-agent-model {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tandem-agent-messages {
+  gap: 12px;
+  max-height: 380px;
+  padding: 2px 1px;
+}
+.tandem-agent-message {
+  display: flex;
+  width: 100%;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.tandem-agent-message.user {
+  justify-content: flex-end;
+}
+.tandem-agent-message.user > div {
+  width: fit-content;
+  max-width: 88%;
+  border-radius: 10px 10px 2px 10px;
+  background: color-mix(in srgb, var(--primary) 10%, var(--muted));
+}
+.tandem-agent-message.assistant > div {
+  width: 100%;
+}
+.tandem-agent-thinking {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.tandem-agent-run-meta {
+  display: flex;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.tandem-agent-question {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tandem-agent-reply textarea {
+  min-height: 72px !important;
+}
+.tandem-agent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tandem-ai-authorization-card {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.tandem-ai-authorization-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+.tandem-ai-authorization-heading > span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 8px;
+  color: #238464;
+  background: color-mix(in srgb, #34b484 13%, var(--background));
+}
+.tandem-ai-authorization-heading strong {
+  display: block;
+  font-size: 12px;
+}
+.tandem-ai-authorization-heading p {
+  margin-top: 3px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.tandem-ai-programs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.tandem-ai-programs code {
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 4px;
+  padding: 2px 5px;
+  color: var(--muted-foreground);
+  background: var(--background);
+  font-size: 9px;
+}
+.tandem-ai-authorization-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.tandem-next-action {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--primary) 44%, var(--border));
+  border-radius: 10px;
+  padding: 11px;
+  background: color-mix(in srgb, var(--primary) 6%, var(--background));
+  box-shadow: 0 8px 22px #0000000a;
+}
+.tandem-next-action-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.tandem-next-action-heading strong {
+  flex: 0 0 auto;
+  color: var(--primary);
+  font-size: 11px;
+}
+.tandem-next-action-heading span {
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 1.55;
+}
+.tandem-next-action .tandem-authorization {
+  gap: 9px;
+}
+.tandem-next-action .tandem-operation {
+  margin: 0;
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: var(--background);
+}
+.tandem-next-primary {
+  width: 100%;
+  min-height: 36px;
+}
+.tandem-authorization-details {
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  padding-top: 8px;
+}
+.tandem-authorization-details summary,
+.tandem-task-tools summary {
+  cursor: pointer;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  user-select: none;
+}
+.tandem-authorization-details summary:hover,
+.tandem-task-tools summary:hover {
+  color: var(--foreground);
+}
+.tandem-authorization-details-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+  padding-top: 10px;
+}
+.tandem-authorization-details-body .tandem-task-help {
+  margin: 0;
+}
+.tandem-task-tools {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--muted) 28%, var(--background));
+}
+.tandem-task-tools > summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 11px;
+  list-style-position: inside;
+}
+.tandem-task-tools > summary span {
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+.tandem-task-tools > summary small {
+  padding-left: 14px;
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+.tandem-task-tools[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+.tandem-task-tools-body {
+  padding: 0 10px 10px;
+}
+
+.tandem-operation-history,
+.tandem-assistant-details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tandem-assistant-details-body {
+  padding: 10px;
+}
+.tandem-assistant-details-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+.tandem-task-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding-top: 2px;
+}
+.tandem-task-controls > section {
+  width: 100%;
+}
+.tandem-panel-footer {
+  display: block;
+  padding: 0 !important;
+}
+.tandem-panel-settings > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  list-style-position: inside;
+  user-select: none;
+}
+.tandem-panel-settings > summary span {
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+.tandem-panel-settings > summary small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tandem-panel-settings[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+.tandem-panel-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px 16px 12px;
+}
+.tandem-panel-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}

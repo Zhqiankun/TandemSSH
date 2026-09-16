@@ -137,3 +137,93 @@ it("preserves text edited while an earlier reply is being sent", async () => {
     "发送期间新写的内容",
   );
 });
+it("shows the user's request and the assistant response in one conversation", () => {
+  render(
+    <AiTaskTranscript
+      run={{
+        ...run(20),
+        error: undefined,
+        phase: "awaiting-authorization",
+        turns: 1,
+        messages: [
+          {
+            id: "user-message",
+            role: "user",
+            content: "帮我查一下 Docker 都跑了什么服务",
+            status: "complete",
+          },
+          {
+            id: "assistant-message",
+            role: "assistant",
+            content: "我会先查看正在运行的容器并整理服务、镜像和端口。",
+            status: "complete",
+          },
+        ],
+      }}
+    />,
+  );
+
+  expect(screen.getByText("帮我查一下 Docker 都跑了什么服务")).toBeTruthy();
+  expect(
+    screen.getByText("我会先查看正在运行的容器并整理服务、镜像和端口。"),
+  ).toBeTruthy();
+});
+it("sends a follow-up from the completed transcript and clears only the sent draft", async () => {
+  const onContinue = vi.fn().mockResolvedValue(true);
+  render(
+    <AiTaskTranscript
+      run={{
+        ...run(20),
+        error: undefined,
+        phase: "completed",
+        messages: [
+          {
+            id: "user",
+            role: "user",
+            content: "查看 Docker 服务",
+            status: "complete",
+          },
+          {
+            id: "assistant",
+            role: "assistant",
+            content: "当前运行 3 个容器。",
+            status: "complete",
+          },
+        ],
+      }}
+      onContinue={onContinue}
+    />,
+  );
+
+  const input = screen.getByRole("textbox", { name: "继续对话" });
+  fireEvent.change(input, { target: { value: "再查一下它们的端口" } });
+  fireEvent.keyDown(input, {
+    key: "Enter",
+    shiftKey: false,
+    nativeEvent: { isComposing: false },
+  });
+
+  await waitFor(() =>
+    expect(onContinue).toHaveBeenCalledExactlyOnceWith("再查一下它们的端口"),
+  );
+  expect((input as HTMLTextAreaElement).value).toBe("");
+  expect(screen.queryByRole("button", { name: "停止 AI 任务" })).toBeNull();
+});
+
+it("keeps the follow-up draft when creating the next turn fails", async () => {
+  const onContinue = vi.fn().mockResolvedValue(false);
+  render(
+    <AiTaskTranscript
+      run={{ ...run(20), error: undefined, phase: "completed-with-errors" }}
+      onContinue={onContinue}
+    />,
+  );
+
+  const input = screen.getByRole("textbox", { name: "继续对话" });
+  fireEvent.change(input, { target: { value: "换个方法继续检查" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+  await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+  expect((input as HTMLTextAreaElement).value).toBe("换个方法继续检查");
+  expect(screen.queryByRole("button", { name: "停止 AI 任务" })).toBeNull();
+});

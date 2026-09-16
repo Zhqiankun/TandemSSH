@@ -21,6 +21,13 @@ type LookupHookCallback = (
 ) => void;
 
 const blockedAddresses = new BlockList();
+const proxyFakeAddresses = new BlockList();
+proxyFakeAddresses.addSubnet("198.18.0.0", 15, "ipv4");
+proxyFakeAddresses.addSubnet("::ffff:198.18.0.0", 111, "ipv6");
+
+interface DnsLookupPolicy {
+  allowProxyFakeIp?: boolean;
+}
 
 // Derived, not hand-duplicated: Node's BlockList matches addresses across
 // families through their IPv4-mapped-IPv6 form regardless of which `type`
@@ -67,11 +74,22 @@ export function isBlockedAddress(address: string): boolean {
   );
 }
 
+export function isProxyFakeIpAddress(address: string): boolean {
+  const family = isIP(address);
+  return (
+    family !== 0 &&
+    proxyFakeAddresses.check(address, family === 4 ? "ipv4" : "ipv6")
+  );
+}
+
 // Extracted so the blocklist decision can be tested directly against a
 // fake DNS resolver, instead of only through a real fetch()/Agent call —
 // the actual bug here lived entirely in this callback, several layers
 // below where undici's own "fetch failed" wrapping would otherwise hide it.
-export function createDnsLookupHook(dnsLookup: DnsLookupFn = lookup) {
+export function createDnsLookupHook(
+  dnsLookup: DnsLookupFn = lookup,
+  policy: DnsLookupPolicy = {},
+) {
   return function lookupHook(
     host: string,
     lookupOptions: LookupOptions,
@@ -110,7 +128,13 @@ export function createDnsLookupHook(dnsLookup: DnsLookupFn = lookup) {
           );
         }
 
-        if (addrs.some(({ address }) => isBlockedAddress(address))) {
+        if (
+          addrs.some(
+            ({ address }) =>
+              isBlockedAddress(address) &&
+              !(policy.allowProxyFakeIp && isProxyFakeIpAddress(address)),
+          )
+        ) {
           return callback(
             new Error("Private destinations are not allowed"),
             "",
@@ -141,9 +165,101 @@ export function createDnsLookupHook(dnsLookup: DnsLookupFn = lookup) {
   };
 }
 
+type DispatcherLifecycle = Pick<Agent, "close" | "destroy">;
+
+function ignoreCleanupFailure(task: Promise<void>): void {
+  void task.catch(() => {});
+}
+
+/**
+ * Keeps the per-request Agent alive while callers consume the response body.
+ * Closing it before returning the Response waits for the upstream stream to
+ * finish while the unread body is applying backpressure, which can deadlock a
+ * normal-sized model response. Completion closes gracefully; cancellation or
+ * a read failure tears the connection down immediately.
+ */
+export function wrapResponseWithDispatcherLifecycle(
+  response: Response,
+  dispatcher: DispatcherLifecycle,
+): Response {
+  let settled = false;
+  const settle = (completed: boolean, reason?: unknown) => {
+    if (settled) return;
+    settled = true;
+    if (completed) {
+      ignoreCleanupFailure(dispatcher.close());
+      return;
+    }
+    ignoreCleanupFailure(
+      dispatcher.destroy(
+        reason instanceof Error
+          ? reason
+          : new Error("Outbound response cancelled"),
+      ),
+    );
+  };
+
+  const source = response.body;
+  if (!source) {
+    settle(true);
+    return response;
+  }
+
+  const reader = source.getReader();
+  const release = () => {
+    try {
+      reader.releaseLock();
+    } catch {
+      // A concurrent cancellation can release the lock first.
+    }
+  };
+
+  const body = new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        try {
+          const next = await reader.read();
+          if (settled) return;
+          if (next.done) {
+            release();
+            controller.close();
+            settle(true);
+            return;
+          }
+          controller.enqueue(next.value);
+        } catch (error) {
+          release();
+          try {
+            controller.error(error);
+          } catch {
+            // The consumer may already have cancelled its side of the stream.
+          }
+          settle(false, error);
+        }
+      },
+      async cancel(reason) {
+        try {
+          await reader.cancel(reason);
+        } finally {
+          release();
+          settle(false, reason);
+        }
+      },
+    },
+    { highWaterMark: 0 },
+  );
+
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 export async function safeOutboundFetch(
   rawUrl: string,
   options: RequestInit,
+  policy: DnsLookupPolicy = {},
 ): Promise<Response> {
   const url = new URL(rawUrl);
   if (
@@ -161,17 +277,23 @@ export async function safeOutboundFetch(
 
   const dispatcher = new Agent({
     connect: {
-      lookup: createDnsLookupHook(lookup),
+      lookup: createDnsLookupHook(lookup, policy),
     },
   });
 
   try {
-    return await undiciFetch(url.toString(), {
+    const response = await undiciFetch(url.toString(), {
       ...options,
       dispatcher,
       redirect: "error",
     });
-  } finally {
-    await dispatcher.close();
+    return wrapResponseWithDispatcherLifecycle(response, dispatcher);
+  } catch (error) {
+    try {
+      await dispatcher.destroy(error instanceof Error ? error : null);
+    } catch {
+      // Preserve the request error; dispatcher cleanup is best effort here.
+    }
+    throw error;
   }
 }

@@ -3,6 +3,9 @@ import type { LookupAddress, LookupOptions } from "dns";
 import {
   createDnsLookupHook,
   isBlockedAddress,
+  isProxyFakeIpAddress,
+  safeOutboundFetch,
+  wrapResponseWithDispatcherLifecycle,
 } from "../../utils/safe-outbound-fetch.js";
 
 describe("isBlockedAddress", () => {
@@ -47,10 +50,33 @@ describe("isBlockedAddress", () => {
   });
 });
 
+describe("proxy Fake-IP handling", () => {
+  it("recognizes IPv4 and IPv4-mapped IPv6 addresses from 198.18.0.0/15", () => {
+    expect(isProxyFakeIpAddress("198.18.0.1")).toBe(true);
+    expect(isProxyFakeIpAddress("198.19.255.254")).toBe(true);
+    expect(isProxyFakeIpAddress("::ffff:198.18.0.1")).toBe(true);
+    expect(isProxyFakeIpAddress("198.20.0.1")).toBe(false);
+    expect(isProxyFakeIpAddress("192.168.1.1")).toBe(false);
+  });
+
+  it("still rejects a literal Fake-IP URL even when DNS Fake-IP support is enabled", async () => {
+    await expect(
+      safeOutboundFetch(
+        "https://198.18.0.1/v1/models",
+        {},
+        {
+          allowProxyFakeIp: true,
+        },
+      ),
+    ).rejects.toThrow("Private destinations are not allowed");
+  });
+});
+
 function runHook(
   addresses: LookupAddress[] | string | undefined,
   error: NodeJS.ErrnoException | null = null,
   lookupOptions: LookupOptions = { all: true },
+  policy: { allowProxyFakeIp?: boolean } = {},
 ) {
   const fakeLookup = vi.fn(
     (
@@ -66,7 +92,7 @@ function runHook(
     },
   );
 
-  const hook = createDnsLookupHook(fakeLookup);
+  const hook = createDnsLookupHook(fakeLookup, policy);
   const callback = vi.fn();
 
   hook("example.invalid", lookupOptions, callback);
@@ -92,6 +118,59 @@ const publicAddresses: LookupAddress[] = [
 ];
 
 describe("createDnsLookupHook", () => {
+  it("rejects a proxy Fake-IP address by default", () => {
+    const { callback } = runHook([
+      {
+        address: "198.18.0.78",
+        family: 4,
+      },
+    ]);
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Private destinations are not allowed",
+      }),
+      "",
+      0,
+    );
+  });
+
+  it("allows a DNS-resolved proxy Fake-IP address when explicitly enabled", () => {
+    const addresses: LookupAddress[] = [
+      {
+        address: "198.18.0.78",
+        family: 4,
+      },
+    ];
+    const { callback } = runHook(
+      addresses,
+      null,
+      { all: true },
+      {
+        allowProxyFakeIp: true,
+      },
+    );
+
+    expect(callback).toHaveBeenCalledWith(null, addresses, 0);
+  });
+
+  it("still rejects real private addresses when proxy Fake-IP support is enabled", () => {
+    const { callback } = runHook(
+      [{ address: "192.168.1.10", family: 4 }],
+      null,
+      { all: true },
+      { allowProxyFakeIp: true },
+    );
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Private destinations are not allowed",
+      }),
+      "",
+      0,
+    );
+  });
+
   it("allows a public IPv4 address through", () => {
     const { callback } = runHook([
       {
@@ -207,5 +286,73 @@ describe("createDnsLookupHook", () => {
       }),
       expect.any(Function),
     );
+  });
+});
+describe("wrapResponseWithDispatcherLifecycle", () => {
+  it("delivers chunks before the source finishes and closes after completion", async () => {
+    let source!: ReadableStreamDefaultController<Uint8Array>;
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          source = controller;
+          controller.enqueue(new TextEncoder().encode("first"));
+        },
+      }),
+    );
+    const dispatcher = {
+      close: vi.fn(async () => {}),
+      destroy: vi.fn(async () => {}),
+    };
+
+    const wrapped = wrapResponseWithDispatcherLifecycle(response, dispatcher);
+    const reader = wrapped.body!.getReader();
+    const first = await reader.read();
+
+    expect(new TextDecoder().decode(first.value)).toBe("first");
+    expect(first.done).toBe(false);
+    expect(dispatcher.close).not.toHaveBeenCalled();
+    expect(dispatcher.destroy).not.toHaveBeenCalled();
+
+    source.enqueue(new TextEncoder().encode("second"));
+    const second = await reader.read();
+    expect(new TextDecoder().decode(second.value)).toBe("second");
+
+    source.close();
+    await expect(reader.read()).resolves.toMatchObject({ done: true });
+    expect(dispatcher.close).toHaveBeenCalledOnce();
+    expect(dispatcher.destroy).not.toHaveBeenCalled();
+  });
+
+  it("destroys the dispatcher when the consumer cancels", async () => {
+    const sourceCancel = vi.fn();
+    const response = new Response(
+      new ReadableStream<Uint8Array>({ cancel: sourceCancel }),
+    );
+    const dispatcher = {
+      close: vi.fn(async () => {}),
+      destroy: vi.fn(async () => {}),
+    };
+    const reason = new Error("stop");
+
+    const wrapped = wrapResponseWithDispatcherLifecycle(response, dispatcher);
+    await wrapped.body!.cancel(reason);
+
+    expect(sourceCancel).toHaveBeenCalledWith(reason);
+    expect(dispatcher.destroy).toHaveBeenCalledExactlyOnceWith(reason);
+    expect(dispatcher.close).not.toHaveBeenCalled();
+  });
+
+  it("closes immediately when the response has no body", () => {
+    const dispatcher = {
+      close: vi.fn(async () => {}),
+      destroy: vi.fn(async () => {}),
+    };
+    const response = new Response(null, { status: 204 });
+
+    expect(wrapResponseWithDispatcherLifecycle(response, dispatcher)).toBe(
+      response,
+    );
+    expect(dispatcher.close).toHaveBeenCalledOnce();
+    expect(dispatcher.destroy).not.toHaveBeenCalled();
   });
 });

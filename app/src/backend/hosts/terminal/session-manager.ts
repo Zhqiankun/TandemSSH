@@ -1,6 +1,11 @@
 import { encodeTerminalInput, type TerminalEncoding } from "./encoding.js";
 import { type Client, type ClientChannel } from "ssh2";
 import { terminalOutputDelivery } from "./output-delivery.js";
+import {
+  InternalCommandOutputFilter,
+  type InternalCommandFrame,
+} from "./internal-command-output.js";
+import type { PtyCommandDisplayPort } from "../../collaboration/adapters/pty-command.js";
 import { RecordingWriter } from "./recording-writer.js";
 import {
   recordingFailureReason,
@@ -63,6 +68,7 @@ export interface TerminalSession {
   outputSequence: number;
   outputTruncated: boolean;
   outputGap: boolean;
+  internalCommandOutput: InternalCommandOutputFilter;
   recordingPath: string | null;
   recordingHeader: string | null;
   recordingBytes: number;
@@ -231,7 +237,11 @@ class TerminalSessionManager {
               current.inputEncoding ?? "utf-8",
             );
             const before = current.control.snapshot();
-            this.bufferInput(id, input.toString("utf8"));
+            const rawInput = input.toString("utf8");
+            this.bufferInput(
+              id,
+              current.internalCommandOutput.recordingInput() ?? rawInput,
+            );
             const after = current.control.snapshot();
             if (
               before.controller.kind === "automation" &&
@@ -243,7 +253,11 @@ class TerminalSessionManager {
             current.sshStream.write(wireInput);
           },
         },
-        (event) => this.broadcast(id, event),
+        (event) => {
+          if (event.state.controller.kind !== "automation")
+            this.releaseInternalCommandOutput(id);
+          this.broadcast(id, event);
+        },
       ),
       userId,
       hostId,
@@ -264,6 +278,7 @@ class TerminalSessionManager {
       outputSequence: 0,
       outputTruncated: false,
       outputGap: false,
+      internalCommandOutput: new InternalCommandOutputFilter(),
       recordingPath,
       recordingHeader,
       recordingBytes: 0,
@@ -563,6 +578,52 @@ class TerminalSessionManager {
     });
 
     return session;
+  }
+
+  commandDisplay(sessionId: string): PtyCommandDisplayPort {
+    return {
+      arm: (frame: InternalCommandFrame) => {
+        const session = this.sessions.get(sessionId);
+        if (!session?.isConnected)
+          throw new ControlError("TRANSPORT_UNAVAILABLE");
+        try {
+          session.internalCommandOutput.arm(frame);
+        } catch {
+          throw new ControlError("CONTROL_BUSY");
+        }
+      },
+      release: (token: string) =>
+        this.releaseInternalCommandOutput(sessionId, token),
+    };
+  }
+
+  receiveOutput(sessionId: string, data: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || !data) return;
+    this.publishVisibleOutput(
+      session,
+      session.internalCommandOutput.feed(data),
+    );
+  }
+
+  private releaseInternalCommandOutput(
+    sessionId: string,
+    token?: string,
+  ): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    const activeToken = token ?? session.internalCommandOutput.activeToken();
+    if (!activeToken) return;
+    this.publishVisibleOutput(
+      session,
+      session.internalCommandOutput.release(activeToken),
+    );
+  }
+
+  private publishVisibleOutput(session: TerminalSession, data: string): void {
+    if (!data) return;
+    this.bufferOutput(session.id, data);
+    this.broadcast(session.id, { type: "data", data });
   }
 
   configureOutput(ws: WebSocket, acknowledgements: boolean): void {

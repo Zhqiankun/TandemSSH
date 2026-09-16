@@ -1648,7 +1648,12 @@ ipcMain.handle("import-c2s-tunnel-config", (event, request) => {
     c2sSession.trusted(event);
     return { success: true, ...c2sConfigStore().import(request) };
   } catch (error) {
-    return { success: false, error: /^C2S_[A-Z_]+$/.test(error.message) ? error.message : "C2S_CONFIG_WRITE_FAILED" };
+    return {
+      success: false,
+      error: /^C2S_[A-Z_]+$/.test(error.message)
+        ? error.message
+        : "C2S_CONFIG_WRITE_FAILED",
+    };
   }
 });
 
@@ -1896,7 +1901,9 @@ async function openC2SRelay(
   });
   const ws = new WebSocket(
     relayUrl,
-    require("./c2s-websocket-options.cjs").c2sWebSocketOptions(getWebSocketOptions(relayUrl, { headers })),
+    require("./c2s-websocket-options.cjs").c2sWebSocketOptions(
+      getWebSocketOptions(relayUrl, { headers }),
+    ),
   );
   let closed = false;
 
@@ -1926,7 +1933,10 @@ async function openC2SRelay(
   const { createC2SDownloadPump } = require("./c2s-download-pump.cjs");
   const downloadPump = createC2SDownloadPump(socket, ws, (error) => {
     if (!closed && c2sTunnelRuntimes.get(tunnelName) === runtime)
-      setC2STunnelError(tunnelName, error.message || "Local socket write failed");
+      setC2STunnelError(
+        tunnelName,
+        error.message || "Local socket write failed",
+      );
     cleanup();
   });
   socket.on("close", cleanup);
@@ -1936,7 +1946,11 @@ async function openC2SRelay(
     cleanup();
   });
   ws.on("close", (code) => {
-    if (code === 1009 && !closed && c2sTunnelRuntimes.get(tunnelName) === runtime)
+    if (
+      code === 1009 &&
+      !closed &&
+      c2sTunnelRuntimes.get(tunnelName) === runtime
+    )
       setC2STunnelError(tunnelName, "C2S_MESSAGE_TOO_LARGE");
     cleanup();
   });
@@ -2256,7 +2270,9 @@ async function startC2SRemoteTunnel(tunnel, index, operation) {
   const headers = getC2SRelayHeaders(tunnel);
   const ws = new WebSocket(
     relayUrl,
-    require("./c2s-websocket-options.cjs").c2sWebSocketOptions(getWebSocketOptions(relayUrl, { headers })),
+    require("./c2s-websocket-options.cjs").c2sWebSocketOptions(
+      getWebSocketOptions(relayUrl, { headers }),
+    ),
   );
   const sockets = new Map();
   let closed = false;
@@ -2360,10 +2376,18 @@ async function startC2SRemoteTunnel(tunnel, index, operation) {
       }
 
       if (message.type === "connection" && message.streamId) {
-        const admission = require("./c2s-remote-streams.cjs").remoteStreamAdmission(sockets, message.streamId);
+        const admission =
+          require("./c2s-remote-streams.cjs").remoteStreamAdmission(
+            sockets,
+            message.streamId,
+          );
         if (admission === "duplicate") return;
         if (admission === "full") {
-          sendC2SRemoteMessage(ws, { type: "close", streamId: message.streamId, error: "C2S_CONNECTION_LIMIT" });
+          sendC2SRemoteMessage(ws, {
+            type: "close",
+            streamId: message.streamId,
+            error: "C2S_CONNECTION_LIMIT",
+          });
           return;
         }
         const socket = net.createConnection(
@@ -2436,13 +2460,23 @@ async function startC2SRemoteTunnel(tunnel, index, operation) {
     });
 
     ws.on("close", (code) => {
-      if (code === 1009 && !closed && c2sTunnelRuntimes.get(tunnelName) === runtime)
+      if (
+        code === 1009 &&
+        !closed &&
+        c2sTunnelRuntimes.get(tunnelName) === runtime
+      )
         setC2STunnelError(tunnelName, "C2S_MESSAGE_TOO_LARGE");
       cleanup();
       if (c2sTunnelRuntimes.get(tunnelName) === runtime)
         c2sTunnelRuntimes.delete(tunnelName);
       emitC2STunnelStatuses();
-      settle({ success: false, error: code === 1009 ? "C2S_MESSAGE_TOO_LARGE" : "Remote tunnel relay closed" });
+      settle({
+        success: false,
+        error:
+          code === 1009
+            ? "C2S_MESSAGE_TOO_LARGE"
+            : "Remote tunnel relay closed",
+      });
     });
 
     ws.on("error", (error) => {
@@ -2539,7 +2573,8 @@ async function startC2STunnelRequest(tunnel, index, operation) {
     }
   });
 
-  server.maxConnections = require("./c2s-session.cjs").C2S_LOCAL_CONNECTION_LIMIT;
+  server.maxConnections =
+    require("./c2s-session.cjs").C2S_LOCAL_CONNECTION_LIMIT;
 
   const runtime = {
     server,
@@ -3331,7 +3366,7 @@ app.whenReady().then(async () => {
     logToFile("startBackendServer result:", result);
   } else {
     logToFile(
-      "Skipping embedded backend (isDev=true) - expecting separate dev:backend process",
+      "Skipping embedded backend (isDev=true) - electron:dev starts dev:backend:desktop",
     );
   }
 

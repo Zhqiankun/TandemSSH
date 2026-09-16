@@ -50,7 +50,11 @@ import {
   type FileExecutorPort,
 } from "../operations/gateway.js";
 import { SessionControl } from "../sessions/control.js";
-import { validateCommandAction } from "../policies/command-policy.js";
+import {
+  matchesCommand,
+  validateCommandAction,
+} from "../policies/command-policy.js";
+import { isReadOnlyCommandAction } from "../policies/read-only-command.js";
 
 export type TaskActor =
   | { kind: "human"; userId: string }
@@ -1765,7 +1769,16 @@ export class TaskRuntime {
     }
     if (version === task.generation) {
       if (result.resultingCwd) task.view.cwd = result.resultingCwd;
-      if (
+      const assistantCanReviewFailure =
+        task.view.source === "assistant" &&
+        result.action.type === "terminal.command" &&
+        canContinueStepFailure(result);
+      if (assistantCanReviewFailure) {
+        task.view.hasFailures = true;
+        task.continuedFailures.add(result.id);
+        task.view.error = undefined;
+        task.view.state = "ready";
+      } else if (
         (result.status !== "succeeded" &&
           !(continueOnFailure && canContinueStepFailure(result))) ||
         result.auditGap ||
@@ -1999,6 +2012,39 @@ export class TaskRuntime {
       task.submitting = false;
     }
     if (version !== task.generation) throw new Error("STALE_CONTROL");
+    if (
+      action.type === "terminal.command" &&
+      task.view.source === "assistant" &&
+      task.scope?.allowReadOnlyAutoRun === true &&
+      (task.scope.matches ?? []).some((match) =>
+        matchesCommand(match, action),
+      ) &&
+      isReadOnlyCommandAction(action).allowed &&
+      op.decision.outcome !== "deny"
+    ) {
+      try {
+        await this.ports
+          .audit(task.userId)
+          .record("operation.read_only_auto_approval", {
+            source: "human-task-grant",
+            hostId: task.view.hostId,
+            hostName: task.view.hostName,
+            sessionId: task.view.sessionId,
+            mode: task.view.mode,
+            taskId,
+            operationId: op.id,
+            digest: op.digest,
+            policyRevision: op.decision.revision,
+            program: action.program,
+            args: action.args,
+          });
+      } catch {
+        this.pause(task, "AUDIT_UNAVAILABLE");
+        throw new Error("AUDIT_UNAVAILABLE");
+      }
+      if (version !== task.generation) throw new Error("STALE_CONTROL");
+      task.gateway.approveOnce(op.id, op.digest, op.decision.revision);
+    }
     void this.dispatch(task, op.id, version).catch((error) => {
       if (version !== task.generation) return;
       if (error.message === "APPROVAL_REQUIRED")
